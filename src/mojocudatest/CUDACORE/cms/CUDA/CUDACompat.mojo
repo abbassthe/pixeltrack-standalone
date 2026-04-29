@@ -108,6 +108,11 @@ fn cudaGetDevice(out device: Int) -> cudaError_t:
     return cudaSuccess
 
 
+fn cudaSetDevice(device: Int) -> cudaError_t:
+    _ = DeviceContext(device_id=device)
+    return cudaSuccess
+
+
 fn cudaEventCreateWithFlags(out event: CUDAEventType, flags: UInt32) -> cudaError_t:
     _ = flags
     event = CUDAEventType()

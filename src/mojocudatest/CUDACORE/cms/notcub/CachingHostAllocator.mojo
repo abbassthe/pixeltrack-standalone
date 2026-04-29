@@ -27,74 +27,16 @@
 # ******************************************************************************/
 #
 #/**
-# * Forked to CMSSW by Matti Kortelainen
+# * Modified to cache pinned host allocations by Matti Kortelainen
 # */
 #
 #/******************************************************************************
-# * Simple caching allocator for device memory allocations. The allocator is
-# * thread-safe and capable of managing device allocations on multiple devices.
+# * Simple caching allocator for pinned host memory allocations. The allocator is
+# * thread-safe.
 # ******************************************************************************/
 
-#
-#
-# Ported to Mojo by Abbas Naim
-#
-#
+#Ported to Mojo by Abbas Naim
 
-
-
-
-
-#/**
-# * \addtogroup UtilMgmt
-# * @{
-# */
-#
-#  /******************************************************************************
-# * CachingDeviceAllocator (host use)
-# ******************************************************************************/
-#
-#  /**
-# * \brief A simple caching allocator for device memory allocations.
-# *
-# * \par Overview
-# * The allocator is thread-safe and stream-safe and is capable of managing cached
-# * device allocations on multiple devices.  It behaves as follows:
-# *
-# * \par
-# * - Allocations from the allocator are associated with an \p active_stream.  Once freed,
-# *   the allocation becomes available immediately for reuse within the \p active_stream
-# *   with which it was associated with during allocation, and it becomes available for
-# *   reuse within other streams when all prior work submitted to \p active_stream has completed.
-# * - Allocations are categorized and cached by bin size.  A new allocation request of
-# *   a given size will only consider cached allocations within the corresponding bin.
-# * - Bin limits progress geometrically in accordance with the growth factor
-# *   \p bin_growth provided during construction.  Unused device allocations within
-# *   a larger bin cache are not reused for allocation requests that categorize to
-# *   smaller bin sizes.
-# * - Allocation requests below (\p bin_growth ^ \p min_bin) are rounded up to
-# *   (\p bin_growth ^ \p min_bin).
-# * - Allocations above (\p bin_growth ^ \p max_bin) are not rounded up to the nearest
-# *   bin and are simply freed when they are deallocated instead of being returned
-# *   to a bin-cache.
-# * - %If the total storage of cached allocations on a given device will exceed
-# *   \p max_cached_bytes, allocations for that device are simply freed when they are
-# *   deallocated instead of being returned to their bin-cache.
-# *
-# * \par
-# * For example, the default-constructed CachingDeviceAllocator is configured with:
-# * - \p bin_growth          = 8
-# * - \p min_bin             = 3
-# * - \p max_bin             = 7
-# * - \p max_cached_bytes    = 6MB - 1B
-# *
-# * \par
-# * which delineates five bin-sizes: 512B, 4KB, 32KB, 256KB, and 2MB
-# * and sets a maximum of 6,291,455 cached bytes per device
-# *
-# */
-
-from allocator.deviceAllocatorStatus import GpuCachedBytes, TotalBytes
 from CUDACompat import (
     CUDAStreamType,
     CUDAEventType,
@@ -105,7 +47,7 @@ from CUDACompat import (
     cudaEventQuery,
     cudaEventRecord,
 )
-from allocate_device import allocate_device, free_device
+from allocate_host import allocate_host_raw, free_host_raw
 from MojoBridge.OrderedMultiSet import OrderedMultiSet
 from MojoBridge.DTypes import (
     cudaError_t,
@@ -117,7 +59,7 @@ from MojoBridge.DTypes import (
 from utils.lock import BlockingSpinLock, BlockingScopedLock
 
 @fieldwise_init
-struct CachingDeviceAllocator(Movable, Sized):
+struct CachingHostAllocator(Movable, Sized):
 
     #---------------------------------------------------------------------
     # Constants
@@ -148,7 +90,6 @@ struct CachingDeviceAllocator(Movable, Sized):
     struct BlockDescriptor:
         var d_ptr : DevicePtr
         var bytes : UInt
-        var bytesRequested : UInt
         var bin : UInt
         var device : Int
         var associated_stream : cudaStream_t
@@ -158,25 +99,24 @@ struct CachingDeviceAllocator(Movable, Sized):
         @always_inline
         fn __init__(
             out self,
-            d_ptr: DevicePtr,
-            device: Int
+            d_ptr: DevicePtr
         ):
             self.d_ptr = d_ptr
             self.bytes = 0
-            self.bytesRequested = 0
+
             self.bin = INVALID_BIN
-            self.device = device
+            self.device = INVALID_DEVICE_ORDINAL
             self.associated_stream = cudaStream_t()
             self.ready_event = cudaEvent_t()
 
         # Constructor for lookup ranges by device.
         @always_inline
-        fn __init__(out self, device: Int):
+        fn __init__(out self):
             self.d_ptr = DevicePtr()
             self.bytes = 0
-            self.bytesRequested = 0
+
             self.bin = INVALID_BIN
-            self.device = device
+            self.device = INVALID_DEVICE_ORDINAL
             self.associated_stream = cudaStream_t()
             self.ready_event = cudaEvent_t()
 
@@ -184,17 +124,14 @@ struct CachingDeviceAllocator(Movable, Sized):
         @always_inline
         @staticmethod
         fn PtrCompare(a: read BlockDescriptor, b: read BlockDescriptor) -> Bool:
-            if a.device == b.device:
-                return a.d_ptr.address < b.d_ptr.address
-            return a.device < b.device
+            return a.d_ptr.address < b.d_ptr.address
 
 
         @always_inline
         @staticmethod
         fn SizeCompare(a: read BlockDescriptor, b: read BlockDescriptor) -> Bool:
-            if a.device == b.device:
-                return a.bytes < b.bytes
-            return a.device < b.device
+            return a.bytes < b.bytes
+
 
     struct BlockByPtrCompare:
         @always_inline
@@ -208,6 +145,16 @@ struct CachingDeviceAllocator(Movable, Sized):
         fn less(a: read BlockDescriptor, b: read BlockDescriptor) -> Bool:
             return BlockDescriptor.SizeCompare(a, b)
 
+
+    @fieldwise_init
+    struct TotalBytes(Copyable, Defaultable, Movable):
+        var free: UInt
+        var live: UInt
+
+        @always_inline
+        fn __init__(out self):
+            self.free = 0
+            self.live = 0
 
     alias CachedBlocks = OrderedMultiSet[BlockDescriptor, BlockBySizeCompare]
     alias BusyBlocks = OrderedMultiSet[BlockDescriptor, BlockByPtrCompare]
@@ -263,12 +210,12 @@ struct CachingDeviceAllocator(Movable, Sized):
 
     var min_bin_bytes: UInt  # Minimum bin size
     var max_bin_bytes: UInt  # Maximum bin size
-    var max_cached_bytes: UInt  # Maximum aggregate cached bytes per device
+    var max_cached_bytes: UInt  # Maximum aggregate cached bytes
 
     var skip_cleanup: Bool  # Whether or not to skip a call to FreeAllCached() when destructor is called.  (The CUDA runtime may have already shut down for statically declared allocators)
     var debug: Bool  # Whether or not to print (de)allocation events to stdout
 
-    var cached_bytes: GpuCachedBytes  # Map of device ordinal to aggregate cached bytes on that device
+    var cached_bytes: TotalBytes  # Aggregate cached bytes
     var cached_blocks: CachedBlocks  # Set of cached device allocations available for reuse
     var live_blocks: BusyBlocks  # Set of live device allocations currently in use
 
@@ -292,12 +239,12 @@ struct CachingDeviceAllocator(Movable, Sized):
         self.bin_growth = bin_growth
         self.min_bin = min_bin
         self.max_bin = max_bin
-        self.min_bin_bytes = CachingDeviceAllocator.IntPow(bin_growth, min_bin)
-        self.max_bin_bytes = CachingDeviceAllocator.IntPow(bin_growth, max_bin)
+        self.min_bin_bytes = CachingHostAllocator.IntPow(bin_growth, min_bin)
+        self.max_bin_bytes = CachingHostAllocator.IntPow(bin_growth, max_bin)
         self.max_cached_bytes = max_cached_bytes
         self.skip_cleanup = skip_cleanup
         self.debug = debug
-        self.cached_bytes = GpuCachedBytes()
+        self.cached_bytes = TotalBytes()
         self.cached_blocks = CachedBlocks()
         self.live_blocks = BusyBlocks()
 
@@ -319,16 +266,16 @@ struct CachingDeviceAllocator(Movable, Sized):
         self.bin_growth = 8
         self.min_bin = 3
         self.max_bin = 7
-        self.min_bin_bytes = CachingDeviceAllocator.IntPow(
+        self.min_bin_bytes = CachingHostAllocator.IntPow(
             self.bin_growth, self.min_bin
         )
-        self.max_bin_bytes = CachingDeviceAllocator.IntPow(
+        self.max_bin_bytes = CachingHostAllocator.IntPow(
             self.bin_growth, self.max_bin
         )
         self.max_cached_bytes = (self.max_bin_bytes * 3) - 1
         self.skip_cleanup = skip_cleanup
         self.debug = debug
-        self.cached_bytes = GpuCachedBytes()
+        self.cached_bytes = TotalBytes()
         self.cached_blocks = CachedBlocks()
         self.live_blocks = BusyBlocks()
 
@@ -338,7 +285,7 @@ struct CachingDeviceAllocator(Movable, Sized):
     # * Changing the ceiling of cached bytes does not cause any allocations (in-use or
     # * cached-in-reserve) to be freed.  See \p FreeAllCached().
     # */
-    fn SetMaxCachedBytes(mut self, max_cached_bytes: UInt) -> cudaError_t:
+    fn SetMaxCachedBytes(mut self, max_cached_bytes: UInt) :
         with BlockingScopedLock(self.mutex):
             if self.debug:
                 print(
@@ -349,41 +296,29 @@ struct CachingDeviceAllocator(Movable, Sized):
                     + ")"
                 )
             self.max_cached_bytes = max_cached_bytes
-        return cudaSuccess
 
-    #/**
-    # * \brief Provides a suitable allocation of device memory for the given size on the specified device.
-    # *
-    # * Once freed, the allocation becomes available immediately for reuse within the \p active_stream
-    # * with which it was associated with during allocation, and it becomes available for reuse within other
-    # * streams when all prior work submitted to \p active_stream has completed.
-    # */
     fn DeviceAllocate(
         mut self,
-        mut device: Int,
         out d_ptr: DevicePtr,
         bytes: UInt,
         active_stream: cudaStream_t = cudaStreamDefault
     ) -> cudaError_t raises:
         # CMS: use RAII instead of (un)locking explicitly
         d_ptr = DevicePtr()
-        var entrypoint_device = INVALID_DEVICE_ORDINAL
+        var device = INVALID_DEVICE_ORDINAL
         var error: cudaError_t = cudaSuccess
 
-        if device == INVALID_DEVICE_ORDINAL:
-            # CMS: throw exception on error
 
-            error = cudaGetDevice(entrypoint_device)
-            # if error != cudaSuccess:
-            #     return error
-            device = entrypoint_device
+
+        error = cudaGetDevice(device)
+
 
         # Create a block descriptor for the requested allocation
         var found = False
-        var search_key = BlockDescriptor(device)
-        search_key.bytesRequested = bytes
+        var search_key = BlockDescriptor()
+        search_key.device = device
         search_key.associated_stream = active_stream
-        CachingDeviceAllocator.NearestPowerOf(
+        CachingHostAllocator.NearestPowerOf(
             search_key.bin, search_key.bytes, self.bin_growth, bytes
         )
 
@@ -405,33 +340,41 @@ struct CachingDeviceAllocator(Movable, Sized):
                 var block_itr = self.cached_blocks.lower_bound(search_key)
                 while (
                     (block_itr != self.cached_blocks.__len__()) and
-                    (self.cached_blocks[block_itr].device == device) and
                     (self.cached_blocks[block_itr].bin == search_key.bin)
                 ):
                     # To prevent races with reusing blocks returned by the host but still
-                    # in use by the device, only consider cached blocks that are
-                    # either (from the active stream) or (from an idle stream)
+                    # in use for transfers, only consider cached blocks that are
+                    # either from an idle stream
                     if (
-                        (active_stream == self.cached_blocks[block_itr].associated_stream) or
                         (cudaEventQuery(self.cached_blocks[block_itr].ready_event) != cudaErrorNotReady)
                     ):
                         # Reuse existing cache block.  Insert into live blocks.
                         found = True
                         search_key = self.cached_blocks[block_itr]
                         search_key.associated_stream = active_stream
+                        if search_key.device != device:
+                            # C++ changes current device around event recreation.
+                            # In this Mojo port, event handles are runtime-managed, so we only
+                            # need to recreate the event and update the associated device tag.
+                            error = cudaEventDestroy(search_key.ready_event)
+                            if error != cudaSuccess:
+                                return error
+                            error = cudaEventCreateWithFlags(
+                                search_key.ready_event,
+                                cudaEventDisableTiming
+                            )
+                            if error != cudaSuccess:
+                                return error
+                            search_key.device = device
                         self.live_blocks.insert(search_key)
 
                         # Remove from free blocks
-                        var totals = self.cached_bytes.get_or(device, TotalBytes())
-                        totals.free -= search_key.bytes
-                        totals.live += search_key.bytes
-                        totals.liveRequested += search_key.bytesRequested
-                        self.cached_bytes[device] = totals
+                        self.cached_bytes.free -= search_key.bytes
+                        self.cached_bytes.live += search_key.bytes
 
                         if self.debug:
                             print(
-                                "\tDevice "
-                                + String(device)
+                                "\Host "
                                 + " reused cached block at "
                                 + String(search_key.d_ptr.address)
                                 + " ("
@@ -440,6 +383,8 @@ struct CachingDeviceAllocator(Movable, Sized):
                                 + String(search_key.associated_stream)
                                 + ", event "
                                 + String(search_key.ready_event.event_id)
+                                + "on device "
+                                + String(search_key.device)
                                 + " (previously associated with stream "
                                 + String(self.cached_blocks[block_itr].associated_stream)
                                 + ", event "
@@ -456,19 +401,17 @@ struct CachingDeviceAllocator(Movable, Sized):
 
         # Allocate the block if necessary
         if not found:
-            # No need to replicate lines 419 - 424 from cpp as 
-            # Mojo doesnt need to switch device before allocation
-            #the device id is passed into the allocation function 
 
 
             # Attempt to allocate
+            # TODO: eventually support allocation flags
             try:
-                search_key.d_ptr = allocate_device(
-                    Int32(device),
-                    search_key.bytes,
-                    OpaquePointer()
-                )
-                error = cudaSuccess
+                let ptr = allocate_host_raw(search_key.bytes)
+                if ptr == DevicePtr():
+                    error = cudaErrorMemoryAllocation
+                else:
+                    search_key.d_ptr = ptr
+                    error = cudaSuccess
             except e:
                 error = cudaErrorMemoryAllocation
 
@@ -476,61 +419,57 @@ struct CachingDeviceAllocator(Movable, Sized):
                 # The allocation attempt failed: free all cached blocks on device and retry
                 if self.debug:
                     print(
-                        "\tDevice "
-                        + String(device)
+                        "\Host "
                         + " failed to allocate "
                         + String(search_key.bytes)
                         + " bytes for stream "
                         + String(search_key.associated_stream)
                         + ", retrying after freeing cached allocations"
+                        + String(search_key.device)
                     )
 
                 error = cudaSuccess
+                #TODO implement get last error in mojo 
 
                 # Iterate the range of free blocks on the same device
                 with BlockingScopedLock(self.mutex):
-                    var free_key = BlockDescriptor(device)
-                    var block_itr = self.cached_blocks.lower_bound(free_key)
+                    var block_itr = self.cached_blocks.lower_bound()
 
                     while (
-                        (block_itr != self.cached_blocks.__len__()) and
-                        (self.cached_blocks[block_itr].device == device)
+                        (block_itr != self.cached_blocks.__len__())
                     ):
                         var block = self.cached_blocks[block_itr]
 
-                        # Free device memory and destroy stream event.
+                        # No need to worry about synchronization with the device: cudaFree is
+                        # blocking and will synchronize across all kernels executing
+                        # on the current device
 
+
+                        # Free pinned memory.
+                        
                         # the mojo implemetation of cudaFree and it doesnt
                         # return an error 
-                        free_device(
-                            Int32(device),
-                            block.d_ptr,
-                            OpaquePointer()
-                        )
+                        free_host_raw(block.d_ptr)
                         error = cudaEventDestroy(block.ready_event)
                         if error != cudaSuccess:
                             break
 
                         # Reduce balance and erase entry
-                        # Taking TotalBytes as defualt 
-                        var totals = self.cached_bytes.get_or(device, TotalBytes())
-                        totals.free -= block.bytes
-                        self.cached_bytes[device] = totals
+                        self.cached_bytes.free -= block.bytes
 
                         if self.debug:
                             print(
-                                "\tDevice "
-                                + String(device)
+                                "\Host "
                                 + " freed "
                                 + String(block.bytes)
                                 + " bytes.\n\t\t  "
                                 + String(self.cached_blocks.__len__())
                                 + " available blocks cached ("
-                                + String(totals.free)
+                                + String(self.cached_bytes.free)
                                 + " bytes), "
                                 + String(self.live_blocks.__len__())
                                 + " live blocks ("
-                                + String(totals.live)
+                                + String(self.cached_bytes.live)
                                 + " bytes) outstanding."
                             )
 
@@ -543,14 +482,16 @@ struct CachingDeviceAllocator(Movable, Sized):
 
                 # Try to allocate again
                 try:
-                    search_key.d_ptr = allocate_device(
-                        Int32(device),
-                        search_key.bytes,
-                        OpaquePointer()
-                    )
-                    error = cudaSuccess
+                    let ptr = allocate_host_raw(search_key.bytes)
+                    if ptr == DevicePtr():
+                        error = cudaErrorMemoryAllocation
+                    else:
+                        search_key.d_ptr = ptr
+                        error = cudaSuccess
                 except e:
                     error = cudaErrorMemoryAllocation
+                    return cudaErrorMemoryAllocation
+                if error == cudaErrorMemoryAllocation:
                     return cudaErrorMemoryAllocation
 
 
@@ -567,15 +508,11 @@ struct CachingDeviceAllocator(Movable, Sized):
             # Insert into live blocks
             with BlockingScopedLock(self.mutex):
                 self.live_blocks.insert(search_key)
-                var totals = self.cached_bytes.get_or(device, TotalBytes())
-                totals.live += search_key.bytes
-                totals.liveRequested += search_key.bytesRequested
-                self.cached_bytes[device] = totals
+                self.cached_bytes.live += search_key.bytes
 
             if self.debug:
                 print(
-                    "\tDevice "
-                    + String(device)
+                    "\tHost "
                     + " allocated new device block at "
                     + String(search_key.d_ptr.address)
                     + " ("
@@ -584,230 +521,147 @@ struct CachingDeviceAllocator(Movable, Sized):
                     + String(search_key.associated_stream)
                     + ", event "
                     + String(search_key.ready_event.event_id)
-                    + ")."
+                    + "on device"+
+                    String(search_key.device)
+                    ")."
                 )
 
-        # Copy device pointer to output parameter
+        # Copy host pointer to output parameter
         d_ptr = search_key.d_ptr
 
         if self.debug:
-            var totals = self.cached_bytes.get_or(device, TotalBytes())
             print(
                 "\t\t"
                 + String(self.cached_blocks.__len__())
                 + " available blocks cached ("
-                + String(totals.free)
+                + String(self.cached_bytes.free)
                 + " bytes), "
                 + String(self.live_blocks.__len__())
                 + " live blocks outstanding("
-                + String(totals.live)
+                + String(self.cached_bytes.live)
                 + " bytes)."
             )
 
         return error
 
-    #/**
-    # * \brief Provides a suitable allocation of device memory for the given size on the current device.
-    # *
-    # * Once freed, the allocation becomes available immediately for reuse within the \p active_stream
-    # * with which it was associated with during allocation, and it becomes available for reuse within other
-    # * streams when all prior work submitted to \p active_stream has completed.
-    # */
-    fn DeviceAllocate(
-        mut self,
-        out d_ptr: DevicePtr,
-        bytes: UInt,
-        active_stream: cudaStream_t = cudaStreamDefault
-    ) -> cudaError_t raises:
-        return self.DeviceAllocate(
-            INVALID_DEVICE_ORDINAL,
-            d_ptr,
-            bytes,
-            active_stream
-        )
 
-    #/**
-    # * \brief Frees a live allocation of device memory on the specified device, returning it to the allocator.
-    # *
-    # * Once freed, the allocation becomes available immediately for reuse within the \p active_stream
-    # * with which it was associated with during allocation, and it becomes available for reuse within other
-    # * streams when all prior work submitted to \p active_stream has completed.
-    # */
-    fn DeviceFree(
-        mut self,
-        mut device: Int,
-        d_ptr: DevicePtr
-    ) -> cudaError_t raises:
-        var entrypoint_device = INVALID_DEVICE_ORDINAL
-        var error: cudaError_t = cudaSuccess
-        var recached = False
-        var search_key = BlockDescriptor(d_ptr, device)
+fn HostFree(
+    mut self,
+    d_ptr: DevicePtr
+) -> cudaError_t raises:
+    var error: cudaError_t = cudaSuccess
+    var recached = False
+    var search_key = BlockDescriptor(d_ptr)
 
-        if device == INVALID_DEVICE_ORDINAL:
-            error = cudaGetDevice(entrypoint_device)
+
+    # search_key.device = device
+    with BlockingScopedLock(self.mutex):
+        var block_itr = self.live_blocks.find(search_key)
+        if block_itr != -1:
+            search_key = self.live_blocks[block_itr]
+            _ = self.live_blocks.erase_at(block_itr)
+            self.cached_bytes.live -= search_key.bytes
+
+            # Keep the returned allocation if bin is valid and we won't exceed the max cached threshold.
+            if (
+                (search_key.bin != INVALID_BIN) and
+                (self.cached_bytes.free + search_key.bytes <= self.max_cached_bytes)
+            ):
+                recached = True
+                self.cached_blocks.insert(search_key)
+                self.cached_bytes.free += search_key.bytes
+                if self.debug:
+                    print(
+                        "\tHost "
+                        + " returned "
+                        + String(search_key.bytes)
+                        + " bytes at "
+                        + " from associated stream "
+                        + String(search_key.associated_stream)
+                        + ", event "
+                        + String(search_key.ready_event.event_id)
+                        + " on device "
+                        + String(search_key.device)
+                        + ".\n\t\t "
+                        + String(self.cached_blocks.__len__())
+                        + " available blocks cached ("
+                        + String(self.cached_bytes.free)
+                        + " bytes), "
+                        + String(self.live_blocks.__len__())
+                        + " live blocks outstanding. ("
+                        + String(self.cached_bytes.live)
+                        + " bytes)"
+                    )
+        if recached:
+            # Insert the ready event in the associated stream.
+            error = cudaEventRecord(search_key.ready_event, search_key.associated_stream)
             if error != cudaSuccess:
                 return error
-            device = entrypoint_device
-        # search_key.device = device
-
-
-
-        with BlockingScopedLock(self.mutex):
-            var block_itr = self.live_blocks.find(search_key)
-            if block_itr != -1:
-                search_key = self.live_blocks[block_itr]
-                _ = self.live_blocks.erase_at(block_itr)
-
-                var totals = self.cached_bytes.get_or(device, TotalBytes())
-                # will be later used to update the cached_bytes
-                totals.live -= search_key.bytes
-                totals.liveRequested -= search_key.bytesRequested
-
-                # Keep the returned allocation if bin is valid and we won't exceed the max cached threshold.
-                if (
-                    (search_key.bin != INVALID_BIN) and
-                    (totals.free + search_key.bytes <= self.max_cached_bytes)
-                ):
-                    recached = True
-                    self.cached_blocks.insert(search_key)
-                    totals.free += search_key.bytes
-
-                    if self.debug:
-                        print(
-                            "\tDevice "
-                            + String(device)
-                            + " returned "
-                            + String(search_key.bytes)
-                            + " bytes at "
-                            + String(d_ptr.address)
-                            + " from associated stream "
-                            + String(search_key.associated_stream)
-                            + ", event "
-                            + String(search_key.ready_event.event_id)
-                            + ".\n\t\t "
-                            + String(self.cached_blocks.__len__())
-                            + " available blocks cached ("
-                            + String(totals.free)
-                            + " bytes), "
-                            + String(self.live_blocks.__len__())
-                            + " live blocks outstanding. ("
-                            + String(totals.live)
-                            + " bytes)"
-                        )
-
-                self.cached_bytes[device] = totals
-
-            if recached:
-                # Insert the ready event in the associated stream.
-                error = cudaEventRecord(search_key.ready_event, search_key.associated_stream)
-                if error != cudaSuccess:
-                    return error
-
-        if not recached:
-            # Free the allocation from the runtime and cleanup the event.
-            free_device(
-                Int32(device),
-                d_ptr,
-                OpaquePointer()
+    if not recached:
+        # Free the allocation from the runtime and cleanup the event.
+        free_host_raw(d_ptr)
+        error = cudaEventDestroy(search_key.ready_event)
+        if error != cudaSuccess:
+            return error
+        if self.debug:
+            print(
+                "\tHost "
+                + " freed "
+                + String(search_key.bytes)
+                + " bytes "
+                + " from associated stream "
+                + String(search_key.associated_stream)
+                + ", event "
+                + String(search_key.ready_event.event_id)
+                + " on device "
+                + String(search_key.device)
+                + ".\n\t\t  "
+                + String(self.cached_blocks.__len__())
+                + " available blocks cached ("
+                + String(self.cached_bytes.free)
+                + " bytes), "
+                + String(self.live_blocks.__len__())
+                + " live blocks ("
+                + String(self.cached_bytes.live)
+                + " bytes) outstanding."
             )
-            error = cudaEventDestroy(search_key.ready_event)
+    return error
+
+
+#/**
+# * \brief Frees all cached device allocations on all devices.
+# */
+fn FreeAllCached(mut self) -> cudaError_t raises:
+    var error: cudaError_t = cudaSuccess
+
+    with BlockingScopedLock(self.mutex):
+        while self.cached_blocks.__len__() > 0:
+            var begin = self.cached_blocks[0]
+
+            free_host_raw(begin.d_ptr)
+            error = cudaEventDestroy(begin.ready_event)
             if error != cudaSuccess:
                 return error
+
+            self.cached_bytes.free -= begin.bytes
 
             if self.debug:
-                var totals = self.cached_bytes.get_or(device, TotalBytes())
                 print(
                     "\tDevice "
-                    + String(device)
+                    + String(begin.device)
                     + " freed "
-                    + String(search_key.bytes)
-                    + " bytes at "
-                    + String(d_ptr.address)
-                    + " from associated stream "
-                    + String(search_key.associated_stream)
-                    + ", event "
-                    + String(search_key.ready_event.event_id)
-                    + ".\n\t\t  "
+                    + String(begin.bytes)
+                    + " bytes.\n\t\t  "
                     + String(self.cached_blocks.__len__())
                     + " available blocks cached ("
-                    + String(totals.free)
+                    + String(self.cached_bytes.free)
                     + " bytes), "
                     + String(self.live_blocks.__len__())
                     + " live blocks ("
-                    + String(totals.live)
+                    + String(self.cached_bytes.live)
                     + " bytes) outstanding."
                 )
 
-        return error
+            _ = self.cached_blocks.erase_at(0)
 
-    #/**
-    # * \brief Frees a live allocation of device memory on the current device, returning it to the allocator.
-    # */
-    fn DeviceFree(
-        mut self,
-        d_ptr: DevicePtr
-    ) -> cudaError_t raises:
-        return self.DeviceFree(INVALID_DEVICE_ORDINAL, d_ptr)
-
-    #/**
-    # * \brief Frees all cached device allocations on all devices.
-    # */
-    fn FreeAllCached(mut self) -> cudaError_t raises:
-        var error: cudaError_t = cudaSuccess
-
-        with BlockingScopedLock(self.mutex):
-            while self.cached_blocks.__len__() > 0:
-                var begin = self.cached_blocks[0]
-
-                free_device(
-                    Int32(begin.device),
-                    begin.d_ptr,
-                    OpaquePointer()
-                )
-                error = cudaEventDestroy(begin.ready_event)
-                if error != cudaSuccess:
-                    return error
-
-                var totals = self.cached_bytes.get_or(begin.device, TotalBytes())
-                totals.free -= begin.bytes
-                self.cached_bytes[begin.device] = totals
-
-                if self.debug:
-                    print(
-                        "\tDevice "
-                        + String(begin.device)
-                        + " freed "
-                        + String(begin.bytes)
-                        + " bytes.\n\t\t  "
-                        + String(self.cached_blocks.__len__())
-                        + " available blocks cached ("
-                        + String(totals.free)
-                        + " bytes), "
-                        + String(self.live_blocks.__len__())
-                        + " live blocks ("
-                        + String(totals.live)
-                        + " bytes) outstanding."
-                    )
-
-                _ = self.cached_blocks.erase_at(0)
-
-        return error
-
-    #/**
-    # * \brief Snapshot of cache allocation status by device.
-    # */
-    fn CacheStatus(mut self) -> GpuCachedBytes:
-        with BlockingScopedLock(self.mutex):
-            return self.cached_bytes
-
-
-    #/**
-    # * \brief Destructor.
-    # */
-    fn __del__(var self):
-        if not self.skip_cleanup:
-            try:
-                _ = self.FreeAllCached()
-            except e:
-                if self.debug:
-                    print("CachingDeviceAllocator cleanup failed:", e)
+    return error

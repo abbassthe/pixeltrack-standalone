@@ -3,10 +3,11 @@ from gpu.host import DeviceContext
 from gpu.host.device_context import DeviceBuffer
 from builtin.dtype import DType
 from utils.lock import BlockingSpinLock, BlockingScopedLock
+from CUDACompat import CUDAStreamType
 
 
-# cudaStream_t is an opaque CUDA stream handle in C++.
-alias cudaStream_t = OpaquePointer
+# Standardized stream handle used across this Mojo CUDA layer.
+alias cudaStream_t = CUDAStreamType
 
 # Device pointer equivalent to void* in C++.
 alias DevicePtr = UnsafePointer[UInt8]
