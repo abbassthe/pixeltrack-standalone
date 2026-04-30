@@ -1,7 +1,7 @@
 from Framework.TaskBase import TaskBase
 from os.atomic import Atomic, Consistency
 
-struct WaitingTask(TaskType):
+struct WaitingTask(TaskBase):
     var expected : Atomic[DType.int32](0)
     var ErrorMsg : String
 
@@ -23,10 +23,10 @@ struct WaitingTask(TaskType):
 
     
 struct FinalWaitingTask(WaitingTask):
-    var FinalTask : TaskType
+    var FinalTask : TaskBase
     var m_done : Atomic[bool](false)
 
-    fn __init__(out self, FinalTask : TaskType):
+    fn __init__(out self, FinalTask : TaskBase):
         self.FinalTask = FinalTask
 
     fn execute(self):
