@@ -23,14 +23,11 @@ from MojoBridge.ConcurrentQueue import ConcurrentQueue
 # The primary way of using the class it to call makeOrGetAndClear
 # An example use would be
 #
-#   var objectToUse = holder.makeOrGetAndClear(
-#                            fn() -> MyObject: return MyObject(10),   # makes new one
-#                            fn(old: MyObject): old.reset()           # resets old one
-#                    )
+#   var objectToUse = makeOrGetAndClear(holder, factory)
 #
 # If you always want to set the values you can use makeOrGet
 #
-#   var objectToUse = holder.makeOrGet(fn() -> MyObject: return MyObject())
+#   var objectToUse = makeOrGet(holder, maker)
 #   objectToUse.setValue(3)
 #
 # NOTE: If you hold onto the Arc until another call to the ReusableObjectHolder,
@@ -51,6 +48,23 @@ from MojoBridge.ConcurrentQueue import ConcurrentQueue
 #
 # Ported to Mojo by Abbas Naim
 #
+
+
+trait ReusableObjectMaker:
+    alias Output: AnyType
+
+    def make(mut self) -> Self.Output:
+        ...
+
+
+trait ReusableObjectFactory:
+    alias Output: AnyType
+
+    def make(mut self) -> Self.Output:
+        ...
+
+    def clear(mut self, ref item: Self.Output):
+        ...
 
 
 # Equivalent to the shared_ptr<T> with custom deleter returned by C++ tryToGet.
@@ -118,24 +132,6 @@ struct ReusableObjectHolder[T: Copyable & ImplicitlyDestructible](Movable):
         return Arc[_HeldItem[T]](
             _HeldItem[T](None, UnsafePointer[ReusableObjectHolder[T]]())
         )
-    
-    fn makeOrGetAndClear[FM , FC](mut self,iMakeFunc : FM, iClearFunc: FC) -> Arc[_HeldItem[T]]
-        where FM: Fn() -> T, FC: Fn(T) -> Void:
-        var returnValue: Arc[_HeldItem[T]] = self.tryToGet()
-        while not returnValue:
-            self.add(makeUnique(iMakeFunc()))
-            returnValue = self.tryToGet()
-
-        iClearFunc(returnValue[]._item.value())
-        return returnValue
-
-    fn makeOrGet[FM: Fn() -> T](mut self, iMakeFunc: FM) -> Arc[_HeldItem[T]]:
-        var returnValue = self.tryToGet()
-        while not returnValue[]._item:
-            self.add(iMakeFunc())
-            returnValue = self.tryToGet()
-        return returnValue
-
     # Private — mirrors C++ addBack, called only by _HeldItem.__del__.
     fn _addBack(mut self, owned item: T):
         self.m_availableQueue.enqueue(item^)
@@ -157,3 +153,25 @@ struct ReusableObjectHolder[T: Copyable & ImplicitlyDestructible](Movable):
     fn clear(mut self):
         while self.m_availableQueue.dequeue():
             pass
+
+
+fn makeOrGet[FM: ReusableObjectMaker](
+    mut holder: ReusableObjectHolder[FM.Output], mut iMakeFunc: FM
+) raises -> Arc[_HeldItem[FM.Output]]:
+    var returnValue = holder.tryToGet()
+    while not returnValue[]._item:
+        holder.add(iMakeFunc.make())
+        returnValue = holder.tryToGet()
+    return returnValue
+
+
+fn makeOrGetAndClear[FM: ReusableObjectFactory](
+    mut holder: ReusableObjectHolder[FM.Output], mut iFactory: FM
+) raises -> Arc[_HeldItem[FM.Output]]:
+    var returnValue = holder.tryToGet()
+    while not returnValue[]._item:
+        holder.add(iFactory.make())
+        returnValue = holder.tryToGet()
+
+    iFactory.clear(returnValue[]._item.value())
+    return returnValue
