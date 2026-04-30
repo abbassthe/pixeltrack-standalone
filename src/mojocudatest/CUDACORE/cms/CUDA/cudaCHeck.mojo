@@ -1,9 +1,9 @@
 from builtin.error import Error
 from MojoBridge.DTypes import (
-    CUresult,
-    CUDA_SUCCESS,
-    cuResultName,
-    cuResultMessage,
+    cudaError_t,
+    cudaSuccess,
+    cudaErrorName,
+    cudaErrorMessage,
 )
 
 fn abortOnCudaError(
@@ -35,13 +35,12 @@ fn cudaCheck_(
     file: String,
     line: Int,
     cmd: String,
-    result: CUresult,
+    result: cudaError_t,
     description: String = ""
 ) -> Bool raises:
-    if result == CUDA_SUCCESS:
+    if result == cudaSuccess:
         return True
-    var error = cuResultName(result)
-    var message = cuResultMessage(result)
+    var error = cudaErrorName(result)
+    var message = cudaErrorMessage(result)
     abortOnCudaError(file, line, cmd, error, message, description)
     return False
-

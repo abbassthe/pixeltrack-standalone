@@ -3,7 +3,26 @@ from gpu.host import DeviceContext
 from CUDACompat import CUDAStreamType, cudaGetDevice
 from SharedStreamPtr import SharedStreamPtr
 from deviceCount import deviceCount
-from Framework.ReusableObjectHolder import ReusableObjectHolder
+from Framework.ReusableObjectHolder import (
+    ReusableObjectHolder,
+    ReusableObjectMaker,
+    makeOrGet,
+)
+
+
+struct StreamMaker(ReusableObjectMaker, Movable):
+    alias Output = CUDAStreamType
+
+    var dev: Int
+
+    fn __init__(out self, dev: Int):
+        self.dev = dev
+
+    fn make(mut self) raises -> CUDAStreamType:
+        var ctx = DeviceContext(device_id=self.dev)
+        # Largest priority is analogous to cudaStreamNonBlocking:
+        # the stream does not implicitly synchronize with the default stream.
+        return ctx.create_stream(priority=ctx.stream_priority_range().largest)
 
 
 # Gets a (cached) CUDA stream for the current device. The stream is returned
@@ -23,13 +42,8 @@ struct StreamCache(Movable):
     fn get(mut self) raises -> SharedStreamPtr:
         var dev: Int = 0
         _ = cudaGetDevice(dev)
-        return self.cache_[dev].makeOrGet(
-            fn() -> CUDAStreamType:
-                var ctx = DeviceContext(device_id=dev)
-                # Largest priority is analogous to cudaStreamNonBlocking:
-                # the stream does not implicitly synchronize with the default stream.
-                return ctx.create_stream(priority=ctx.stream_priority_range().largest)
-        )
+        var maker = StreamMaker(dev)
+        return makeOrGet[StreamMaker](self.cache_[dev], maker)
 
     # Not thread safe — intended to be called only from CUDAService destructor.
     fn clear(mut self):

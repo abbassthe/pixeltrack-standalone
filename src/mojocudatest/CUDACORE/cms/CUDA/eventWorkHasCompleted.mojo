@@ -1,6 +1,6 @@
 from CUDACompat import CUDAEventType, cudaEventQuery
 from MojoBridge.DTypes import cudaError_t, cudaSuccess, cudaErrorNotReady
-from cudaCHeck import cudaCheck_
+from cudaCheck import cudaCheck_
 
 
 fn event_work_has_completed(event: CUDAEventType) -> Bool raises:
