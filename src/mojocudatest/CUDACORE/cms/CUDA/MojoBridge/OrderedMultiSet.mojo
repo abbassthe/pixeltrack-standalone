@@ -24,16 +24,16 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
         return self._items[index]
 
     @always_inline
-    fn _less(self, a: read T, b: read T) -> Bool:
+    fn _less(self, read a: T, read b: T) -> Bool:
         return Compare.less(a, b)
 
     @always_inline
-    fn _equivalent(self, a: read T, b: read T) -> Bool:
+    fn _equivalent(self, read a: T, read b: T) -> Bool:
         return (not self._less(a, b)) and (not self._less(b, a))
 
     # Returns the first position where `value` can be inserted without
     # violating sorted order.
-    fn lower_bound(self, value: read T) -> Int:
+    fn lower_bound(self, read value: T) -> Int:
         var i: Int = 0
         var n = self._items.__len__()
         while i < n:
@@ -43,7 +43,7 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
         return n
 
     # Returns one matching index or -1 if no equivalent element exists.
-    fn find(self, value: read T) -> Int:
+    fn find(self, read value: T) -> Int:
         var i = self.lower_bound(value)
         if i < self._items.__len__() and self._equivalent(self._items[i], value):
             return i
@@ -65,7 +65,7 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
         self._items.remove(index)
         return True
 
-    fn erase_one(mut self, value: read T) -> Bool:
+    fn erase_one(mut self, read value: T) -> Bool:
         var index = self.find(value)
         if index == -1:
             return False

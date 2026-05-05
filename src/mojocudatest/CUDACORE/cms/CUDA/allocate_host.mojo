@@ -1,5 +1,5 @@
-from gpu.host import DeviceContext
-from gpu.host.device_context import HostBuffer
+from std.gpu.host import DeviceContext
+from std.gpu.host.device_context import HostBuffer
 from builtin.dtype import DType
 from builtin.error import Error
 from builtin.int import Int
@@ -31,17 +31,20 @@ fn allocate_host_raw(
     if nbytes == 0:
         return HostPtr()
 
-    var ctx = DeviceContext()
-    if device >= Int32(0):
-        ctx = DeviceContext(device_id = Int(device))
-    var buf = ctx.enqueue_create_host_buffer[DType.uint8](Int(nbytes))
-    ctx.synchronize()          # ensure allocation is complete
+    try:
+        var ctx = DeviceContext()
+        if device >= Int32(0):
+            ctx = DeviceContext(device_id = Int(device))
+        var buf = ctx.enqueue_create_host_buffer[DType.uint8](Int(nbytes))
+        ctx.synchronize()          # ensure allocation is complete
 
-    var ptr = buf.unsafe_ptr()
-    if ptr != HostPtr():
-        with BlockingScopedLock(_allocated_host_buffers_lock):
-            _allocated_host_buffers.append((UInt(ptr.address), buf))
-    return ptr
+        var ptr = buf.unsafe_ptr()
+        if ptr != HostPtr():
+            with BlockingScopedLock(_allocated_host_buffers_lock):
+                _allocated_host_buffers.append((UInt(ptr.address), buf))
+        return ptr
+    except e:
+        return HostPtr()
 
 
 fn free_host_raw(ptr: HostPtr):

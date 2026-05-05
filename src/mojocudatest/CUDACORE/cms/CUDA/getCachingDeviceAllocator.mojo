@@ -1,5 +1,5 @@
 from CachingDeviceAllocator import CachingDeviceAllocator
-from gpu.host import DeviceContext
+from std.gpu.host import DeviceContext
 from deviceCount import deviceCount
 from utils.lock import BlockingSpinLock, BlockingScopedLock
 
@@ -54,14 +54,17 @@ fn minCachedBytes() -> UInt:
     let number_of_devices = deviceCount()
 
     for i in range(number_of_devices):
-        var ctx = DeviceContext(device_id = i)
-        let (free_mem, total_mem) = ctx.get_memory_info()
-        _ = total_mem
+        try:
+            var ctx = DeviceContext(device_id = i)
+            let (free_mem, total_mem) = ctx.get_memory_info()
+            _ = total_mem
 
-        let free_bytes = UInt(free_mem)
-        let candidate = UInt(Float64(free_bytes) * maxCachedFraction)
-        if candidate < ret:
-            ret = candidate
+            let free_bytes = UInt(free_mem)
+            let candidate = UInt(Float64(free_bytes) * maxCachedFraction)
+            if candidate < ret:
+                ret = candidate
+        except e:
+            pass
 
     if maxCachedBytes > 0:
         if maxCachedBytes < ret:

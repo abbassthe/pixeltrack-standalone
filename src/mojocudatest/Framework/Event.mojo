@@ -115,9 +115,11 @@ struct Event(Defaultable, Movable, Typeable):
     ](self, ref token: EDGetTokenT[T]) -> ref [self._products] T:
         return rebind[Wrapper[T]](self._products[token.index()]).product()[]
 
-    # emplace is not possible due to failure in binding the constructor at compile time, so we provide put instead
-
-    fn put[
+    # General variadic emplace is still blocked in Mojo 25.5: variadic pack
+    # elements cannot be moved into a generic constructor. Accept an already
+    # constructed product here, and let callers such as ScopedContextProduce
+    # build the product before storing it.
+    fn emplace[
         T: Typeable & Movable
     ](mut self, ref token: EDPutTokenT[T], var prod: T):
         @always_inline
@@ -126,6 +128,11 @@ struct Event(Defaultable, Movable, Typeable):
 
         self._products[token.index()] = rebind[WrapperBase](Wrapper[T](prod^))
         self._dets[token.index()] = det[T]
+
+    fn put[
+        T: Typeable & Movable
+    ](mut self, ref token: EDPutTokenT[T], var prod: T):
+        self.emplace[T](token, prod^)
 
     @staticmethod
     @always_inline

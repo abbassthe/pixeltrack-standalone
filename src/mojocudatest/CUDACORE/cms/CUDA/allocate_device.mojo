@@ -1,6 +1,6 @@
 # Mojo port of CUDACore/allocate_device.h
-from gpu.host import DeviceContext
-from gpu.host.device_context import DeviceBuffer
+from std.gpu.host import DeviceContext
+from std.gpu.host.device_context import DeviceBuffer
 from builtin.dtype import DType
 from utils.lock import BlockingSpinLock, BlockingScopedLock
 from CUDACompat import CUDAStreamType
@@ -22,14 +22,17 @@ fn allocate_device(device: Int32, nbytes: UInt, stream: cudaStream_t) -> DeviceP
     _ = stream
     if nbytes == 0:
         return DevicePtr()
-    # keep the DeviceBuffer alive as long as you intend to use the pointer.
-    var ctx = DeviceContext(device_id = Int(device))
-    var buffer = ctx.create_buffer_sync[DType.uint8](Int(nbytes))
-    var ptr = buffer.unsafe_ptr()
-    if ptr != DevicePtr():
-        with BlockingScopedLock(_allocated_buffers_lock):
-            _allocated_buffers.append((UInt(ptr.address), buffer))
-    return ptr
+    try:
+        # keep the DeviceBuffer alive as long as you intend to use the pointer.
+        var ctx = DeviceContext(device_id = Int(device))
+        var buffer = ctx.create_buffer_sync[DType.uint8](Int(nbytes))
+        var ptr = buffer.unsafe_ptr()
+        if ptr != DevicePtr():
+            with BlockingScopedLock(_allocated_buffers_lock):
+                _allocated_buffers.append((UInt(ptr.address), buffer))
+        return ptr
+    except e:
+        return DevicePtr()
 
 
 # Free device memory (to be called from unique_ptr).

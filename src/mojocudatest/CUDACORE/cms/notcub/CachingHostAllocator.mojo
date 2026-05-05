@@ -123,26 +123,26 @@ struct CachingHostAllocator(Movable, Sized):
 
         @always_inline
         @staticmethod
-        fn PtrCompare(a: read BlockDescriptor, b: read BlockDescriptor) -> Bool:
+        fn PtrCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
             return a.d_ptr.address < b.d_ptr.address
 
 
         @always_inline
         @staticmethod
-        fn SizeCompare(a: read BlockDescriptor, b: read BlockDescriptor) -> Bool:
+        fn SizeCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
             return a.bytes < b.bytes
 
 
     struct BlockByPtrCompare:
         @always_inline
         @staticmethod
-        fn less(a: read BlockDescriptor, b: read BlockDescriptor) -> Bool:
+        fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
             return BlockDescriptor.PtrCompare(a, b)
 
     struct BlockBySizeCompare:
         @always_inline
         @staticmethod
-        fn less(a: read BlockDescriptor, b: read BlockDescriptor) -> Bool:
+        fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
             return BlockDescriptor.SizeCompare(a, b)
 
 

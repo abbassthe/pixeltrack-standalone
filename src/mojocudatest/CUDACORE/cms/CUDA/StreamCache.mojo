@@ -1,8 +1,9 @@
-from gpu.host import DeviceContext
+from std.gpu.host import DeviceContext
 
 from CUDACompat import CUDAStreamType, cudaGetDevice
 from SharedStreamPtr import SharedStreamPtr
 from deviceCount import deviceCount
+
 from Framework.ReusableObjectHolder import (
     ReusableObjectHolder,
     ReusableObjectMaker,
@@ -20,9 +21,7 @@ struct StreamMaker(ReusableObjectMaker, Movable):
 
     fn make(mut self) raises -> CUDAStreamType:
         var ctx = DeviceContext(device_id=self.dev)
-        # Largest priority is analogous to cudaStreamNonBlocking:
-        # the stream does not implicitly synchronize with the default stream.
-        return ctx.create_stream(priority=ctx.stream_priority_range().largest)
+        return CUDAStreamType(ctx.create_stream())
 
 
 # Gets a (cached) CUDA stream for the current device. The stream is returned
@@ -50,7 +49,6 @@ struct StreamCache(Movable):
         self.cache_.clear()
         for _ in range(deviceCount()):
             self.cache_.append(ReusableObjectHolder[CUDAStreamType]())
-
 
 # Gets the global instance of a StreamCache.
 # This function is thread safe.
