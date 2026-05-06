@@ -40,6 +40,7 @@
 from CUDACompat import (
     CUDAStreamType,
     CUDAEventType,
+    CUDARuntime,
     cudaStreamDefault,
     cudaGetDevice,
     cudaEventCreateWithFlags,
@@ -47,7 +48,7 @@ from CUDACompat import (
     cudaEventQuery,
     cudaEventRecord,
 )
-from allocate_host import allocate_host_raw, free_host_raw
+from allocate_host import _AllocateHostState
 from MojoBridge.OrderedMultiSet import OrderedMultiSet
 from MojoBridge.DTypes import (
     cudaError_t,
@@ -219,6 +220,9 @@ struct CachingHostAllocator(Movable, Sized):
     var cached_blocks: CachedBlocks  # Set of cached device allocations available for reuse
     var live_blocks: BusyBlocks  # Set of live device allocations currently in use
 
+    var host_runtime: CUDARuntime  # Isolated runtime for internal event bookkeeping
+    var host_alloc_state: _AllocateHostState  # Isolated host allocation state for pool blocks
+
     #---------------------------------------------------------------------
     # Methods
     #---------------------------------------------------------------------
@@ -247,6 +251,8 @@ struct CachingHostAllocator(Movable, Sized):
         self.cached_bytes = TotalBytes()
         self.cached_blocks = CachedBlocks()
         self.live_blocks = BusyBlocks()
+        self.host_runtime = CUDARuntime()
+        self.host_alloc_state = _AllocateHostState()
 
     #/**
     # * \brief Default constructor.
@@ -278,6 +284,8 @@ struct CachingHostAllocator(Movable, Sized):
         self.cached_bytes = TotalBytes()
         self.cached_blocks = CachedBlocks()
         self.live_blocks = BusyBlocks()
+        self.host_runtime = CUDARuntime()
+        self.host_alloc_state = _AllocateHostState()
 
     #/**
     # * \brief Sets the limit on the number bytes this allocator is allowed to cache per device.
@@ -361,7 +369,8 @@ struct CachingHostAllocator(Movable, Sized):
                                 return error
                             error = cudaEventCreateWithFlags(
                                 search_key.ready_event,
-                                cudaEventDisableTiming
+                                cudaEventDisableTiming,
+                                self.host_runtime
                             )
                             if error != cudaSuccess:
                                 return error
@@ -406,7 +415,7 @@ struct CachingHostAllocator(Movable, Sized):
             # Attempt to allocate
             # TODO: eventually support allocation flags
             try:
-                let ptr = allocate_host_raw(search_key.bytes)
+                let ptr = self.host_alloc_state.allocate_host_raw(search_key.bytes)
                 if ptr == DevicePtr():
                     error = cudaErrorMemoryAllocation
                 else:
@@ -449,7 +458,7 @@ struct CachingHostAllocator(Movable, Sized):
                         
                         # the mojo implemetation of cudaFree and it doesnt
                         # return an error 
-                        free_host_raw(block.d_ptr)
+                        self.host_alloc_state.free_host_raw(block.d_ptr)
                         error = cudaEventDestroy(block.ready_event)
                         if error != cudaSuccess:
                             break
@@ -482,7 +491,7 @@ struct CachingHostAllocator(Movable, Sized):
 
                 # Try to allocate again
                 try:
-                    let ptr = allocate_host_raw(search_key.bytes)
+                    let ptr = self.host_alloc_state.allocate_host_raw(search_key.bytes)
                     if ptr == DevicePtr():
                         error = cudaErrorMemoryAllocation
                     else:
@@ -496,11 +505,12 @@ struct CachingHostAllocator(Movable, Sized):
 
 
             # Create ready event
-            # NOTE this is temporary and its not actually doing 
+            # NOTE this is temporary and its not actually doing
             # Anything with the flags
             error = cudaEventCreateWithFlags(
                 search_key.ready_event,
-                cudaEventDisableTiming
+                cudaEventDisableTiming,
+                self.host_runtime
             )
             if error != cudaSuccess:
                 return error
@@ -599,7 +609,7 @@ fn HostFree(
                 return error
     if not recached:
         # Free the allocation from the runtime and cleanup the event.
-        free_host_raw(d_ptr)
+        self.host_alloc_state.free_host_raw(d_ptr)
         error = cudaEventDestroy(search_key.ready_event)
         if error != cudaSuccess:
             return error
@@ -638,7 +648,7 @@ fn FreeAllCached(mut self) -> cudaError_t raises:
         while self.cached_blocks.__len__() > 0:
             var begin = self.cached_blocks[0]
 
-            free_host_raw(begin.d_ptr)
+            self.host_alloc_state.free_host_raw(begin.d_ptr)
             error = cudaEventDestroy(begin.ready_event)
             if error != cudaSuccess:
                 return error

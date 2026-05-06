@@ -5,7 +5,7 @@ from utils.lock import BlockingSpinLock, BlockingScopedLock
 
 
 # C++: enum class Policy { Synchronous = 0, Asynchronous = 1, Caching = 2 };
-# can be set to @__nonmaterializable(NoneType) but may be may become depricated 
+# can be set to @__nonmaterializable(NoneType) but may be may become depricated
 # in a future version of Mojo
 struct Policy:
     alias Synchronous: Int = 0
@@ -29,8 +29,6 @@ fn _selectPolicy() -> Int:
     return Policy.Synchronous
 
 
-var policy: Int = _selectPolicy()
-
 # Growth factor (bin_growth in cub::CachingDeviceAllocator)
 comptime binGrowth: UInt = 2
 # Smallest bin, corresponds to binGrowth^minBin bytes
@@ -44,9 +42,42 @@ comptime maxCachedFraction: Float64 = 0.8
 comptime debug: Bool = False
 
 
-var _allocator_lock = BlockingSpinLock()
-var _allocator_initialized: Bool = False
-var _allocator_ptr = UnsafePointer[CachingDeviceAllocator]()
+struct _CachingAllocatorState(Movable):
+    var policy: Int
+    var _allocator_lock: BlockingSpinLock
+    var _allocator_initialized: Bool
+    var _allocator_ptr: UnsafePointer[CachingDeviceAllocator]
+
+    fn __init__(out self):
+        self.policy = _selectPolicy()
+        self._allocator_lock = BlockingSpinLock()
+        self._allocator_initialized = False
+        self._allocator_ptr = UnsafePointer[CachingDeviceAllocator]()
+
+    fn __moveinit__(out self, var other: Self):
+        self.policy = other.policy
+        self._allocator_lock = BlockingSpinLock()
+        self._allocator_initialized = other._allocator_initialized
+        self._allocator_ptr = other._allocator_ptr
+
+    fn getCachingDeviceAllocator(mut self) -> ref [MutableOrigin.cast_from[StaticConstantOrigin]] CachingDeviceAllocator:
+        with BlockingScopedLock(self._allocator_lock):
+            if not self._allocator_initialized:
+                if debug:
+                    _printSettings()
+                self._allocator_ptr = UnsafePointer[CachingDeviceAllocator].alloc(1)
+                self._allocator_ptr.init_pointee_move(
+                    CachingDeviceAllocator(
+                        binGrowth,
+                        minBin,
+                        maxBin,
+                        minCachedBytes(),
+                        False,  # do not skip cleanup
+                        debug
+                    )
+                )
+                self._allocator_initialized = True
+            return self._allocator_ptr[]
 
 
 fn minCachedBytes() -> UInt:
@@ -103,21 +134,3 @@ fn _printSettings():
     )
 
 
-fn getCachingDeviceAllocator() -> ref [MutableOrigin.cast_from[StaticConstantOrigin]] CachingDeviceAllocator:
-    with BlockingScopedLock(_allocator_lock):
-        if not _allocator_initialized:
-            if debug:
-                _printSettings()
-            _allocator_ptr = UnsafePointer[CachingDeviceAllocator].alloc(1)
-            _allocator_ptr.init_pointee_move(
-                CachingDeviceAllocator(
-                    binGrowth,
-                    minBin,
-                    maxBin,
-                    minCachedBytes(),
-                    False,  # do not skip cleanup
-                    debug
-                )
-            )
-            _allocator_initialized = True
-        return _allocator_ptr[]

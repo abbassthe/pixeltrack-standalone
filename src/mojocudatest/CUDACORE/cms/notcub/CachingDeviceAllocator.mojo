@@ -98,6 +98,7 @@ from allocator.deviceAllocatorStatus import GpuCachedBytes, TotalBytes
 from CUDACompat import (
     CUDAStreamType,
     CUDAEventType,
+    CUDARuntime,
     cudaStreamDefault,
     cudaGetDevice,
     cudaEventCreateWithFlags,
@@ -105,7 +106,7 @@ from CUDACompat import (
     cudaEventQuery,
     cudaEventRecord,
 )
-from allocate_device import allocate_device, free_device
+from allocate_device import _AllocateDeviceState
 from MojoBridge.OrderedMultiSet import OrderedMultiSet
 from MojoBridge.DTypes import (
     cudaError_t,
@@ -272,6 +273,9 @@ struct CachingDeviceAllocator(Movable, Sized):
     var cached_blocks: CachedBlocks  # Set of cached device allocations available for reuse
     var live_blocks: BusyBlocks  # Set of live device allocations currently in use
 
+    var alloc_runtime: CUDARuntime  # Isolated runtime for internal event bookkeeping
+    var alloc_state: _AllocateDeviceState  # Isolated device allocation state for pool blocks
+
     #---------------------------------------------------------------------
     # Methods
     #---------------------------------------------------------------------
@@ -300,6 +304,8 @@ struct CachingDeviceAllocator(Movable, Sized):
         self.cached_bytes = GpuCachedBytes()
         self.cached_blocks = CachedBlocks()
         self.live_blocks = BusyBlocks()
+        self.alloc_runtime = CUDARuntime()
+        self.alloc_state = _AllocateDeviceState()
 
     #/**
     # * \brief Default constructor.
@@ -331,6 +337,8 @@ struct CachingDeviceAllocator(Movable, Sized):
         self.cached_bytes = GpuCachedBytes()
         self.cached_blocks = CachedBlocks()
         self.live_blocks = BusyBlocks()
+        self.alloc_runtime = CUDARuntime()
+        self.alloc_state = _AllocateDeviceState()
 
     #/**
     # * \brief Sets the limit on the number bytes this allocator is allowed to cache per device.
@@ -463,10 +471,10 @@ struct CachingDeviceAllocator(Movable, Sized):
 
             # Attempt to allocate
             try:
-                search_key.d_ptr = allocate_device(
+                search_key.d_ptr = self.alloc_state.allocate_device(
                     Int32(device),
                     search_key.bytes,
-                    OpaquePointer()
+                    cudaStreamDefault
                 )
                 error = cudaSuccess
             except e:
@@ -501,11 +509,11 @@ struct CachingDeviceAllocator(Movable, Sized):
                         # Free device memory and destroy stream event.
 
                         # the mojo implemetation of cudaFree and it doesnt
-                        # return an error 
-                        free_device(
+                        # return an error
+                        self.alloc_state.free_device(
                             Int32(device),
                             block.d_ptr,
-                            OpaquePointer()
+                            cudaStreamDefault
                         )
                         error = cudaEventDestroy(block.ready_event)
                         if error != cudaSuccess:
@@ -543,10 +551,10 @@ struct CachingDeviceAllocator(Movable, Sized):
 
                 # Try to allocate again
                 try:
-                    search_key.d_ptr = allocate_device(
+                    search_key.d_ptr = self.alloc_state.allocate_device(
                         Int32(device),
                         search_key.bytes,
-                        OpaquePointer()
+                        cudaStreamDefault
                     )
                     error = cudaSuccess
                 except e:
@@ -555,11 +563,12 @@ struct CachingDeviceAllocator(Movable, Sized):
 
 
             # Create ready event
-            # NOTE this is temporary and its not actually doing 
+            # NOTE this is temporary and its not actually doing
             # Anything with the flags
             error = cudaEventCreateWithFlags(
                 search_key.ready_event,
-                cudaEventDisableTiming
+                cudaEventDisableTiming,
+                self.alloc_runtime
             )
             if error != cudaSuccess:
                 return error
@@ -705,10 +714,10 @@ struct CachingDeviceAllocator(Movable, Sized):
 
         if not recached:
             # Free the allocation from the runtime and cleanup the event.
-            free_device(
+            self.alloc_state.free_device(
                 Int32(device),
                 d_ptr,
-                OpaquePointer()
+                cudaStreamDefault
             )
             error = cudaEventDestroy(search_key.ready_event)
             if error != cudaSuccess:
@@ -759,10 +768,10 @@ struct CachingDeviceAllocator(Movable, Sized):
             while self.cached_blocks.__len__() > 0:
                 var begin = self.cached_blocks[0]
 
-                free_device(
+                self.alloc_state.free_device(
                     Int32(begin.device),
                     begin.d_ptr,
-                    OpaquePointer()
+                    cudaStreamDefault
                 )
                 error = cudaEventDestroy(begin.ready_event)
                 if error != cudaSuccess:

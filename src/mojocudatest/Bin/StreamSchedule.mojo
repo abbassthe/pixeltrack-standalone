@@ -6,6 +6,7 @@ from Framework.ProductRegistry import ProductRegistry
 from Framework.PluginFactory import PluginFactory, EDProducerConcrete
 from MojoBridge.DTypes import Typeable
 from Bin.Source import Source
+from CUDAAppContext import CUDAAppContext
 
 
 struct StreamSchedule(Defaultable, Movable, Typeable):
@@ -14,6 +15,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
     var _eventSetup: UnsafePointer[EventSetup]
     var _path: List[EDProducerConcrete]
     var _streamId: Int32
+    var _cuda_ctx: UnsafePointer[CUDAAppContext]
 
     @always_inline
     fn __init__(out self):
@@ -22,6 +24,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
         self._eventSetup = UnsafePointer[EventSetup]()
         self._path = []
         self._streamId = 0
+        self._cuda_ctx = UnsafePointer[CUDAAppContext]()
 
     fn __init__(
         out self,
@@ -36,6 +39,8 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             self._source = source
             self._eventSetup = eventSetup
             self._streamId = streamId
+            self._cuda_ctx = UnsafePointer[CUDAAppContext].alloc(1)
+            self._cuda_ctx.init_pointee_move(CUDAAppContext())
 
             var nModules = PluginFactory.size(edreg)
             debug_assert(nModules > 0)
@@ -87,7 +92,16 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
                 self._path.append((data + index).take_pointee())
         except e:
             print("Error occurred in Bin/StreamSchedule.mojo,", e)
+            if self._cuda_ctx != UnsafePointer[CUDAAppContext]():
+                self._cuda_ctx.destroy_pointee()
+                self._cuda_ctx.free()
+                self._cuda_ctx = UnsafePointer[CUDAAppContext]()
             return Self()
+
+    fn __del__(var self):
+        if self._cuda_ctx != UnsafePointer[CUDAAppContext]():
+            self._cuda_ctx.destroy_pointee()
+            self._cuda_ctx.free()
 
     @always_inline
     fn __moveinit__(out self, var other: Self):
@@ -96,6 +110,8 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
         self._eventSetup = other._eventSetup
         self._path = other._path^
         self._streamId = other._streamId
+        self._cuda_ctx = other._cuda_ctx
+        other._cuda_ctx = UnsafePointer[CUDAAppContext]()
 
     fn run(mut self):
         var event: Event

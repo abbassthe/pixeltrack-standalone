@@ -13,40 +13,52 @@ alias cudaStream_t = CUDAStreamType
 alias DevicePtr = UnsafePointer[UInt8]
 alias ByteDeviceBuffer = DeviceBuffer[DType.uint8]
 
-var _allocated_buffers_lock = BlockingSpinLock()
-var _allocated_buffers = List[Tuple[UInt, ByteDeviceBuffer]]()
+
+struct _AllocateDeviceState(Movable):
+    var _lock: BlockingSpinLock
+    var _allocated_buffers: List[Tuple[UInt, ByteDeviceBuffer]]
+
+    fn __init__(out self):
+        self._lock = BlockingSpinLock()
+        self._allocated_buffers = List[Tuple[UInt, ByteDeviceBuffer]]()
+
+    fn __moveinit__(out self, var other: Self):
+        self._lock = BlockingSpinLock()
+        self._allocated_buffers = other._allocated_buffers^
+
+    # Allocate device memory.
+    fn allocate_device(mut self, device: Int32, nbytes: UInt, stream: cudaStream_t) -> DevicePtr:
+        _ = stream
+        if nbytes == 0:
+            return DevicePtr()
+        try:
+            # keep the DeviceBuffer alive as long as you intend to use the pointer.
+            var ctx = DeviceContext(device_id = Int(device))
+            var buffer = ctx.create_buffer_sync[DType.uint8](Int(nbytes))
+            var ptr = buffer.unsafe_ptr()
+            if ptr != DevicePtr():
+                with BlockingScopedLock(self._lock):
+                    self._allocated_buffers.append((UInt(ptr.address), buffer))
+            return ptr
+        except e:
+            return DevicePtr()
+
+    # Free device memory (to be called from unique_ptr).
+    fn free_device(mut self, device: Int32, ptr: DevicePtr, stream: cudaStream_t):
+        _ = device
+        _ = stream
+        if ptr == DevicePtr():
+            return
+        #TODO replace this with a set to make faster
+        with BlockingScopedLock(self._lock):
+            var target = UInt(ptr.address)
+            var i = 0
+            while i < self._allocated_buffers.__len__():
+                if self._allocated_buffers[i][0] == target:
+                    self._allocated_buffers.remove(i)
+                    break
+                i += 1
 
 
-# Allocate device memory.
-fn allocate_device(device: Int32, nbytes: UInt, stream: cudaStream_t) -> DevicePtr:
-    _ = stream
-    if nbytes == 0:
-        return DevicePtr()
-    try:
-        # keep the DeviceBuffer alive as long as you intend to use the pointer.
-        var ctx = DeviceContext(device_id = Int(device))
-        var buffer = ctx.create_buffer_sync[DType.uint8](Int(nbytes))
-        var ptr = buffer.unsafe_ptr()
-        if ptr != DevicePtr():
-            with BlockingScopedLock(_allocated_buffers_lock):
-                _allocated_buffers.append((UInt(ptr.address), buffer))
-        return ptr
-    except e:
-        return DevicePtr()
 
 
-# Free device memory (to be called from unique_ptr).
-fn free_device(device: Int32, ptr: DevicePtr, stream: cudaStream_t):
-    _ = device
-    _ = stream
-    if ptr == DevicePtr():
-        return
-    #TODO replace this with a set to make faster 
-    with BlockingScopedLock(_allocated_buffers_lock):
-        var target = UInt(ptr.address)
-        var i = 0
-        while i < _allocated_buffers.__len__():
-            if _allocated_buffers[i][0] == target:
-                _allocated_buffers.remove(i)
-                break
-            i += 1

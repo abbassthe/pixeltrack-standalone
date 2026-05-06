@@ -1,7 +1,7 @@
 from memory import OwnedPointer
 
 from CUDACompat import CUDAStreamType, cudaStreamDefault
-from allocate_host import allocate_host, free_host
+from allocate_host import _AllocateHostState, _max_allocation_size
 
 
 alias cudaStream_t = CUDAStreamType
@@ -12,23 +12,28 @@ alias cudaStream_t = CUDAStreamType
 # giving us the unique_ptr<T, HostDeleter> semantics from C++.
 struct _HostAllocation[T](Movable, Defaultable):
     var ptr: UnsafePointer[T]
+    var state: UnsafePointer[_AllocateHostState]
 
     @always_inline
     fn __init__(out self):
         self.ptr = UnsafePointer[T]()
+        self.state = UnsafePointer[_AllocateHostState]()
 
     @always_inline
-    fn __init__(out self, ptr: UnsafePointer[T]):
+    fn __init__(out self, ptr: UnsafePointer[T], state: UnsafePointer[_AllocateHostState]):
         self.ptr = ptr
+        self.state = state
 
     @always_inline
     fn __moveinit__(out self, var other: Self):
         self.ptr = other.ptr
+        self.state = other.state
         other.ptr = UnsafePointer[T]()
+        other.state = UnsafePointer[_AllocateHostState]()
 
     fn __del__(var self):
-        if self.ptr != UnsafePointer[T]():
-            free_host(self.ptr.bitcast[UInt8]())
+        if self.ptr != UnsafePointer[T]() and self.state != UnsafePointer[_AllocateHostState]():
+            self.state[].free_host_raw(self.ptr.bitcast[UInt8]())
 
     @always_inline
     fn get(self) -> UnsafePointer[T]:
@@ -38,12 +43,13 @@ struct _HostAllocation[T](Movable, Defaultable):
     fn release(mut self) -> UnsafePointer[T]:
         var released = self.ptr
         self.ptr = UnsafePointer[T]()
+        self.state = UnsafePointer[_AllocateHostState]()
         return released
 
     @always_inline
     fn reset(mut self, ptr: UnsafePointer[T] = UnsafePointer[T]()):
-        if self.ptr != UnsafePointer[T]():
-            free_host(self.ptr.bitcast[UInt8]())
+        if self.ptr != UnsafePointer[T]() and self.state != UnsafePointer[_AllocateHostState]():
+            self.state[].free_host_raw(self.ptr.bitcast[UInt8]())
         self.ptr = ptr
 
 
@@ -64,29 +70,48 @@ alias unique_ptr[T] = OwnedPointer[_HostAllocation[T]]
 # overload is called (presence of n: UInt), not by the type. A unique_ptr[T]
 # that owns an array is indistinguishable from one that owns a single T.
 
-fn make_host_unique[T](stream: cudaStream_t = cudaStreamDefault) -> unique_ptr[T] raises:
-    let mem = allocate_host(UInt(sizeof[T]()), stream)
-    return unique_ptr[T](_HostAllocation[T](mem.bitcast[T]()))
+fn make_host_unique[T](mut state: _AllocateHostState, stream: cudaStream_t = cudaStreamDefault) -> unique_ptr[T] raises:
+    let max_size = _max_allocation_size()
+    let nbytes = UInt(sizeof[T]())
+    if nbytes > max_size:
+        raise Error("Tried to allocate " + String(nbytes) + " bytes, but the allocator maximum is " + String(max_size))
+    let mem = state.allocate_host_raw(nbytes, stream)
+    return unique_ptr[T](_HostAllocation[T](mem.bitcast[T](), UnsafePointer.address_of(state)))
 
 
 fn make_host_unique[T](
     n: UInt,
+    mut state: _AllocateHostState,
     stream: cudaStream_t = cudaStreamDefault,
 ) -> unique_ptr[T] raises:
-    let mem = allocate_host(n * UInt(sizeof[T]()), stream)
-    return unique_ptr[T](_HostAllocation[T](mem.bitcast[T]()))
+    let max_size = _max_allocation_size()
+    let nbytes = n * UInt(sizeof[T]())
+    if nbytes > max_size:
+        raise Error("Tried to allocate " + String(nbytes) + " bytes, but the allocator maximum is " + String(max_size))
+    let mem = state.allocate_host_raw(nbytes, stream)
+    return unique_ptr[T](_HostAllocation[T](mem.bitcast[T](), UnsafePointer.address_of(state)))
 
 
 fn make_host_unique_uninitialized[T](
+    mut state: _AllocateHostState,
     stream: cudaStream_t = cudaStreamDefault,
 ) -> unique_ptr[T] raises:
-    let mem = allocate_host(UInt(sizeof[T]()), stream)
-    return unique_ptr[T](_HostAllocation[T](mem.bitcast[T]()))
+    let max_size = _max_allocation_size()
+    let nbytes = UInt(sizeof[T]())
+    if nbytes > max_size:
+        raise Error("Tried to allocate " + String(nbytes) + " bytes, but the allocator maximum is " + String(max_size))
+    let mem = state.allocate_host_raw(nbytes, stream)
+    return unique_ptr[T](_HostAllocation[T](mem.bitcast[T](), UnsafePointer.address_of(state)))
 
 
 fn make_host_unique_uninitialized[T](
     n: UInt,
+    mut state: _AllocateHostState,
     stream: cudaStream_t = cudaStreamDefault,
 ) -> unique_ptr[T] raises:
-    let mem = allocate_host(n * UInt(sizeof[T]()), stream)
-    return unique_ptr[T](_HostAllocation[T](mem.bitcast[T]()))
+    let max_size = _max_allocation_size()
+    let nbytes = n * UInt(sizeof[T]())
+    if nbytes > max_size:
+        raise Error("Tried to allocate " + String(nbytes) + " bytes, but the allocator maximum is " + String(max_size))
+    let mem = state.allocate_host_raw(nbytes, stream)
+    return unique_ptr[T](_HostAllocation[T](mem.bitcast[T](), UnsafePointer.address_of(state)))

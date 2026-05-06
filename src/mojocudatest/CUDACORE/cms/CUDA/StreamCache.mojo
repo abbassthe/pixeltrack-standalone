@@ -50,9 +50,3 @@ struct StreamCache(Movable):
         for _ in range(deviceCount()):
             self.cache_.append(ReusableObjectHolder[CUDAStreamType]())
 
-# Gets the global instance of a StreamCache.
-# This function is thread safe.
-var _global_stream_cache = StreamCache()
-
-fn getStreamCache() -> ref [_global_stream_cache] StreamCache:
-    return _global_stream_cache

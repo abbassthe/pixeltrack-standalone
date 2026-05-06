@@ -1,4 +1,4 @@
-from CUDACompat import CUDAEventType, cudaEventCreateWithFlags
+from CUDACompat import CUDAEventType, CUDARuntime, cudaEventCreateWithFlags
 from MojoBridge.DTypes import cudaEventDisableTiming
 from SharedEventPtr import SharedEventPtr, _EventCacheSlot, _EventOwner
 from currentDevice import currentDevice
@@ -21,9 +21,9 @@ struct EventCache(Movable):
     fn __del__(owned self):
         self._destroySlots()
 
-    fn get(mut self) raises -> SharedEventPtr:
+    fn get(mut self, mut runtime: CUDARuntime) raises -> SharedEventPtr:
         let dev = currentDevice()
-        var event = self.makeOrGet(dev)
+        var event = self.makeOrGet(dev, runtime)
         if event_work_has_completed(event[].event):
             return event^
 
@@ -32,12 +32,12 @@ struct EventCache(Movable):
         var incomplete = List[SharedEventPtr]()
         incomplete.append(event^)
         while True:
-            event = self.makeOrGet(dev)
+            event = self.makeOrGet(dev, runtime)
             if event_work_has_completed(event[].event):
                 return event^
             incomplete.append(event^)
 
-    fn makeOrGet(mut self, dev: Int) raises -> SharedEventPtr:
+    fn makeOrGet(mut self, dev: Int, mut runtime: CUDARuntime) raises -> SharedEventPtr:
         var slot = self.cache_[dev]
         var cached = slot[].tryToGet()
         if cached:
@@ -49,7 +49,7 @@ struct EventCache(Movable):
             __source_location().file_name(),
             __source_location().line(),
             "cudaEventCreateWithFlags",
-            cudaEventCreateWithFlags(event, cudaEventDisableTiming),
+            cudaEventCreateWithFlags(event, cudaEventDisableTiming, runtime),
         )
         slot[].addNewOutstanding()
         return SharedEventPtr(_EventOwner(event^, slot))
@@ -71,8 +71,3 @@ struct EventCache(Movable):
             slot.destroy_pointee()
             slot.free()
         self.cache_.clear()
-var _global_event_cache = EventCache()
-
-
-fn getEventCache() -> ref [_global_event_cache] EventCache:
-    return _global_event_cache
