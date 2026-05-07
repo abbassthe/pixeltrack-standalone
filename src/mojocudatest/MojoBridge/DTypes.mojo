@@ -51,3 +51,25 @@ fn cudaErrorMessage(result: cudaError_t) -> String:
     if result == cudaSuccess:
         return "no error"
     return "CUDA runtime error code " + String(result)
+
+
+@fieldwise_init
+@register_passable("trivial")
+struct TypeableInt(Copyable, Movable, Typeable):
+    var val: Int
+
+    @always_inline
+    @staticmethod
+    fn dtype() -> String:
+        return "TypeableInt"
+
+
+@fieldwise_init
+@register_passable("trivial")
+struct TypeableUInt(Copyable, Movable, Typeable):
+    var val: UInt
+
+    @always_inline
+    @staticmethod
+    fn dtype() -> String:
+        return "TypeableUInt"
