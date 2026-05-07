@@ -54,8 +54,7 @@ fn cudaErrorMessage(result: cudaError_t) -> String:
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct TypeableInt(Copyable, Movable, Typeable):
+struct TypeableInt(Copyable, Movable, Typeable, TrivialRegisterPassable):
     var val: Int
 
     @always_inline
@@ -65,8 +64,7 @@ struct TypeableInt(Copyable, Movable, Typeable):
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct TypeableUInt(Copyable, Movable, Typeable):
+struct TypeableUInt(Copyable, Movable, Typeable, TrivialRegisterPassable):
     var val: UInt
 
     @always_inline

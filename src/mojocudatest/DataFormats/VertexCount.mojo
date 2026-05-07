@@ -2,8 +2,7 @@ from MojoBridge.DTypes import Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct VertexCount(Copyable, Defaultable, Movable, Typeable):
+struct VertexCount(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var _vertcies: UInt32
 
     @always_inline

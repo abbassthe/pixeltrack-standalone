@@ -8,27 +8,24 @@ from eventWorkHasCompleted import event_work_has_completed
 
 
 struct EventCache(Movable):
-    var cache_: List[UnsafePointer[_EventCacheSlot]]
+    var cache_: List[UnsafePointer[_EventCacheSlot, MutAnyOrigin]]
 
     fn __init__(out self):
-        self.cache_ = List[UnsafePointer[_EventCacheSlot]]()
+        self.cache_ = List[UnsafePointer[_EventCacheSlot, MutAnyOrigin]]()
         self._buildSlots()
 
-    fn __moveinit__(out self, var other: Self):
-        self.cache_ = other.cache_^
-        other.cache_ = List[UnsafePointer[_EventCacheSlot]]()
+    fn __moveinit__(out self, deinit take: Self):
+        self.cache_ = take.cache_^
 
-    fn __del__(owned self):
+    fn __del__(var self):
         self._destroySlots()
 
     fn get(mut self, mut runtime: CUDARuntime) raises -> SharedEventPtr:
-        let dev = currentDevice()
+        var dev = currentDevice()
         var event = self.makeOrGet(dev, runtime)
         if event_work_has_completed(event[].event):
             return event^
 
-        # Keep incomplete events alive while searching, otherwise the same
-        # incomplete event can be returned to the cache and picked again.
         var incomplete = List[SharedEventPtr]()
         incomplete.append(event^)
         while True:
@@ -46,8 +43,7 @@ struct EventCache(Movable):
 
         var event = CUDAEventType()
         _ = cudaCheck_(
-            __source_location().file_name(),
-            __source_location().line(),
+            "EventCache.mojo", 0,
             "cudaEventCreateWithFlags",
             cudaEventCreateWithFlags(event, cudaEventDisableTiming, runtime),
         )
@@ -60,8 +56,8 @@ struct EventCache(Movable):
 
     fn _buildSlots(mut self):
         for dev in range(deviceCount()):
-            var slot = UnsafePointer[_EventCacheSlot].alloc(1)
-            slot.init_pointee_move(_EventCacheSlot(dev))
+            var slot = alloc[_EventCacheSlot](1)
+            __get_address_as_uninit_lvalue(slot.address) = _EventCacheSlot(dev)
             self.cache_.append(slot)
 
     fn _destroySlots(mut self):

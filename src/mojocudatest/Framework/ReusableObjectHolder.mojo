@@ -1,4 +1,4 @@
-from memory import Arc
+from std.memory.arc_pointer import ArcPointer
 from os.atomic import Atomic
 
 from MojoBridge.ConcurrentQueue import ConcurrentQueue
@@ -51,14 +51,14 @@ from MojoBridge.ConcurrentQueue import ConcurrentQueue
 
 
 trait ReusableObjectMaker:
-    alias Output: AnyType
+    alias Output: Copyable & ImplicitlyDestructible
 
     def make(mut self) -> Self.Output:
         ...
 
 
 trait ReusableObjectFactory:
-    alias Output: AnyType
+    alias Output: Copyable & ImplicitlyDestructible
 
     def make(mut self) -> Self.Output:
         ...
@@ -71,83 +71,72 @@ trait ReusableObjectFactory:
 # When the last Arc reference drops, __del__ fires and returns the item to the
 # pool via the back-pointer, mirroring the lambda in addBack.
 struct _HeldItem[T: Copyable & ImplicitlyDestructible](Movable):
-    var _item: Optional[T]
-    var _holder: UnsafePointer[ReusableObjectHolder[T]]
+    var _item: Optional[Self.T]
+    var _holder: UnsafePointer[ReusableObjectHolder[Self.T], MutAnyOrigin]
 
     fn __init__(
         out self,
-        owned item: Optional[T],
-        holder: UnsafePointer[ReusableObjectHolder[T]],
+        var item: Optional[Self.T],
+        holder: UnsafePointer[ReusableObjectHolder[Self.T], MutAnyOrigin],
     ):
         self._item = item^
         self._holder = holder
 
-    fn __moveinit__(out self, var other: Self):
-        self._item = other._item^
-        self._holder = other._holder
+    fn __moveinit__(out self, deinit take: Self):
+        self._item = take._item^
+        self._holder = take._holder
 
-    fn __del__(owned self):
+    fn __del__(var self):
         # mirrors: pHolder->addBack(std::unique_ptr<T,Deleter>{iItem, deleter})
         # Empty Arc (null item) does nothing, mirroring empty shared_ptr destructor.
         if self._item:
-            self._holder[]._addBack(self._item.value()^)
+            self._holder[]._addBack(self._item.take())
 
 
 struct ReusableObjectHolder[T: Copyable & ImplicitlyDestructible](Movable):
-    var m_availableQueue: ConcurrentQueue[T]
+    var m_availableQueue: ConcurrentQueue[Self.T]
     var m_outstandingObjects: Atomic[DType.int64]
 
     fn __init__(out self):
-        self.m_availableQueue = ConcurrentQueue[T]()
+        self.m_availableQueue = ConcurrentQueue[Self.T]()
         self.m_outstandingObjects = Atomic[DType.int64](0)
 
-    fn __moveinit__(out self, var other: Self):
-        debug_assert(other.m_outstandingObjects.load() == 0, "ReusableObjectHolder moved while items are still outstanding")
-        self.m_availableQueue = other.m_availableQueue^
+    fn __moveinit__(out self, deinit take: Self):
+        debug_assert(take.m_outstandingObjects.load() == 0, "ReusableObjectHolder moved while items are still outstanding")
+        self.m_availableQueue = take.m_availableQueue^
         self.m_outstandingObjects = Atomic[DType.int64](0)
 
-    fn __del__(owned self):
+    fn __del__(var self):
         debug_assert(self.m_outstandingObjects.load() == 0, "ReusableObjectHolder destroyed while items are still outstanding")
         # m_availableQueue drops here automatically, destroying all held items
 
     # Adds the item to the cache.
     # Use this function if you know ahead of time
     # how many cached items you will need.
-    fn add(mut self, owned item: T):
+    fn add(mut self, var item: Self.T):
         self.m_availableQueue.enqueue(item^)
 
     # Tries to get an already created object.
     # If none are available, returns None (equivalent to empty shared_ptr<T>{}).
-    # If one is available, returns Arc[_HeldItem[T]] whose destructor automatically
+    # If one is available, returns ArcPointer[_HeldItem[T]] whose destructor automatically
     # returns the item to the pool — equivalent to shared_ptr<T> with custom deleter.
     # Use this function in conjunction with add().
-    fn tryToGet(mut self) -> Arc[_HeldItem[T]]:
+    fn tryToGet(mut self) -> ArcPointer[_HeldItem[Self.T]]:
         var item = self.m_availableQueue.dequeue()
         if item:
             _ = self.m_outstandingObjects.fetch_add(1)
-            return Arc[_HeldItem[T]](
-                _HeldItem[T](item^, UnsafePointer.address_of(self))
+            return ArcPointer[_HeldItem[Self.T]](
+                _HeldItem[Self.T](item^, UnsafePointer(to=self))
             )
         # Empty Arc — equivalent to std::shared_ptr<T>{}
-        return Arc[_HeldItem[T]](
-            _HeldItem[T](None, UnsafePointer[ReusableObjectHolder[T]]())
+        return ArcPointer[_HeldItem[Self.T]](
+            _HeldItem[Self.T](None, UnsafePointer[ReusableObjectHolder[Self.T], MutAnyOrigin]())
         )
+
     # Private — mirrors C++ addBack, called only by _HeldItem.__del__.
-    fn _addBack(mut self, owned item: T):
+    fn _addBack(mut self, var item: Self.T):
         self.m_availableQueue.enqueue(item^)
         _ = self.m_outstandingObjects.fetch_sub(1)
-
-    # Mirrors: std::unique_ptr<T> makeUnique(T* ptr)
-    # C++ has static_assert(is_same_v<Deleter, default_delete<T>>) here,
-    # guarding against calling this overload when a custom Deleter is in use.
-    # Mojo has no Deleter parameter so the assert has no equivalent to port.
-    fn _makeUnique(owned item: T) -> Arc[T]:
-        return Arc[T](item^)
-
-    # Passes an already-wrapped Arc straight through.
-    # Mirrors: std::unique_ptr<T, Deleter> makeUnique(std::unique_ptr<T, Deleter> ptr)
-    fn _makeUnique(owned arc: Arc[T]) -> Arc[T]:
-        return arc^
 
     # Remove all idle items from the pool.
     fn clear(mut self):
@@ -157,7 +146,7 @@ struct ReusableObjectHolder[T: Copyable & ImplicitlyDestructible](Movable):
 
 fn makeOrGet[FM: ReusableObjectMaker](
     mut holder: ReusableObjectHolder[FM.Output], mut iMakeFunc: FM
-) raises -> Arc[_HeldItem[FM.Output]]:
+) raises -> ArcPointer[_HeldItem[FM.Output]]:
     var returnValue = holder.tryToGet()
     while not returnValue[]._item:
         holder.add(iMakeFunc.make())
@@ -167,7 +156,7 @@ fn makeOrGet[FM: ReusableObjectMaker](
 
 fn makeOrGetAndClear[FM: ReusableObjectFactory](
     mut holder: ReusableObjectHolder[FM.Output], mut iFactory: FM
-) raises -> Arc[_HeldItem[FM.Output]]:
+) raises -> ArcPointer[_HeldItem[FM.Output]]:
     var returnValue = holder.tryToGet()
     while not returnValue[]._item:
         holder.add(iFactory.make())

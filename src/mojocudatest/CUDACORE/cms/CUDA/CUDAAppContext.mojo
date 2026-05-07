@@ -27,10 +27,10 @@ struct CUDAAppContext(Movable):
         self.host_state = _AllocateHostState()
         self.caching_allocator_state = _CachingAllocatorState()
 
-    fn __moveinit__(out self, var other: Self):
-        self.runtime = other.runtime^
-        self.stream_cache = other.stream_cache^
-        self.event_cache = other.event_cache^
-        self.device_state = other.device_state^
-        self.host_state = other.host_state^
-        self.caching_allocator_state = other.caching_allocator_state^
+    fn __moveinit__(out self, deinit take: Self):
+        self.runtime = take.runtime^
+        self.stream_cache = take.stream_cache^
+        self.event_cache = take.event_cache^
+        self.device_state = take.device_state^
+        self.host_state = take.host_state^
+        self.caching_allocator_state = take.caching_allocator_state^

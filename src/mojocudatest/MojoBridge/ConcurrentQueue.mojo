@@ -2,30 +2,39 @@ from collections import Deque
 from utils.lock import BlockingSpinLock, BlockingScopedLock
 
 
-struct ConcurrentQueue[ElementType: Copyable & ImplicitlyDestructible]:
-    var _deque: Deque[ElementType]
+struct ConcurrentQueue[ElementType: Copyable & ImplicitlyDestructible](Movable):
+    var _deque: Deque[Self.ElementType]
     var _lock: BlockingSpinLock
 
     fn __init__(out self):
-        self._deque = Deque[ElementType]()
+        self._deque = Deque[Self.ElementType]()
         self._lock = BlockingSpinLock()
 
-    fn enqueue(mut self, owned item: ElementType):
-        with BlockingScopedLock(self._lock):
-            self._deque.append(item)
+    fn __moveinit__(out self, deinit take: Self):
+        self._deque = take._deque^
+        self._lock = BlockingSpinLock()
 
-    fn dequeue(mut self) -> Optional[ElementType]:
+    fn enqueue(mut self, var item: Self.ElementType):
+        with BlockingScopedLock(self._lock):
+            self._deque.append(item^)
+
+    fn dequeue(mut self) -> Optional[Self.ElementType]:
         with BlockingScopedLock(self._lock):
             if len(self._deque) == 0:
                 return None
-            return self._deque.popleft()
+            try:
+                return self._deque.popleft()
+            except:
+                return None
 
-    fn peek_front(self) -> Optional[ElementType]:
-        # peekleft() provides non-destructive access to the first element
+    fn peek_front(self) -> Optional[Self.ElementType]:
         with BlockingScopedLock(self._lock):
             if len(self._deque) == 0:
                 return None
-            return self._deque.peekleft()
+            try:
+                return self._deque[0]
+            except:
+                return None
 
     fn __len__(self) -> Int:
         with BlockingScopedLock(self._lock):

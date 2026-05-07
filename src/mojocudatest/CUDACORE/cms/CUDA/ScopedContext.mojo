@@ -28,25 +28,23 @@ from cudaCheck import cudaCheck_
 struct ScopedContextBase(Movable):
     var currentDevice_: Int
     var stream_: SharedStreamPtr
-    var ctx_: UnsafePointer[CUDAAppContext]
+    var ctx_: UnsafePointer[CUDAAppContext, MutAnyOrigin]
 
-    fn __init__(out self, streamID: StreamID, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, streamID: StreamID, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.ctx_ = ctx
         self.currentDevice_ = chooseDevice(streamID)
         _ = cudaCheck_(
-            __source_location().file_name(),
-            __source_location().line(),
+            "ScopedContext.mojo", 0,
             "cudaSetDevice",
             cudaSetDevice(self.currentDevice_),
         )
         self.stream_ = ctx[].stream_cache.get()
 
-    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.ctx_ = ctx
         self.currentDevice_ = data.device()
         _ = cudaCheck_(
-            __source_location().file_name(),
-            __source_location().line(),
+            "ScopedContext.mojo", 0,
             "cudaSetDevice",
             cudaSetDevice(self.currentDevice_),
         )
@@ -59,21 +57,20 @@ struct ScopedContextBase(Movable):
         else:
             self.stream_ = ctx[].stream_cache.get()
 
-    fn __init__(out self, device: Int, owned stream: SharedStreamPtr, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, device: Int, var stream: SharedStreamPtr, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.ctx_ = ctx
         self.currentDevice_ = device
         self.stream_ = stream^
         _ = cudaCheck_(
-            __source_location().file_name(),
-            __source_location().line(),
+            "ScopedContext.mojo", 0,
             "cudaSetDevice",
             cudaSetDevice(self.currentDevice_),
         )
 
-    fn __moveinit__(out self, var other: Self):
-        self.currentDevice_ = other.currentDevice_
-        self.stream_ = other.stream_^
-        self.ctx_ = other.ctx_
+    fn __moveinit__(out self, deinit take: Self):
+        self.currentDevice_ = take.currentDevice_
+        self.stream_ = take.stream_^
+        self.ctx_ = take.ctx_
 
     fn device(self) -> Int:
         return self.currentDevice_
@@ -88,17 +85,17 @@ struct ScopedContextBase(Movable):
 struct ScopedContextGetterBase(Movable):
     var base: ScopedContextBase
 
-    fn __init__(out self, streamID: StreamID, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, streamID: StreamID, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.base = ScopedContextBase(streamID, ctx)
 
-    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.base = ScopedContextBase(data, ctx)
 
-    fn __init__(out self, device: Int, owned stream: SharedStreamPtr, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, device: Int, var stream: SharedStreamPtr, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.base = ScopedContextBase(device, stream^, ctx)
 
-    fn __moveinit__(out self, var other: Self):
-        self.base = other.base^
+    fn __moveinit__(out self, deinit take: Self):
+        self.base = take.base^
 
     fn device(self) -> Int:
         return self.base.device()
@@ -149,13 +146,13 @@ struct ScopedContextHolderHelper(Movable):
     fn __init__(out self, var waitingTaskHolder: WaitingTaskWithArenaHolder):
         self.waitingTaskHolder_ = waitingTaskHolder^
 
-    fn __moveinit__(out self, var other: Self):
-        self.waitingTaskHolder_ = other.waitingTaskHolder_^
+    fn __moveinit__(out self, deinit take: Self):
+        self.waitingTaskHolder_ = take.waitingTaskHolder_^
 
     fn replaceWaitingTaskHolder(mut self, var waitingTaskHolder: WaitingTaskWithArenaHolder):
         self.waitingTaskHolder_ = waitingTaskHolder^
 
-    fn enqueueCallback(mut self, device: Int, stream: CUDAStreamType, ctx: UnsafePointer[CUDAAppContext]):
+    fn enqueueCallback(mut self, device: Int, stream: CUDAStreamType, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]):
         _ = device
         var event = CUDAEventType()
         var status = cudaEventCreateWithFlags(event, cudaEventDisableTiming, ctx[].runtime)
@@ -200,19 +197,19 @@ struct ScopedContextTask(Movable):
         out self,
         state: UnsafePointer[ContextState],
         var waitingTaskHolder: WaitingTaskWithArenaHolder,
-        ctx: UnsafePointer[CUDAAppContext],
+        ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
     ) raises:
         var stream = state[].streamPtr()
         self.base = ScopedContextBase(state[].device(), stream^, ctx)
         self.holderHelper_ = ScopedContextHolderHelper(waitingTaskHolder^)
         self.contextState_ = state
 
-    fn __moveinit__(out self, var other: Self):
-        self.base = other.base^
-        self.holderHelper_ = other.holderHelper_^
-        self.contextState_ = other.contextState_
+    fn __moveinit__(out self, deinit take: Self):
+        self.base = take.base^
+        self.holderHelper_ = take.holderHelper_^
+        self.contextState_ = take.contextState_
 
-    fn __del__(mut self):
+    fn __del__(var self):
         self.holderHelper_.enqueueCallback(self.device(), self.stream(), self.base.ctx_)
 
     fn device(self) -> Int:
@@ -241,7 +238,7 @@ struct ScopedContextAcquire(Movable):
         out self,
         streamID: StreamID,
         var waitingTaskHolder: WaitingTaskWithArenaHolder,
-        ctx: UnsafePointer[CUDAAppContext],
+        ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
     ) raises:
         self.getter = ScopedContextGetterBase(streamID, ctx)
         self.holderHelper_ = ScopedContextHolderHelper(waitingTaskHolder^)
@@ -253,18 +250,18 @@ struct ScopedContextAcquire(Movable):
         streamID: StreamID,
         var waitingTaskHolder: WaitingTaskWithArenaHolder,
         mut state: ContextState,
-        ctx: UnsafePointer[CUDAAppContext],
+        ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
     ) raises:
         self.getter = ScopedContextGetterBase(streamID, ctx)
         self.holderHelper_ = ScopedContextHolderHelper(waitingTaskHolder^)
-        self.contextState_ = UnsafePointer.address_of(state)
+        self.contextState_ = UnsafePointer(to=state)
         self.hasContextState_ = True
 
     fn __init__(
         out self,
         mut data: ProductBase,
         var waitingTaskHolder: WaitingTaskWithArenaHolder,
-        ctx: UnsafePointer[CUDAAppContext],
+        ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
     ) raises:
         self.getter = ScopedContextGetterBase(data, ctx)
         self.holderHelper_ = ScopedContextHolderHelper(waitingTaskHolder^)
@@ -276,21 +273,20 @@ struct ScopedContextAcquire(Movable):
         mut data: ProductBase,
         var waitingTaskHolder: WaitingTaskWithArenaHolder,
         mut state: ContextState,
-        ctx: UnsafePointer[CUDAAppContext],
+        ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
     ) raises:
         self.getter = ScopedContextGetterBase(data, ctx)
         self.holderHelper_ = ScopedContextHolderHelper(waitingTaskHolder^)
-        self.contextState_ = UnsafePointer.address_of(state)
+        self.contextState_ = UnsafePointer(to=state)
         self.hasContextState_ = True
 
-    fn __moveinit__(out self, var other: Self):
-        self.getter = other.getter^
-        self.holderHelper_ = other.holderHelper_^
-        self.contextState_ = other.contextState_
-        self.hasContextState_ = other.hasContextState_
-        other.hasContextState_ = False
+    fn __moveinit__(out self, deinit take: Self):
+        self.getter = take.getter^
+        self.holderHelper_ = take.holderHelper_^
+        self.contextState_ = take.contextState_
+        self.hasContextState_ = take.hasContextState_
 
-    fn __del__(mut self):
+    fn __del__(var self):
         self.holderHelper_.enqueueCallback(self.device(), self.stream(), self.getter.base.ctx_)
         if self.hasContextState_:
             try:
@@ -335,30 +331,30 @@ struct ScopedContextProduce(Movable):
     var getter: ScopedContextGetterBase
     var event_: SharedEventPtr
 
-    fn __init__(out self, streamID: StreamID, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, streamID: StreamID, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.getter = ScopedContextGetterBase(streamID, ctx)
         self.event_ = ctx[].event_cache.get(ctx[].runtime)
 
-    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.getter = ScopedContextGetterBase(data, ctx)
         self.event_ = ctx[].event_cache.get(ctx[].runtime)
 
-    fn __init__(out self, mut state: ContextState, ctx: UnsafePointer[CUDAAppContext]) raises:
+    fn __init__(out self, mut state: ContextState, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         var stream = state.releaseStreamPtr()
         self.getter = ScopedContextGetterBase(state.device(), stream^, ctx)
         self.event_ = ctx[].event_cache.get(ctx[].runtime)
 
     fn __init__(
-        out self, device: Int, owned stream: SharedStreamPtr, owned event: SharedEventPtr, ctx: UnsafePointer[CUDAAppContext]
+        out self, device: Int, var stream: SharedStreamPtr, var event: SharedEventPtr, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]
     ) raises:
         self.getter = ScopedContextGetterBase(device, stream^, ctx)
         self.event_ = event^
 
-    fn __moveinit__(out self, var other: Self):
-        self.getter = other.getter^
-        self.event_ = other.event_^
+    fn __moveinit__(out self, deinit take: Self):
+        self.getter = take.getter^
+        self.event_ = take.event_^
 
-    fn __del__(mut self):
+    fn __del__(var self):
         _ = cudaEventRecord(self.event_[].event, self.stream())
 
     fn device(self) -> Int:
@@ -378,13 +374,13 @@ struct ScopedContextProduce(Movable):
     ](mut self, ref event: Event, ref token: EDGetTokenT[Product[T]]) raises -> ref [event] T:
         return self.getter.get[T](event, token)
 
-    fn wrap[T: Movable & Typeable](mut self, owned data: T) -> Product[T]:
+    fn wrap[T: Movable & Typeable](mut self, var data: T) -> Product[T]:
         var stream = self.streamPtr()
         var event = self.event_.copy()
         return Product[T](self.device(), stream^, event^, data^)
 
-    fn emplace[T: Movable & Typeable](
-        mut self, mut event: Event, ref token: EDPutTokenT[Product[T]], owned data: T
+    fn emplace[T: Movable & Typeable & Defaultable & ImplicitlyDestructible](
+        mut self, mut event: Event, ref token: EDPutTokenT[Product[T]], var data: T
     ):
         var stream = self.streamPtr()
         var cuda_event = self.event_.copy()
@@ -395,11 +391,11 @@ struct ScopedContextProduce(Movable):
 struct ScopedContextAnalyze(Movable):
     var getter: ScopedContextGetterBase
 
-    fn __init__(out self, mut data: ProductBase) raises:
-        self.getter = ScopedContextGetterBase(data)
+    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
+        self.getter = ScopedContextGetterBase(data, ctx)
 
-    fn __moveinit__(out self, var other: Self):
-        self.getter = other.getter^
+    fn __moveinit__(out self, deinit take: Self):
+        self.getter = take.getter^
 
     fn device(self) -> Int:
         return self.getter.device()

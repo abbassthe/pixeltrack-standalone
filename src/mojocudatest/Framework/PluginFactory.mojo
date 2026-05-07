@@ -8,15 +8,15 @@ from MojoBridge.DTypes import Typeable
 
 
 @fieldwise_init
-struct EDProducerWrapper(Copyable, Defaultable, Movable, Typeable):
-    var _ptr: UnsafePointer[NoneType]
+struct EDProducerWrapper(Copyable, Defaultable, ImplicitlyCopyable, Movable, Typeable):
+    var _ptr: UnsafePointer[NoneType, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
-        self._ptr = UnsafePointer[NoneType]()
+        self._ptr = UnsafePointer[NoneType, MutAnyOrigin]()
 
     @always_inline
-    fn producer(self) -> UnsafePointer[NoneType]:
+    fn producer(self) -> UnsafePointer[NoneType, MutAnyOrigin]:
         return self._ptr
 
     @staticmethod
@@ -26,12 +26,12 @@ struct EDProducerWrapper(Copyable, Defaultable, Movable, Typeable):
 
 
 struct EDProducerWrapperT[T: Typeable & EDProducer](Movable, Typeable):
-    var _ptr: UnsafePointer[T]
+    var _ptr: UnsafePointer[Self.T, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self, mut reg: ProductRegistry):
-        self._ptr = UnsafePointer[T].alloc(1)
-        __get_address_as_uninit_lvalue(self._ptr.address) = T.__init__(reg)
+        self._ptr = alloc[Self.T](1)
+        __get_address_as_uninit_lvalue(self._ptr.address) = Self.T(reg)
 
     @always_inline
     fn delete(self):
@@ -39,20 +39,20 @@ struct EDProducerWrapperT[T: Typeable & EDProducer](Movable, Typeable):
         self._ptr.free()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    fn __moveinit__(out self, var take: Self):
+        self._ptr = take._ptr
 
     @always_inline
-    fn producer(self) -> UnsafePointer[T]:
+    fn producer(self) -> UnsafePointer[Self.T, MutAnyOrigin]:
         return self._ptr
 
     @staticmethod
     @always_inline
     fn dtype() -> String:
-        return "EDProducerWrapperT[" + T.dtype() + "]"
+        return "EDProducerWrapperT[" + Self.T.dtype() + "]"
 
 
-struct EDProducerConcrete(Copyable, Movable, Typeable):
+struct EDProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
     alias _C = fn (mut ProductRegistry) raises -> EDProducerWrapper
     alias _P = fn (mut EDProducerWrapper, mut Event, EventSetup)
     alias _E = fn (mut EDProducerWrapper)
@@ -74,20 +74,20 @@ struct EDProducerConcrete(Copyable, Movable, Typeable):
         self._det = det
 
     @always_inline
-    fn __copyinit__(out self, other: Self):
-        self._producer = other._producer
-        self._create = other._create
-        self._produce = other._produce
-        self._end = other._end
-        self._det = other._det
+    fn __copyinit__(out self, copy: Self):
+        self._producer = copy._producer
+        self._create = copy._create
+        self._produce = copy._produce
+        self._end = copy._end
+        self._det = copy._det
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._producer = other._producer^
-        self._create = other._create
-        self._produce = other._produce
-        self._end = other._end
-        self._det = other._det
+    fn __moveinit__(out self, deinit take: Self):
+        self._producer = take._producer^
+        self._create = take._create
+        self._produce = take._produce
+        self._end = take._end
+        self._det = take._det
 
     @always_inline
     fn create(mut self, mut reg: ProductRegistry) raises:
@@ -119,7 +119,7 @@ struct Registry(Typeable):
     fn __init__(out self):
         self._pluginRegistry = {}
 
-    @always_inline
+
     fn __del__(var self):
         self.delete()
 
@@ -135,9 +135,14 @@ struct Registry(Typeable):
 
     @always_inline
     fn delete(mut self):
-        for i in range(self._pluginRegistry._entries.__len__()):
-            if self._pluginRegistry._entries[i]:
-                self._pluginRegistry._entries[i].unsafe_value().value.delete()
+        var keys = List[String]()
+        for key in self._pluginRegistry.keys():
+            keys.append(key)
+        for key in keys:
+            try:
+                self._pluginRegistry[key].delete()
+            except:
+                pass
 
     @staticmethod
     @always_inline
@@ -145,7 +150,6 @@ struct Registry(Typeable):
         return "Registry"
 
 
-@nonmaterializable(NoneType)
 struct PluginFactory:
     @staticmethod
     @always_inline
@@ -155,7 +159,7 @@ struct PluginFactory:
         Registry._pluginRegistryType.K,
         Registry._pluginRegistryType.V,
         Registry._pluginRegistryType.H,
-        __origin_of(reg._pluginRegistry),
+        origin_of(reg._pluginRegistry),
     ]:
         return reg._pluginRegistry.keys()
 

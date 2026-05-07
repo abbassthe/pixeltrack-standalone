@@ -2,8 +2,7 @@ from MojoBridge.DTypes import Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct DigiClusterCount(Copyable, Defaultable, Movable, Typeable):
+struct DigiClusterCount(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var _modules: UInt32
     var _digis: UInt32
     var _clusters: UInt32

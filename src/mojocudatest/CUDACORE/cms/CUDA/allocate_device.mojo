@@ -10,7 +10,7 @@ from CUDACompat import CUDAStreamType
 alias cudaStream_t = CUDAStreamType
 
 # Device pointer equivalent to void* in C++.
-alias DevicePtr = UnsafePointer[UInt8]
+alias DevicePtr = UnsafePointer[UInt8, MutAnyOrigin]
 alias ByteDeviceBuffer = DeviceBuffer[DType.uint8]
 
 
@@ -22,9 +22,9 @@ struct _AllocateDeviceState(Movable):
         self._lock = BlockingSpinLock()
         self._allocated_buffers = List[Tuple[UInt, ByteDeviceBuffer]]()
 
-    fn __moveinit__(out self, var other: Self):
+    fn __moveinit__(out self, deinit take: Self):
         self._lock = BlockingSpinLock()
-        self._allocated_buffers = other._allocated_buffers^
+        self._allocated_buffers = take._allocated_buffers^
 
     # Allocate device memory.
     fn allocate_device(mut self, device: Int32, nbytes: UInt, stream: cudaStream_t) -> DevicePtr:
@@ -38,7 +38,7 @@ struct _AllocateDeviceState(Movable):
             var ptr = buffer.unsafe_ptr()
             if ptr != DevicePtr():
                 with BlockingScopedLock(self._lock):
-                    self._allocated_buffers.append((UInt(ptr.address), buffer))
+                    self._allocated_buffers.append((UInt(Int(ptr)), buffer))
             return ptr
         except e:
             return DevicePtr()
@@ -51,14 +51,16 @@ struct _AllocateDeviceState(Movable):
             return
         #TODO replace this with a set to make faster
         with BlockingScopedLock(self._lock):
-            var target = UInt(ptr.address)
+            var target = UInt(Int(ptr))
             var i = 0
             while i < self._allocated_buffers.__len__():
                 if self._allocated_buffers[i][0] == target:
-                    self._allocated_buffers.remove(i)
+                    try:
+                        _ = self._allocated_buffers.pop(i)
+                    except:
+                        pass
                     break
                 i += 1
-
 
 
 

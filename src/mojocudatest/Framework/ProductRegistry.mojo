@@ -6,8 +6,7 @@ from MojoBridge.DTypes import Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct Indices(Copyable, Movable, Typeable):
+struct Indices(Copyable, Movable, Typeable, TrivialRegisterPassable):
     var _moduleIndex: UInt
     var _productIndex: UInt
 
@@ -38,10 +37,10 @@ struct ProductRegistry(Movable, Sized, Typeable):
         self._typeToIndex = Dict[String, Indices]()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._currentModuleIndex = other._currentModuleIndex
-        self._consumedModules = other._consumedModules^
-        self._typeToIndex = other._typeToIndex^
+    fn __moveinit__(out self, deinit take: Self):
+        self._currentModuleIndex = take._currentModuleIndex
+        self._consumedModules = take._consumedModules^
+        self._typeToIndex = take._typeToIndex^
 
     fn produces[T: Typeable](mut self) raises -> EDPutTokenT[T]:
         if T.dtype() in self._typeToIndex:

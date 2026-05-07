@@ -1,14 +1,14 @@
 @fieldwise_init
-struct RBNode[K: Copyable & Comparable, V: Copyable](Copyable, Movable):
-    var key: K
-    var value: V
+struct RBNode[K: Copyable & Comparable & ImplicitlyCopyable, V: Copyable & ImplicitlyCopyable](Copyable, ImplicitlyCopyable, Movable):
+    var key: Self.K
+    var value: Self.V
     var parent: Int
     var left: Int
     var right: Int
     var red: Bool
 
     @always_inline
-    fn __init__(out self, key: K, value: V):
+    fn __init__(out self, key: Self.K, value: Self.V):
         self.key = key
         self.value = value
         self.parent = -1
@@ -18,23 +18,25 @@ struct RBNode[K: Copyable & Comparable, V: Copyable](Copyable, Movable):
 
 
 @fieldwise_init
-struct OrderedMap[K: Copyable & Comparable, V: Copyable](Copyable, Movable, Sized):
+struct OrderedMap[K: Copyable & Comparable & ImplicitlyCopyable, V: Copyable & ImplicitlyCopyable](Copyable, ImplicitlyCopyable, Movable, Sized):
     # Index-based RB-tree: contiguous node storage for cache locality and low allocation overhead.
-    var _nodes: List[RBNode[K, V]]
+    var _nodes: List[RBNode[Self.K, Self.V]]
     var _root: Int
     var _size: Int
 
     @always_inline
     fn __init__(out self):
-        self._nodes = List[RBNode[K, V]]()
+        self._nodes = List[RBNode[Self.K, Self.V]]()
         self._root = -1
         self._size = 0
 
     @always_inline
-    fn __copyinit__(out self, other: Self):
-        self._nodes = other._nodes
-        self._root = other._root
-        self._size = other._size
+    fn __copyinit__(out self, copy: Self):
+        self._nodes = List[RBNode[Self.K, Self.V]]()
+        for i in range(copy._nodes.__len__()):
+            self._nodes.append(copy._nodes[i])
+        self._root = copy._root
+        self._size = copy._size
 
     @always_inline
     fn __len__(self) -> Int:
@@ -51,28 +53,28 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Copyable, Movable, Size
         self._size = 0
 
     @always_inline
-    fn contains(self, key: K) -> Bool:
+    fn contains(self, key: Self.K) -> Bool:
         return self._find_index(key) != -1
 
     @always_inline
-    fn __contains__(self, key: K) -> Bool:
+    fn __contains__(self, key: Self.K) -> Bool:
         return self.contains(key)
 
     @always_inline
-    fn __getitem__(self, key: K) raises -> V:
+    fn __getitem__(self, key: Self.K) raises -> Self.V:
         return self.get(key)
 
     @always_inline
-    fn __setitem__(mut self, key: K, value: V):
+    fn __setitem__(mut self, key: Self.K, value: Self.V):
         _ = self.insert_or_assign(key, value)
 
-    fn get(self, key: K) raises -> V:
+    fn get(self, key: Self.K) raises -> Self.V:
         var idx = self._find_index(key)
         if idx == -1:
             raise "KeyError: key not found"
         return self._nodes[idx].value
 
-    fn try_get(self, key: K, out value: V) -> Bool:
+    fn try_get(self, key: Self.K, out value: Self.V) -> Bool:
         var idx = self._find_index(key)
         if idx == -1:
             return False
@@ -80,14 +82,14 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Copyable, Movable, Size
         return True
 
     @always_inline
-    fn get_or(self, key: K, default_value: V) -> V:
+    fn get_or(self, key: Self.K, default_value: Self.V) -> Self.V:
         var idx = self._find_index(key)
         if idx == -1:
             return default_value
         return self._nodes[idx].value
 
     # Returns True if a new node was inserted, False if an existing value was overwritten.
-    fn insert_or_assign(mut self, key: K, value: V) -> Bool:
+    fn insert_or_assign(mut self, key: Self.K, value: Self.V) -> Bool:
         var parent = -1
         var cur = self._root
 
@@ -103,7 +105,7 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Copyable, Movable, Size
                 return False
 
         var new_idx = self._nodes.__len__()
-        self._nodes.append(RBNode[K, V](key, value))
+        self._nodes.append(RBNode[Self.K, Self.V](key, value))
         self._nodes[new_idx].parent = parent
 
         if parent == -1:
@@ -118,7 +120,7 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Copyable, Movable, Size
         return True
 
     # Returns True if inserted, False if key already exists.
-    fn try_insert(mut self, key: K, value: V) -> Bool:
+    fn try_insert(mut self, key: Self.K, value: Self.V) -> Bool:
         var parent = -1
         var cur = self._root
 
@@ -133,7 +135,7 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Copyable, Movable, Size
                 return False
 
         var new_idx = self._nodes.__len__()
-        self._nodes.append(RBNode[K, V](key, value))
+        self._nodes.append(RBNode[Self.K, Self.V](key, value))
         self._nodes[new_idx].parent = parent
 
         if parent == -1:
@@ -148,8 +150,8 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Copyable, Movable, Size
         return True
 
     # In-order traversal (sorted by key).
-    fn items(self) -> List[Tuple[K, V]]:
-        var out = List[Tuple[K, V]]()
+    fn items(self) -> List[Tuple[Self.K, Self.V]]:
+        var out = List[Tuple[Self.K, Self.V]]()
         var stack = List[Int]()
         var cur = self._root
 
@@ -164,22 +166,22 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Copyable, Movable, Size
 
         return out
 
-    fn keys(self) -> List[K]:
-        var out = List[K]()
+    fn keys(self) -> List[Self.K]:
+        var out = List[Self.K]()
         var kv = self.items()
         for i in range(kv.__len__()):
             out.append(kv[i][0])
         return out
 
-    fn values(self) -> List[V]:
-        var out = List[V]()
+    fn values(self) -> List[Self.V]:
+        var out = List[Self.V]()
         var kv = self.items()
         for i in range(kv.__len__()):
             out.append(kv[i][1])
         return out
 
     @always_inline
-    fn _find_index(self, key: K) -> Int:
+    fn _find_index(self, key: Self.K) -> Int:
         var cur = self._root
         while cur != -1:
             var cur_key = self._nodes[cur].key

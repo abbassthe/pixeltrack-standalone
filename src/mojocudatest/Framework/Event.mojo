@@ -6,23 +6,23 @@ from MojoBridge.DTypes import Typeable
 alias StreamID = Int32
 
 
-struct WrapperBase(Copyable, Defaultable, Movable, Typeable):
-    var _ptr: UnsafePointer[NoneType]
+struct WrapperBase(Copyable, Defaultable, ImplicitlyCopyable, Movable, Typeable):
+    var _ptr: UnsafePointer[NoneType, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
-        self._ptr = UnsafePointer[NoneType]()
+        self._ptr = UnsafePointer[NoneType, MutAnyOrigin]()
 
     @always_inline
-    fn __copyinit__(out self, other: Self):
-        self._ptr = other._ptr
+    fn __copyinit__(out self, copy: Self):
+        self._ptr = copy._ptr
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    fn __moveinit__(out self, var take: Self):
+        self._ptr = take._ptr
 
     @always_inline
-    fn product(self) -> UnsafePointer[NoneType, mut=False]:
+    fn product(self) -> UnsafePointer[NoneType, MutAnyOrigin]:
         return self._ptr
 
     @staticmethod
@@ -35,13 +35,13 @@ fn det_blank(mut wrapper: WrapperBase):
     pass
 
 
-struct Wrapper[T: Typeable & Movable](Movable, Typeable):
-    var _ptr: UnsafePointer[T]
+struct Wrapper[T: Typeable & Movable & ImplicitlyDestructible](Movable, Typeable):
+    var _ptr: UnsafePointer[Self.T, MutAnyOrigin]
 
     @always_inline
-    fn __init__(out self, var obj: T):
-        self._ptr = UnsafePointer[T].alloc(1)
-        self._ptr.init_pointee_move(obj^)
+    fn __init__(out self, var obj: Self.T):
+        self._ptr = alloc[Self.T](1)
+        __get_address_as_uninit_lvalue(self._ptr.address) = obj^
 
     @always_inline
     fn delete(self):
@@ -49,17 +49,17 @@ struct Wrapper[T: Typeable & Movable](Movable, Typeable):
         self._ptr.free()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    fn __moveinit__(out self, var take: Self):
+        self._ptr = take._ptr
 
     @always_inline
-    fn product(self) -> UnsafePointer[T, mut=False]:
+    fn product(self) -> UnsafePointer[Self.T, MutAnyOrigin]:
         return self._ptr
 
     @staticmethod
     @always_inline
     fn dtype() -> String:
-        return "Wrapper[" + T.dtype() + "]"
+        return "Wrapper[" + Self.T.dtype() + "]"
 
 
 struct Event(Defaultable, Movable, Typeable):
@@ -96,11 +96,11 @@ struct Event(Defaultable, Movable, Typeable):
             self._dets[i](self._products[i])
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._streamId = other._streamId
-        self._eventId = other._eventId
-        self._products = other._products^
-        self._dets = other._dets^
+    fn __moveinit__(out self, deinit take: Self):
+        self._streamId = take._streamId
+        self._eventId = take._eventId
+        self._products = take._products^
+        self._dets = take._dets^
 
     @always_inline
     fn streamID(self) -> StreamID:
@@ -111,26 +111,22 @@ struct Event(Defaultable, Movable, Typeable):
         return self._eventId
 
     fn get[
-        T: Typeable & Movable
+        T: Typeable & Movable & ImplicitlyDestructible
     ](self, ref token: EDGetTokenT[T]) -> ref [self._products] T:
         return rebind[Wrapper[T]](self._products[token.index()]).product()[]
 
-    # General variadic emplace is still blocked in Mojo 25.5: variadic pack
-    # elements cannot be moved into a generic constructor. Accept an already
-    # constructed product here, and let callers such as ScopedContextProduce
-    # build the product before storing it.
     fn emplace[
-        T: Typeable & Movable
+        T: Typeable & Movable & ImplicitlyDestructible
     ](mut self, ref token: EDPutTokenT[T], var prod: T):
         @always_inline
-        fn det[T: Typeable & Movable](mut wrapper: WrapperBase):
+        fn det[T: Typeable & Movable & ImplicitlyDestructible](mut wrapper: WrapperBase):
             rebind[Wrapper[T]](wrapper).delete()
 
         self._products[token.index()] = rebind[WrapperBase](Wrapper[T](prod^))
         self._dets[token.index()] = det[T]
 
     fn put[
-        T: Typeable & Movable
+        T: Typeable & Movable & ImplicitlyDestructible
     ](mut self, ref token: EDPutTokenT[T], var prod: T):
         self.emplace[T](token, prod^)
 

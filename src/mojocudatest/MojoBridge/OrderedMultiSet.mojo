@@ -1,11 +1,13 @@
-@fieldwise_init
-struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
+struct OrderedMultiSet[T: Copyable & ImplicitlyCopyable, Compare: AnyType](Movable, Sized):
     # Sorted storage using a comparator type with `less(a, b) -> Bool`.
-    var _items: List[T]
+    var _items: List[Self.T]
 
     @always_inline
     fn __init__(out self):
-        self._items = List[T]()
+        self._items = List[Self.T]()
+
+    fn __moveinit__(out self, deinit take: Self):
+        self._items = take._items^
 
     @always_inline
     fn __len__(self) -> Int:
@@ -20,20 +22,20 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
         self._items.clear()
 
     @always_inline
-    fn __getitem__(self, index: Int) raises -> T:
+    fn __getitem__(self, index: Int) raises -> Self.T:
         return self._items[index]
 
     @always_inline
-    fn _less(self, read a: T, read b: T) -> Bool:
+    fn _less(self, read a: Self.T, read b: Self.T) -> Bool:
         return Compare.less(a, b)
 
     @always_inline
-    fn _equivalent(self, read a: T, read b: T) -> Bool:
+    fn _equivalent(self, read a: Self.T, read b: Self.T) -> Bool:
         return (not self._less(a, b)) and (not self._less(b, a))
 
     # Returns the first position where `value` can be inserted without
     # violating sorted order.
-    fn lower_bound(self, read value: T) -> Int:
+    fn lower_bound(self, read value: Self.T) -> Int:
         var i: Int = 0
         var n = self._items.__len__()
         while i < n:
@@ -43,13 +45,13 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
         return n
 
     # Returns one matching index or -1 if no equivalent element exists.
-    fn find(self, read value: T) -> Int:
+    fn find(self, read value: Self.T) -> Int:
         var i = self.lower_bound(value)
         if i < self._items.__len__() and self._equivalent(self._items[i], value):
             return i
         return -1
 
-    fn insert(mut self, value: T):
+    fn insert(mut self, value: Self.T):
         # Append and shift left to keep ordering by comparator.
         self._items.append(value)
         var i = self._items.__len__() - 1
@@ -62,12 +64,18 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
     fn erase_at(mut self, index: Int) -> Bool:
         if index < 0 or index >= self._items.__len__():
             return False
-        self._items.remove(index)
+        try:
+            _ = self._items.pop(index)
+        except:
+            pass
         return True
 
-    fn erase_one(mut self, read value: T) -> Bool:
+    fn erase_one(mut self, read value: Self.T) -> Bool:
         var index = self.find(value)
         if index == -1:
             return False
-        self._items.remove(index)
+        try:
+            _ = self._items.pop(index)
+        except:
+            pass
         return True

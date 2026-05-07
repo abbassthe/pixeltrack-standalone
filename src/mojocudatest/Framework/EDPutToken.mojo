@@ -1,8 +1,7 @@
 from MojoBridge.DTypes import Typeable
 
 
-@register_passable("trivial")
-struct EDPutTokenT[T: Typeable](Copyable, Defaultable, Movable, Typeable):
+struct EDPutTokenT[T: Typeable](Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     alias s_uninitializedValue = 0xFFFFFFFF
     var m_value: UInt
 
@@ -32,11 +31,10 @@ struct EDPutTokenT[T: Typeable](Copyable, Defaultable, Movable, Typeable):
     @staticmethod
     @always_inline
     fn dtype() -> String:
-        return "EDPutTokenT[" + T.dtype() + "]"
+        return "EDPutTokenT[" + Self.T.dtype() + "]"
 
 
-@register_passable("trivial")
-struct EDPutToken(Copyable, Defaultable, Movable, Typeable):
+struct EDPutToken(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     alias s_uninitializedValue = 0xFFFFFFFF
     var m_value: UInt
 

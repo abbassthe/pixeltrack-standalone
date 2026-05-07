@@ -1,4 +1,3 @@
-@nonmaterializable(NoneType)
 struct FEDNumbering:
     alias _in: List[Bool] = initIn()
 

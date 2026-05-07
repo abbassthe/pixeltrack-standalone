@@ -3,7 +3,7 @@ from DataFormats.FEDNumbering import FEDNumbering
 from MojoBridge.DTypes import Typeable
 
 
-struct FEDRawDataCollection(Copyable, Defaultable, Movable, Typeable):
+struct FEDRawDataCollection(Copyable, Defaultable, ImplicitlyCopyable, Movable, Typeable):
     var _data: List[FEDRawData]
 
     @always_inline
@@ -13,12 +13,14 @@ struct FEDRawDataCollection(Copyable, Defaultable, Movable, Typeable):
         )
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._data = other._data^
+    fn __moveinit__(out self, deinit take: Self):
+        self._data = take._data^
 
     @always_inline
-    fn __copyinit__(out self, other: Self):
-        self._data = other._data
+    fn __copyinit__(out self, copy: Self):
+        self._data = List[FEDRawData]()
+        for i in range(copy._data.__len__()):
+            self._data.append(copy._data[i])
 
     @always_inline
     fn FEDData(ref self, fedid: Int) -> ref [self._data] FEDRawData:

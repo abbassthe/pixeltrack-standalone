@@ -2,8 +2,7 @@ from MojoBridge.DTypes import Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct TrackCount(Copyable, Defaultable, Movable, Typeable):
+struct TrackCount(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var _tracks: UInt32
 
     @always_inline

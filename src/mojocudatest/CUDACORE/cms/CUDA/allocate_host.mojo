@@ -9,7 +9,7 @@ from getCachingDeviceAllocator import binGrowth, maxBin
 from utils.lock import BlockingSpinLock, BlockingScopedLock
 
 
-alias HostPtr = UnsafePointer[UInt8]
+alias HostPtr = UnsafePointer[UInt8, MutAnyOrigin]
 alias ByteHostBuffer = HostBuffer[DType.uint8]
 alias cudaStream_t = CUDAStreamType
 
@@ -22,9 +22,9 @@ struct _AllocateHostState(Movable):
         self._lock = BlockingSpinLock()
         self._allocated_host_buffers = List[Tuple[UInt, ByteHostBuffer]]()
 
-    fn __moveinit__(out self, var other: Self):
+    fn __moveinit__(out self, deinit take: Self):
         self._lock = BlockingSpinLock()
-        self._allocated_host_buffers = other._allocated_host_buffers^
+        self._allocated_host_buffers = take._allocated_host_buffers^
 
     # Raw pinned-host allocation primitive. CachingHostAllocator must use this
     # to avoid recursing through the public allocate_host()/free_host() wrapper.
@@ -62,7 +62,10 @@ struct _AllocateHostState(Movable):
             var i = 0
             while i < self._allocated_host_buffers.__len__():
                 if self._allocated_host_buffers[i][0] == target:
-                    self._allocated_host_buffers.remove(i)
+                    try:
+                        _ = self._allocated_host_buffers.pop(i)
+                    except:
+                        pass
                     break
                 i += 1
 

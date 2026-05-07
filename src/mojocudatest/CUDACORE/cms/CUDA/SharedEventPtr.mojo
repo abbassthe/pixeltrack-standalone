@@ -1,4 +1,4 @@
-from memory import Arc
+from std.memory.arc_pointer import ArcPointer
 from os.atomic import Atomic
 from utils.lock import BlockingSpinLock, BlockingScopedLock
 
@@ -23,13 +23,13 @@ struct _EventCacheSlot(Movable):
         self.lock = BlockingSpinLock()
         self.outstanding = Atomic[DType.int64](0)
 
-    fn __moveinit__(out self, var other: Self):
+    fn __moveinit__(out self, deinit take: Self):
         debug_assert(
-            other.outstanding.load() == 0,
+            take.outstanding.load() == 0,
             "_EventCacheSlot moved while events are still outstanding",
         )
-        self.device = other.device
-        self.available = other.available^
+        self.device = take.device
+        self.available = take.available^
         self.lock = BlockingSpinLock()
         self.outstanding = Atomic[DType.int64](0)
 
@@ -45,7 +45,7 @@ struct _EventCacheSlot(Movable):
     fn addNewOutstanding(mut self):
         _ = self.outstanding.fetch_add(1)
 
-    fn _addBack(mut self, owned event: CUDAEventType):
+    fn _addBack(mut self, var event: CUDAEventType):
         if event.event_id != 0:
             with BlockingScopedLock(self.lock):
                 self.available.append(event^)
@@ -81,30 +81,31 @@ struct _EventCacheSlot(Movable):
 # reference drops.
 struct _EventOwner(Movable):
     var event: CUDAEventType
-    var cache: UnsafePointer[_EventCacheSlot]
+    var cache: UnsafePointer[_EventCacheSlot, MutAnyOrigin]
 
-    fn __init__(out self, owned event: CUDAEventType):
+    fn __init__(out self, var event: CUDAEventType):
         self.event = event^
-        self.cache = UnsafePointer[_EventCacheSlot]()
+        self.cache = UnsafePointer[_EventCacheSlot, MutAnyOrigin]()
 
     fn __init__(
-        out self, owned event: CUDAEventType, cache: UnsafePointer[_EventCacheSlot]
+        out self, var event: CUDAEventType, cache: UnsafePointer[_EventCacheSlot, MutAnyOrigin]
     ):
         self.event = event^
         self.cache = cache
 
-    fn __moveinit__(out self, var other: Self):
-        self.event = other.event
-        self.cache = other.cache
-        other.event = CUDAEventType()
-        other.cache = UnsafePointer[_EventCacheSlot]()
+    fn __moveinit__(out self, var take: Self):
+        self.event = take.event
+        self.cache = take.cache
+        take.event = CUDAEventType()
+        take.cache = UnsafePointer[_EventCacheSlot, MutAnyOrigin]()
 
     fn __del__(var self):
         if self.event.event_id == 0:
             return
-        if self.cache != UnsafePointer[_EventCacheSlot]():
-            self.cache[]._addBack(self.event^)
-            self.cache = UnsafePointer[_EventCacheSlot]()
+        if self.cache != UnsafePointer[_EventCacheSlot, MutAnyOrigin]():
+            var cache = self.cache
+            self.cache = UnsafePointer[_EventCacheSlot, MutAnyOrigin]()
+            cache[]._addBack(self.event)
             return
         _ = cudaEventDestroy(self.event)
 
@@ -113,4 +114,4 @@ struct _EventOwner(Movable):
 # In C++: shared_ptr<remove_pointer_t<cudaEvent_t>>
 # In Mojo: Arc handles the reference count; _EventOwner returns cached events
 # to EventCache or destroys uncached events.
-alias SharedEventPtr = Arc[_EventOwner]
+alias SharedEventPtr = ArcPointer[_EventOwner]

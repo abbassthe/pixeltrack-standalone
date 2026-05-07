@@ -10,27 +10,27 @@ from CUDAAppContext import CUDAAppContext
 
 
 struct StreamSchedule(Defaultable, Movable, Typeable):
-    var _registry: UnsafePointer[ProductRegistry]
-    var _source: UnsafePointer[Source]
-    var _eventSetup: UnsafePointer[EventSetup]
+    var _registry: UnsafePointer[ProductRegistry, MutAnyOrigin]
+    var _source: UnsafePointer[Source, MutAnyOrigin]
+    var _eventSetup: UnsafePointer[EventSetup, MutAnyOrigin]
     var _path: List[EDProducerConcrete]
     var _streamId: Int32
-    var _cuda_ctx: UnsafePointer[CUDAAppContext]
+    var _cuda_ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
-        self._registry = UnsafePointer[ProductRegistry]()
-        self._source = UnsafePointer[Source]()
-        self._eventSetup = UnsafePointer[EventSetup]()
+        self._registry = UnsafePointer[ProductRegistry, MutAnyOrigin]()
+        self._source = UnsafePointer[Source, MutAnyOrigin]()
+        self._eventSetup = UnsafePointer[EventSetup, MutAnyOrigin]()
         self._path = []
         self._streamId = 0
-        self._cuda_ctx = UnsafePointer[CUDAAppContext]()
+        self._cuda_ctx = UnsafePointer[CUDAAppContext, MutAnyOrigin]()
 
     fn __init__(
         out self,
-        reg: UnsafePointer[ProductRegistry],
-        source: UnsafePointer[Source],
-        eventSetup: UnsafePointer[EventSetup],
+        reg: UnsafePointer[ProductRegistry, MutAnyOrigin],
+        source: UnsafePointer[Source, MutAnyOrigin],
+        eventSetup: UnsafePointer[EventSetup, MutAnyOrigin],
         mut edreg: Framework.PluginFactory.Registry,
         streamId: Int32 = 0,
     ):
@@ -39,8 +39,8 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             self._source = source
             self._eventSetup = eventSetup
             self._streamId = streamId
-            self._cuda_ctx = UnsafePointer[CUDAAppContext].alloc(1)
-            self._cuda_ctx.init_pointee_move(CUDAAppContext())
+            self._cuda_ctx = alloc[CUDAAppContext](1)
+            __get_address_as_uninit_lvalue(self._cuda_ctx.address) = CUDAAppContext()
 
             var nModules = PluginFactory.size(edreg)
             debug_assert(nModules > 0)
@@ -49,21 +49,21 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             var adj = List[List[Int]](length=nModules, fill=[])
             var in_degree = List[Int](length=nModules, fill=0)
 
-            var i: UInt = 0
+            var i: Int = 0
             for name in PluginFactory.getAll(edreg):
-                self._registry[].beginModuleConstruction(i + 1)
+                self._registry[].beginModuleConstruction(Int32(i + 1))
                 producers.append(
                     PluginFactory.create(name, self._registry[], edreg)
                 )
-                var dep_indices = self._registry[].consumedModules()
                 # remove dependency on FEDRawDataCollection from resolver logic
                 # it is the parent of all producers (guaranteed by Source)
-                if 0 in dep_indices:
-                    dep_indices.remove(0)
-                in_degree[i] = dep_indices.__len__()
-
-                for dep_index in dep_indices:
-                    adj[dep_index - 1].append(i)
+                var count = 0
+                for dep_index in self._registry[].consumedModules():
+                    if dep_index == UInt(0):
+                        continue
+                    adj[Int(dep_index) - 1].append(i)
+                    count += 1
+                in_degree[i] = count
                 i += 1
 
             var q = Deque[Int]()
@@ -92,31 +92,30 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
                 self._path.append((data + index).take_pointee())
         except e:
             print("Error occurred in Bin/StreamSchedule.mojo,", e)
-            if self._cuda_ctx != UnsafePointer[CUDAAppContext]():
+            if self._cuda_ctx != UnsafePointer[CUDAAppContext, MutAnyOrigin]():
                 self._cuda_ctx.destroy_pointee()
                 self._cuda_ctx.free()
-                self._cuda_ctx = UnsafePointer[CUDAAppContext]()
+                self._cuda_ctx = UnsafePointer[CUDAAppContext, MutAnyOrigin]()
             return Self()
 
     fn __del__(var self):
-        if self._cuda_ctx != UnsafePointer[CUDAAppContext]():
+        if self._cuda_ctx != UnsafePointer[CUDAAppContext, MutAnyOrigin]():
             self._cuda_ctx.destroy_pointee()
             self._cuda_ctx.free()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._registry = other._registry
-        self._source = other._source
-        self._eventSetup = other._eventSetup
-        self._path = other._path^
-        self._streamId = other._streamId
-        self._cuda_ctx = other._cuda_ctx
-        other._cuda_ctx = UnsafePointer[CUDAAppContext]()
+    fn __moveinit__(out self, deinit take: Self):
+        self._registry = take._registry
+        self._source = take._source
+        self._eventSetup = take._eventSetup
+        self._path = take._path^
+        self._streamId = take._streamId
+        self._cuda_ctx = take._cuda_ctx
 
     fn run(mut self):
         var event: Event
         var ptr = self._source[].produce(self._streamId, self._registry[])
-        while ptr != UnsafePointer[Event]():
+        while ptr != UnsafePointer[Event, MutAnyOrigin]():
             event = ptr.take_pointee()
             ptr.free()
             for i in range(self._path.__len__()):

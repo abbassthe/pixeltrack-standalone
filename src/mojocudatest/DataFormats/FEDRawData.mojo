@@ -3,7 +3,7 @@ from collections.list import _ListIter
 from MojoBridge.DTypes import SizeType, Typeable, UChar
 
 
-struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
+struct FEDRawData(Copyable, Defaultable, ImplicitlyCopyable, Movable, Sized, Typeable):
     """
     Class representing the raw data for one FED.
     The raw data is owned as a binary buffer. It is required that the
@@ -28,15 +28,17 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
             + " is not a multiple of 8 bytes.",
         )
 
-        self._data = Self.Data(length=UInt(newsize), fill=0)
+        self._data = Self.Data(length=Int(newsize), fill=UChar(0))
 
     @always_inline
-    fn __copyinit__(out self, existing: Self):
-        self._data = existing._data
+    fn __copyinit__(out self, copy: Self):
+        self._data = Self.Data()
+        for i in range(copy._data.__len__()):
+            self._data.append(copy._data[i])
 
     @always_inline
-    fn __moveinit__(out self, var existing: Self):
-        self._data = existing._data^
+    fn __moveinit__(out self, deinit take: Self):
+        self._data = take._data^
 
     @always_inline
     fn data[
@@ -66,7 +68,7 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
         if self.size() == newsize:
             return
 
-        self._data.resize(UInt(newsize), 0)
+        self._data.resize(Int(newsize), UChar(0))
 
     @always_inline
     @staticmethod

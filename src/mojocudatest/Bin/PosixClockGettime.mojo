@@ -1,4 +1,4 @@
-from sys.ffi import external_call, c_long, c_int
+from std.ffi import external_call, c_long, c_int
 
 alias TimeType = c_int
 alias Long = c_long
@@ -25,8 +25,7 @@ fn is_steady[CLOCK: ClockIdType]() -> Bool:
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct TimeSpec(Copyable, Defaultable, Movable):
+struct TimeSpec(Copyable, Defaultable, Movable, TrivialRegisterPassable):
     var tv_sec: TimeType
     var tv_nsec: c_long
 
@@ -36,7 +35,6 @@ struct TimeSpec(Copyable, Defaultable, Movable):
         self.tv_nsec = 0
 
 
-@nonmaterializable(NoneType)
 struct PosixClockGettime[CLOCK: ClockIdType]:
     alias rep = UInt
     alias period = 10**9
@@ -49,8 +47,8 @@ struct PosixClockGettime[CLOCK: ClockIdType]:
         var t = TimeSpec()
         debug_assert(
             external_call[
-                "clock_gettime", c_int, ClockIdType, UnsafePointer[TimeSpec]
-            ](CLOCK, UnsafePointer(to=t))
+                "clock_gettime", c_int, ClockIdType, UnsafePointer[TimeSpec, MutAnyOrigin]
+            ](Self.CLOCK, UnsafePointer(to=t))
             == 0
         )
         return UInt(c_long(t.tv_sec) * Self.period + t.tv_nsec)

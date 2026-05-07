@@ -12,7 +12,7 @@ from utils.lock import BlockingSpinLock, BlockingScopedLock
 
 
 @fieldwise_init
-struct CUDAStreamType(ImplicitlyCopyable, Defaultable, Movable):
+struct CUDAStreamType(Copyable, ImplicitlyCopyable, Defaultable, ImplicitlyDestructible, Movable):
     var stream_id: UInt64
     var stream: Optional[DeviceStream]
 
@@ -23,7 +23,13 @@ struct CUDAStreamType(ImplicitlyCopyable, Defaultable, Movable):
 
     @always_inline
     fn __init__(out self, stream: DeviceStream):
+        self.stream_id = 0
         self.stream = stream
+
+    @always_inline
+    fn __copyinit__(out self, copy: Self):
+        self.stream_id = copy.stream_id
+        self.stream = copy.stream
 
     @always_inline
     fn is_default(self) -> Bool:
@@ -60,36 +66,27 @@ struct CUDAStreamType(ImplicitlyCopyable, Defaultable, Movable):
         return self.stream_id != other.stream_id
 
 
-# Sentinel "default stream" value. We resolve this to the current default stream
-# inside CUDA compatibility calls.
+# Sentinel "default stream" value.
 comptime cudaStreamDefault: CUDAStreamType = CUDAStreamType()
 
 
 @fieldwise_init
-struct CUDAEventType(Copyable, Defaultable, Movable):
-    # Copyable handle to event state stored in the module registry.
-    # `event_id == 0` means "never recorded / no registry slot allocated yet".
+struct CUDAEventType(Copyable, Defaultable, ImplicitlyCopyable, Movable):
     var event_id: UInt64
-
-    # Real stream-side state for Mojo GPU synchronization. event_id remains the
-    # fake query handle used by cudaEventQuery().
     var has_real_event: Bool
     var real_event: Optional[DeviceEvent]
-
-    # Non-owning pointer to the CUDARuntime that owns this event's registry slot.
-    # Set by cudaEventCreateWithFlags; null for default-constructed events.
-    var runtime: UnsafePointer[CUDARuntime]
+    var runtime: UnsafePointer[CUDARuntime, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
         self.event_id = 0
         self.has_real_event = False
         self.real_event = None
-        self.runtime = UnsafePointer[CUDARuntime]()
+        self.runtime = UnsafePointer[CUDARuntime, MutAnyOrigin]()
 
 
 @fieldwise_init
-struct _CUDAEventState(Copyable, Defaultable, Movable):
+struct _CUDAEventState(Copyable, Defaultable, ImplicitlyCopyable, Movable):
     var expected_seq: UInt64
     var completed_seq: UInt64
 
@@ -111,16 +108,15 @@ struct CUDARuntime(Movable):
         self._event_registry_lock = BlockingSpinLock()
         self._event_registry = List[_CUDAEventState]()
 
-    fn __moveinit__(out self, var other: Self):
-        # Construct fresh locks — never bit-copy a spinlock.
+    fn __moveinit__(out self, deinit take: Self):
         self._stream_id_lock = BlockingSpinLock()
-        self._next_stream_id = other._next_stream_id
+        self._next_stream_id = take._next_stream_id
         self._event_registry_lock = BlockingSpinLock()
-        self._event_registry = other._event_registry^
+        self._event_registry = take._event_registry^
 
     fn _next_cuda_stream_id(mut self) -> UInt64:
         with BlockingScopedLock(self._stream_id_lock):
-            let stream_id = self._next_stream_id
+            var stream_id = self._next_stream_id
             self._next_stream_id += 1
             return stream_id
 
@@ -138,12 +134,12 @@ struct CUDARuntime(Movable):
             return 0
 
         with BlockingScopedLock(self._event_registry_lock):
-            let idx = _event_index_from_id(event.event_id)
+            var idx = _event_index_from_id(event.event_id)
             if idx < 0 or idx >= self._event_registry.__len__():
                 return 0
             var state = self._event_registry[idx]
             state.expected_seq += 1
-            let seq = state.expected_seq
+            var seq = state.expected_seq
             self._event_registry[idx] = state
             return seq
 
@@ -151,11 +147,10 @@ struct CUDARuntime(Movable):
         if event_id == 0:
             return
         with BlockingScopedLock(self._event_registry_lock):
-            let idx = _event_index_from_id(event_id)
+            var idx = _event_index_from_id(event_id)
             if idx < 0 or idx >= self._event_registry.__len__():
                 return
             var state = self._event_registry[idx]
-            # Keep monotonic progress in case stale callbacks complete after newer ones.
             if state.completed_seq < seq:
                 state.completed_seq = seq
                 self._event_registry[idx] = state
@@ -169,10 +164,10 @@ struct CUDARuntime(Movable):
 
         while True:
             with BlockingScopedLock(self._event_registry_lock):
-                let idx = _event_index_from_id(event_id)
+                var idx = _event_index_from_id(event_id)
                 if idx < 0 or idx >= self._event_registry.__len__():
                     return
-                let state = self._event_registry[idx]
+                var state = self._event_registry[idx]
                 if state.completed_seq == state.expected_seq:
                     return
 
@@ -193,7 +188,7 @@ struct CUDARuntime(Movable):
             return cudaSuccess
 
         with BlockingScopedLock(self._event_registry_lock):
-            let idx = _event_index_from_id(event.event_id)
+            var idx = _event_index_from_id(event.event_id)
             if idx >= 0 and idx < self._event_registry.__len__():
                 self._event_registry[idx] = _CUDAEventState()
         event.event_id = 0
@@ -211,9 +206,6 @@ struct CUDARuntime(Movable):
         except e:
             return cudaErrorNotReady
 
-        # Keep cudaEventQuery() nonblocking. Stable std.gpu.host exposes real
-        # stream wait/record APIs, but not a nonblocking event query or host
-        # completion callback equivalent to the old enqueue_function path.
         self._mark_event_completed_by_id(event.event_id, record_seq)
         return cudaSuccess
 
@@ -224,7 +216,7 @@ struct CUDARuntime(Movable):
         if event.event_id == 0:
             return cudaSuccess
 
-        var actual_stream: CUDAStreamType
+        var actual_stream = CUDAStreamType()
         try:
             actual_stream = _resolve_device_stream(stream)
         except e:
@@ -242,25 +234,23 @@ struct CUDARuntime(Movable):
 
     fn cudaEventQuery(mut self, read event: CUDAEventType) -> cudaError_t:
         if event.event_id == 0:
-            # Never recorded => ready.
             return cudaSuccess
 
         with BlockingScopedLock(self._event_registry_lock):
-            let idx = _event_index_from_id(event.event_id)
+            var idx = _event_index_from_id(event.event_id)
             if idx < 0 or idx >= self._event_registry.__len__():
                 return cudaErrorNotReady
-            let state = self._event_registry[idx]
+            var state = self._event_registry[idx]
             if state.completed_seq == state.expected_seq:
                 return cudaSuccess
         return cudaErrorNotReady
 
     fn cudaEventMarkCompleted(mut self, mut event: CUDAEventType) -> cudaError_t:
-        # Test/helper hook for code paths that want to complete the latest record explicitly.
         if event.event_id == 0:
             return cudaSuccess
 
         with BlockingScopedLock(self._event_registry_lock):
-            let idx = _event_index_from_id(event.event_id)
+            var idx = _event_index_from_id(event.event_id)
             if idx < 0 or idx >= self._event_registry.__len__():
                 return cudaErrorNotReady
             var state = self._event_registry[idx]
@@ -323,18 +313,18 @@ fn cudaSetDevice(device: Int) -> cudaError_t:
 fn cudaEventCreateWithFlags(mut event: CUDAEventType, flags: UInt32, mut runtime: CUDARuntime) -> cudaError_t:
     var result = runtime.cudaEventCreateWithFlags(event, flags)
     if result == cudaSuccess:
-        event.runtime = UnsafePointer.address_of(runtime)
+        event.runtime = UnsafePointer(to=runtime)
     return result
 
 
 fn cudaEventDestroy(mut event: CUDAEventType) -> cudaError_t:
-    if event.runtime == UnsafePointer[CUDARuntime]():
+    if event.runtime == UnsafePointer[CUDARuntime, MutAnyOrigin]():
         return cudaSuccess
     return event.runtime[].cudaEventDestroy(event)
 
 
 fn cudaEventRecord(mut event: CUDAEventType, stream: CUDAStreamType) -> cudaError_t:
-    if event.runtime == UnsafePointer[CUDARuntime]():
+    if event.runtime == UnsafePointer[CUDARuntime, MutAnyOrigin]():
         return cudaErrorNotReady
     return event.runtime[].cudaEventRecord(event, stream)
 
@@ -342,18 +332,18 @@ fn cudaEventRecord(mut event: CUDAEventType, stream: CUDAStreamType) -> cudaErro
 fn cudaStreamWaitEvent(
     stream: CUDAStreamType, event: CUDAEventType, flags: UInt32
 ) -> cudaError_t:
-    if event.runtime == UnsafePointer[CUDARuntime]():
+    if event.runtime == UnsafePointer[CUDARuntime, MutAnyOrigin]():
         return cudaSuccess
     return event.runtime[].cudaStreamWaitEvent(stream, event, flags)
 
 
 fn cudaEventQuery(read event: CUDAEventType) -> cudaError_t:
-    if event.runtime == UnsafePointer[CUDARuntime]():
+    if event.runtime == UnsafePointer[CUDARuntime, MutAnyOrigin]():
         return cudaSuccess
     return event.runtime[].cudaEventQuery(event)
 
 
 fn cudaEventMarkCompleted(mut event: CUDAEventType) -> cudaError_t:
-    if event.runtime == UnsafePointer[CUDARuntime]():
+    if event.runtime == UnsafePointer[CUDARuntime, MutAnyOrigin]():
         return cudaSuccess
     return event.runtime[].cudaEventMarkCompleted(event)

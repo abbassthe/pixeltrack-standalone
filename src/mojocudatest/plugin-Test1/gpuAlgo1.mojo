@@ -1,18 +1,15 @@
-from sys import sizeof
+from std.sys.info import size_of
 from std.gpu.host import DeviceContext
 
 from MojoBridge.DTypes import Typeable
-from CUDACORE.cms.CUDA.CUDACompat import CUDAStreamType, cudaStreamDefault
-from CUDACORE.cms.CUDA.CUDAAppContext import CUDAAppContext
-from CUDACORE.cms.CUDA.device_unique_ptr import (
+from CUDACompat import CUDAStreamType, cudaStreamDefault
+from CUDAAppContext import CUDAAppContext
+from device_unique_ptr import (
     unique_ptr as device_unique_ptr,
     make_device_unique,
     _DeviceAllocation,
 )
-from CUDACORE.cms.CUDA.host_unique_ptr import (
-    unique_ptr as host_unique_ptr,
-    make_host_unique,
-)
+from host_unique_ptr import unique_ptr as host_unique_ptr
 
 
 alias cudaStream_t = CUDAStreamType
@@ -33,11 +30,11 @@ struct TypeableFloatBuffer(Defaultable, Movable, Typeable):
         self.ptr = ptr^
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self.ptr = other.ptr^
+    fn __moveinit__(out self, deinit take: Self):
+        self.ptr = take.ptr^
 
     @always_inline
-    fn get(self) -> UnsafePointer[Float32]:
+    fn get(self) -> UnsafePointer[Float32, MutAnyOrigin]:
         return self.ptr[].get()
 
     @always_inline
@@ -48,25 +45,36 @@ struct TypeableFloatBuffer(Defaultable, Movable, Typeable):
 
 # ── GPU kernels ──────────────────────────────────────────────────────────────
 
-fn vectorAdd_kernel(
-    a: UnsafePointer[Float32],
-    b: UnsafePointer[Float32],
-    c: UnsafePointer[Float32],
+fn copy_kernel_float(
+    src: UnsafePointer[Float32, MutAnyOrigin],
+    dst: UnsafePointer[Float32, MutAnyOrigin],
     numElements: Int32,
 ):
-    from gpu import thread_idx, block_idx, block_dim
+    from std.gpu import thread_idx, block_idx, block_dim
+    var i = Int(thread_idx.x + block_idx.x * block_dim.x)
+    if i < Int(numElements):
+        dst[i] = src[i]
+
+
+fn vectorAdd_kernel(
+    a: UnsafePointer[Float32, MutAnyOrigin],
+    b: UnsafePointer[Float32, MutAnyOrigin],
+    c: UnsafePointer[Float32, MutAnyOrigin],
+    numElements: Int32,
+):
+    from std.gpu import thread_idx, block_idx, block_dim
     var i = Int(thread_idx.x + block_idx.x * block_dim.x)
     if i < Int(numElements):
         c[i] = a[i] + b[i]
 
 
 fn vectorProd_kernel(
-    a: UnsafePointer[Float32],
-    b: UnsafePointer[Float32],
-    c: UnsafePointer[Float32],
+    a: UnsafePointer[Float32, MutAnyOrigin],
+    b: UnsafePointer[Float32, MutAnyOrigin],
+    c: UnsafePointer[Float32, MutAnyOrigin],
     numElements: Int32,
 ):
-    from gpu import thread_idx, block_idx, block_dim
+    from std.gpu import thread_idx, block_idx, block_dim
     var row = Int(thread_idx.y + block_idx.y * block_dim.y)
     var col = Int(thread_idx.x + block_idx.x * block_dim.x)
     var n = Int(numElements)
@@ -75,12 +83,12 @@ fn vectorProd_kernel(
 
 
 fn matrixMul_kernel(
-    a: UnsafePointer[Float32],
-    b: UnsafePointer[Float32],
-    c: UnsafePointer[Float32],
+    a: UnsafePointer[Float32, MutAnyOrigin],
+    b: UnsafePointer[Float32, MutAnyOrigin],
+    c: UnsafePointer[Float32, MutAnyOrigin],
     numElements: Int32,
 ):
-    from gpu import thread_idx, block_idx, block_dim
+    from std.gpu import thread_idx, block_idx, block_dim
     var row = Int(thread_idx.y + block_idx.y * block_dim.y)
     var col = Int(thread_idx.x + block_idx.x * block_dim.x)
     var n = Int(numElements)
@@ -92,12 +100,12 @@ fn matrixMul_kernel(
 
 
 fn matrixMulVector_kernel(
-    a: UnsafePointer[Float32],
-    b: UnsafePointer[Float32],
-    c: UnsafePointer[Float32],
+    a: UnsafePointer[Float32, MutAnyOrigin],
+    b: UnsafePointer[Float32, MutAnyOrigin],
+    c: UnsafePointer[Float32, MutAnyOrigin],
     numElements: Int32,
 ):
-    from gpu import thread_idx, block_idx, block_dim
+    from std.gpu import thread_idx, block_idx, block_dim
     var row = Int(thread_idx.x + block_idx.x * block_dim.x)
     var n = Int(numElements)
     if row < n:
@@ -111,17 +119,6 @@ fn matrixMulVector_kernel(
 fn gpuAlgo1(
     stream: cudaStream_t, mut cuda_ctx: CUDAAppContext
 ) raises -> device_unique_ptr[Float32]:
-    var h_a = make_host_unique[Float32](
-        UInt(NUM_VALUES), cuda_ctx.host_state, stream
-    )
-    var h_b = make_host_unique[Float32](
-        UInt(NUM_VALUES), cuda_ctx.host_state, stream
-    )
-
-    for i in range(NUM_VALUES):
-        h_a[].ptr[i] = Float32(i)
-        h_b[].ptr[i] = Float32(i * i)
-
     var d_a = make_device_unique[Float32](
         UInt(NUM_VALUES), cuda_ctx.device_state, stream
     )
@@ -132,29 +129,37 @@ fn gpuAlgo1(
         UInt(NUM_VALUES), cuda_ctx.device_state, stream
     )
 
-    var actual_stream = stream.get()
-    actual_stream.enqueue_copy(
-        d_a[].get().bitcast[UInt8](),
-        h_a[].get().bitcast[UInt8](),
-        NUM_VALUES * sizeof[Float32](),
+    # Initialize d_a and d_b using temporary device buffers filled via map_to_host,
+    # then copy to managed allocations with a GPU kernel (MAX 0.26.2 lacks DeviceStream.enqueue_copy).
+    var init_ctx = DeviceContext()
+    var tmp_a = init_ctx.create_buffer_sync[DType.float32](NUM_VALUES)
+    var tmp_b = init_ctx.create_buffer_sync[DType.float32](NUM_VALUES)
+    with tmp_a.map_to_host() as ha:
+        for i in range(NUM_VALUES):
+            ha[i] = Float32(i)
+    with tmp_b.map_to_host() as hb:
+        for i in range(NUM_VALUES):
+            hb[i] = Float32(i * i)
+
+    alias copyBlock = 32
+    alias copyGrid = (NUM_VALUES + copyBlock - 1) // copyBlock
+    init_ctx.enqueue_function[copy_kernel_float, copy_kernel_float](
+        tmp_a.unsafe_ptr(), d_a[].get(), Int32(NUM_VALUES),
+        grid_dim=(copyGrid,), block_dim=(copyBlock,),
     )
-    actual_stream.enqueue_copy(
-        d_b[].get().bitcast[UInt8](),
-        h_b[].get().bitcast[UInt8](),
-        NUM_VALUES * sizeof[Float32](),
+    init_ctx.enqueue_function[copy_kernel_float, copy_kernel_float](
+        tmp_b.unsafe_ptr(), d_b[].get(), Int32(NUM_VALUES),
+        grid_dim=(copyGrid,), block_dim=(copyBlock,),
     )
+    init_ctx.synchronize()
 
     alias threadsPerBlock = 32
     alias blocksPerGrid = (NUM_VALUES + threadsPerBlock - 1) // threadsPerBlock
 
     var gpu_ctx = DeviceContext()
-    gpu_ctx.enqueue_function[vectorAdd_kernel](
-        (blocksPerGrid,),
-        (threadsPerBlock,),
-        d_a[].get(),
-        d_b[].get(),
-        d_c[].get(),
-        Int32(NUM_VALUES),
+    gpu_ctx.enqueue_function[vectorAdd_kernel, vectorAdd_kernel](
+        d_a[].get(), d_b[].get(), d_c[].get(), Int32(NUM_VALUES),
+        grid_dim=(blocksPerGrid,), block_dim=(threadsPerBlock,),
     )
 
     var d_ma = make_device_unique[Float32](
@@ -177,38 +182,25 @@ fn gpuAlgo1(
         blocksPerGrid_x = (NUM_VALUES + 31) // 32
         blocksPerGrid_y = (NUM_VALUES + 31) // 32
 
-    gpu_ctx.enqueue_function[vectorProd_kernel](
-        (blocksPerGrid_x, blocksPerGrid_y),
-        (threadsPerBlock_x, threadsPerBlock_y),
-        d_a[].get(),
-        d_b[].get(),
-        d_ma[].get(),
-        Int32(NUM_VALUES),
+    gpu_ctx.enqueue_function[vectorProd_kernel, vectorProd_kernel](
+        d_a[].get(), d_b[].get(), d_ma[].get(), Int32(NUM_VALUES),
+        grid_dim=(blocksPerGrid_x, blocksPerGrid_y),
+        block_dim=(threadsPerBlock_x, threadsPerBlock_y),
     )
-    gpu_ctx.enqueue_function[vectorProd_kernel](
-        (blocksPerGrid_x, blocksPerGrid_y),
-        (threadsPerBlock_x, threadsPerBlock_y),
-        d_a[].get(),
-        d_c[].get(),
-        d_mb[].get(),
-        Int32(NUM_VALUES),
+    gpu_ctx.enqueue_function[vectorProd_kernel, vectorProd_kernel](
+        d_a[].get(), d_c[].get(), d_mb[].get(), Int32(NUM_VALUES),
+        grid_dim=(blocksPerGrid_x, blocksPerGrid_y),
+        block_dim=(threadsPerBlock_x, threadsPerBlock_y),
     )
-    gpu_ctx.enqueue_function[matrixMul_kernel](
-        (blocksPerGrid_x, blocksPerGrid_y),
-        (threadsPerBlock_x, threadsPerBlock_y),
-        d_ma[].get(),
-        d_mb[].get(),
-        d_mc[].get(),
-        Int32(NUM_VALUES),
+    gpu_ctx.enqueue_function[matrixMul_kernel, matrixMul_kernel](
+        d_ma[].get(), d_mb[].get(), d_mc[].get(), Int32(NUM_VALUES),
+        grid_dim=(blocksPerGrid_x, blocksPerGrid_y),
+        block_dim=(threadsPerBlock_x, threadsPerBlock_y),
     )
 
-    gpu_ctx.enqueue_function[matrixMulVector_kernel](
-        (blocksPerGrid,),
-        (threadsPerBlock,),
-        d_mc[].get(),
-        d_b[].get(),
-        d_c[].get(),
-        Int32(NUM_VALUES),
+    gpu_ctx.enqueue_function[matrixMulVector_kernel, matrixMulVector_kernel](
+        d_mc[].get(), d_b[].get(), d_c[].get(), Int32(NUM_VALUES),
+        grid_dim=(blocksPerGrid,), block_dim=(threadsPerBlock,),
     )
 
     return d_a^

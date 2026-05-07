@@ -2,7 +2,7 @@ from MojoBridge.OrderedMap import OrderedMap
 
 
 @fieldwise_init
-struct TotalBytes(Copyable, Defaultable, Movable):
+struct TotalBytes(Copyable, ImplicitlyCopyable, Defaultable, Movable):
     var free: UInt
     var live: UInt
     var liveRequested: UInt

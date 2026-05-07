@@ -5,8 +5,6 @@ from utils.lock import BlockingSpinLock, BlockingScopedLock
 
 
 # C++: enum class Policy { Synchronous = 0, Asynchronous = 1, Caching = 2 };
-# can be set to @__nonmaterializable(NoneType) but may be may become depricated
-# in a future version of Mojo
 struct Policy:
     alias Synchronous: Int = 0
     alias Asynchronous: Int = 1
@@ -46,52 +44,55 @@ struct _CachingAllocatorState(Movable):
     var policy: Int
     var _allocator_lock: BlockingSpinLock
     var _allocator_initialized: Bool
-    var _allocator_ptr: UnsafePointer[CachingDeviceAllocator]
+    var _allocator_ptr: UnsafePointer[CachingDeviceAllocator, MutAnyOrigin]
 
     fn __init__(out self):
         self.policy = _selectPolicy()
         self._allocator_lock = BlockingSpinLock()
         self._allocator_initialized = False
-        self._allocator_ptr = UnsafePointer[CachingDeviceAllocator]()
+        self._allocator_ptr = UnsafePointer[CachingDeviceAllocator, MutAnyOrigin]()
 
-    fn __moveinit__(out self, var other: Self):
-        self.policy = other.policy
+    fn __moveinit__(out self, var take: Self):
+        self.policy = take.policy
         self._allocator_lock = BlockingSpinLock()
-        self._allocator_initialized = other._allocator_initialized
-        self._allocator_ptr = other._allocator_ptr
+        self._allocator_initialized = take._allocator_initialized
+        self._allocator_ptr = take._allocator_ptr
 
-    fn getCachingDeviceAllocator(mut self) -> ref [MutableOrigin.cast_from[StaticConstantOrigin]] CachingDeviceAllocator:
+    fn __del__(var self):
+        if self._allocator_initialized and self._allocator_ptr != UnsafePointer[CachingDeviceAllocator, MutAnyOrigin]():
+            self._allocator_ptr.destroy_pointee()
+            self._allocator_ptr.free()
+
+    fn getCachingDeviceAllocator(mut self) -> UnsafePointer[CachingDeviceAllocator, MutAnyOrigin]:
         with BlockingScopedLock(self._allocator_lock):
             if not self._allocator_initialized:
                 if debug:
                     _printSettings()
-                self._allocator_ptr = UnsafePointer[CachingDeviceAllocator].alloc(1)
-                self._allocator_ptr.init_pointee_move(
-                    CachingDeviceAllocator(
-                        binGrowth,
-                        minBin,
-                        maxBin,
-                        minCachedBytes(),
-                        False,  # do not skip cleanup
-                        debug
-                    )
+                self._allocator_ptr = alloc[CachingDeviceAllocator](1)
+                __get_address_as_uninit_lvalue(self._allocator_ptr.address) = CachingDeviceAllocator(
+                    binGrowth,
+                    minBin,
+                    maxBin,
+                    minCachedBytes(),
+                    False,  # do not skip cleanup
+                    debug
                 )
                 self._allocator_initialized = True
-            return self._allocator_ptr[]
+            return self._allocator_ptr
 
 
 fn minCachedBytes() -> UInt:
     var ret: UInt = UInt.MAX
-    let number_of_devices = deviceCount()
+    var number_of_devices = deviceCount()
 
     for i in range(number_of_devices):
         try:
             var ctx = DeviceContext(device_id = i)
-            let (free_mem, total_mem) = ctx.get_memory_info()
+            var (free_mem, total_mem) = ctx.get_memory_info()
             _ = total_mem
 
-            let free_bytes = UInt(free_mem)
-            let candidate = UInt(Float64(free_bytes) * maxCachedFraction)
+            var free_bytes = UInt(free_mem)
+            var candidate = UInt(Float64(free_bytes) * maxCachedFraction)
             if candidate < ret:
                 ret = candidate
         except e:
@@ -104,9 +105,9 @@ fn minCachedBytes() -> UInt:
 
 
 fn _formatBinSize(bin_size: UInt) -> String:
-    let gib = UInt(1 << 30)
-    let mib = UInt(1 << 20)
-    let kib = UInt(1 << 10)
+    var gib = UInt(1 << 30)
+    var mib = UInt(1 << 20)
+    var kib = UInt(1 << 10)
     if bin_size >= gib and (bin_size % gib) == 0:
         return String(bin_size >> 30) + " GB"
     if bin_size >= mib and (bin_size % mib) == 0:
@@ -124,7 +125,7 @@ fn _printSettings():
     print("  resulting bins:")
     var bin = minBin
     while bin <= maxBin:
-        let bin_size = CachingDeviceAllocator.IntPow(binGrowth, bin)
+        var bin_size = CachingDeviceAllocator.IntPow(binGrowth, bin)
         print("    " + _formatBinSize(bin_size))
         bin += 1
     print(
@@ -132,5 +133,3 @@ fn _printSettings():
         + String(minCachedBytes() >> 20)
         + " MB"
     )
-
-

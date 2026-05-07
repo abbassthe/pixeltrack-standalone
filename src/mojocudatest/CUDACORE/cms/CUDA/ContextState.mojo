@@ -12,12 +12,12 @@ struct ContextState(Movable):
         self.device_ = -1
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self.stream_ = other.stream_^
-        self.device_ = other.device_
+    fn __moveinit__(out self, deinit take: Self):
+        self.stream_ = take.stream_^
+        self.device_ = take.device_
 
     @always_inline
-    fn set(mut self, device: Int, owned stream: SharedStreamPtr) raises:
+    fn set(mut self, device: Int, var stream: SharedStreamPtr) raises:
         self.throwIfStream()
         self.device_ = device
         self.stream_ = stream^

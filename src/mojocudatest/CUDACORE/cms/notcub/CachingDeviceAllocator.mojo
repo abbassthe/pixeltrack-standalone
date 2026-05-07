@@ -94,7 +94,8 @@
 # *
 # */
 
-from allocator.deviceAllocatorStatus import GpuCachedBytes, TotalBytes
+from deviceAllocatorStatus import GpuCachedBytes, TotalBytes
+from std.sys.info import size_of
 from CUDACompat import (
     CUDAStreamType,
     CUDAEventType,
@@ -117,8 +118,72 @@ from MojoBridge.DTypes import (
 )
 from utils.lock import BlockingSpinLock, BlockingScopedLock
 
-@fieldwise_init
-struct CachingDeviceAllocator(Movable, Sized):
+# Descriptor for device memory allocations
+struct BlockDescriptor(Copyable, Movable, ImplicitlyCopyable):
+    var d_ptr : UnsafePointer[UInt8, MutAnyOrigin]
+    var bytes : UInt
+    var bytesRequested : UInt
+    var bin : UInt
+    var device : Int
+    var associated_stream : CUDAStreamType
+    var ready_event : CUDAEventType
+
+    # Constructor for lookup by (pointer, device).
+    @always_inline
+    fn __init__(
+        out self,
+        d_ptr: UnsafePointer[UInt8, MutAnyOrigin],
+        device: Int
+    ):
+        self.d_ptr = d_ptr
+        self.bytes = 0
+        self.bytesRequested = 0
+        self.bin = UInt.MAX
+        self.device = device
+        self.associated_stream = CUDAStreamType()
+        self.ready_event = CUDAEventType()
+
+    # Constructor for lookup ranges by device.
+    @always_inline
+    fn __init__(out self, device: Int):
+        self.d_ptr = UnsafePointer[UInt8, MutAnyOrigin]()
+        self.bytes = 0
+        self.bytesRequested = 0
+        self.bin = UInt.MAX
+        self.device = device
+        self.associated_stream = CUDAStreamType()
+        self.ready_event = CUDAEventType()
+
+
+    @always_inline
+    @staticmethod
+    fn PtrCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
+        if a.device == b.device:
+            return a.d_ptr.address < b.d_ptr.address
+        return a.device < b.device
+
+
+    @always_inline
+    @staticmethod
+    fn SizeCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
+        if a.device == b.device:
+            return a.bytes < b.bytes
+        return a.device < b.device
+
+struct BlockByPtrCompare:
+    @always_inline
+    @staticmethod
+    fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
+        return BlockDescriptor.PtrCompare(a, b)
+
+struct BlockBySizeCompare:
+    @always_inline
+    @staticmethod
+    fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
+        return BlockDescriptor.SizeCompare(a, b)
+
+
+struct CachingDeviceAllocator(Movable):
 
     #---------------------------------------------------------------------
     # Constants
@@ -131,7 +196,7 @@ struct CachingDeviceAllocator(Movable, Sized):
     comptime INVALID_SIZE : UInt = UInt.MAX
 
     # the following is not to be documented
- 
+
     comptime INVALID_DEVICE_ORDINAL : Int = -1
 
 
@@ -142,73 +207,6 @@ struct CachingDeviceAllocator(Movable, Sized):
     alias cudaStream_t = CUDAStreamType
     alias cudaEvent_t = CUDAEventType
     alias DevicePtr = UnsafePointer[UInt8]
-
-    """
-      Descriptor for device memory allocations
-    """
-    struct BlockDescriptor:
-        var d_ptr : DevicePtr
-        var bytes : UInt
-        var bytesRequested : UInt
-        var bin : UInt
-        var device : Int
-        var associated_stream : cudaStream_t
-        var ready_event : cudaEvent_t
-
-        # Constructor for lookup by (pointer, device).
-        @always_inline
-        fn __init__(
-            out self,
-            d_ptr: DevicePtr,
-            device: Int
-        ):
-            self.d_ptr = d_ptr
-            self.bytes = 0
-            self.bytesRequested = 0
-            self.bin = INVALID_BIN
-            self.device = device
-            self.associated_stream = cudaStream_t()
-            self.ready_event = cudaEvent_t()
-
-        # Constructor for lookup ranges by device.
-        @always_inline
-        fn __init__(out self, device: Int):
-            self.d_ptr = DevicePtr()
-            self.bytes = 0
-            self.bytesRequested = 0
-            self.bin = INVALID_BIN
-            self.device = device
-            self.associated_stream = cudaStream_t()
-            self.ready_event = cudaEvent_t()
-
-
-        @always_inline
-        @staticmethod
-        fn PtrCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
-            if a.device == b.device:
-                return a.d_ptr.address < b.d_ptr.address
-            return a.device < b.device
-
-
-        @always_inline
-        @staticmethod
-        fn SizeCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
-            if a.device == b.device:
-                return a.bytes < b.bytes
-            return a.device < b.device
-
-    struct BlockByPtrCompare:
-        @always_inline
-        @staticmethod
-        fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
-            return BlockDescriptor.PtrCompare(a, b)
-
-    struct BlockBySizeCompare:
-        @always_inline
-        @staticmethod
-        fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
-            return BlockDescriptor.SizeCompare(a, b)
-
 
     alias CachedBlocks = OrderedMultiSet[BlockDescriptor, BlockBySizeCompare]
     alias BusyBlocks = OrderedMultiSet[BlockDescriptor, BlockByPtrCompare]
@@ -243,7 +241,7 @@ struct CachingDeviceAllocator(Movable, Sized):
 
         if value * base < value:
             # Overflow
-            power = UInt(8 * sizeof[UInt]())
+            power = UInt(8 * size_of[UInt]())
             rounded_bytes = UInt.MAX
             return
 
@@ -270,8 +268,8 @@ struct CachingDeviceAllocator(Movable, Sized):
     var debug: Bool  # Whether or not to print (de)allocation events to stdout
 
     var cached_bytes: GpuCachedBytes  # Map of device ordinal to aggregate cached bytes on that device
-    var cached_blocks: CachedBlocks  # Set of cached device allocations available for reuse
-    var live_blocks: BusyBlocks  # Set of live device allocations currently in use
+    var cached_blocks: Self.CachedBlocks  # Set of cached device allocations available for reuse
+    var live_blocks: Self.BusyBlocks  # Set of live device allocations currently in use
 
     var alloc_runtime: CUDARuntime  # Isolated runtime for internal event bookkeeping
     var alloc_state: _AllocateDeviceState  # Isolated device allocation state for pool blocks
@@ -287,8 +285,8 @@ struct CachingDeviceAllocator(Movable, Sized):
         out self,
         bin_growth: UInt,
         min_bin: UInt = 1,
-        max_bin: UInt = INVALID_BIN,
-        max_cached_bytes: UInt = INVALID_SIZE,
+        max_bin: UInt = Self.INVALID_BIN,
+        max_cached_bytes: UInt = Self.INVALID_SIZE,
         skip_cleanup: Bool = False,
         debug: Bool = False
     ):
@@ -302,8 +300,8 @@ struct CachingDeviceAllocator(Movable, Sized):
         self.skip_cleanup = skip_cleanup
         self.debug = debug
         self.cached_bytes = GpuCachedBytes()
-        self.cached_blocks = CachedBlocks()
-        self.live_blocks = BusyBlocks()
+        self.cached_blocks = Self.CachedBlocks()
+        self.live_blocks = Self.BusyBlocks()
         self.alloc_runtime = CUDARuntime()
         self.alloc_state = _AllocateDeviceState()
 
@@ -335,10 +333,26 @@ struct CachingDeviceAllocator(Movable, Sized):
         self.skip_cleanup = skip_cleanup
         self.debug = debug
         self.cached_bytes = GpuCachedBytes()
-        self.cached_blocks = CachedBlocks()
-        self.live_blocks = BusyBlocks()
+        self.cached_blocks = Self.CachedBlocks()
+        self.live_blocks = Self.BusyBlocks()
         self.alloc_runtime = CUDARuntime()
         self.alloc_state = _AllocateDeviceState()
+
+    fn __moveinit__(out self, deinit take: Self):
+        self.mutex = BlockingSpinLock()
+        self.bin_growth = take.bin_growth
+        self.min_bin = take.min_bin
+        self.max_bin = take.max_bin
+        self.min_bin_bytes = take.min_bin_bytes
+        self.max_bin_bytes = take.max_bin_bytes
+        self.max_cached_bytes = take.max_cached_bytes
+        self.skip_cleanup = take.skip_cleanup
+        self.debug = take.debug
+        self.cached_bytes = take.cached_bytes^
+        self.cached_blocks = take.cached_blocks^
+        self.live_blocks = take.live_blocks^
+        self.alloc_runtime = take.alloc_runtime^
+        self.alloc_state = take.alloc_state^
 
     #/**
     # * \brief Sets the limit on the number bytes this allocator is allowed to cache per device.
@@ -369,16 +383,16 @@ struct CachingDeviceAllocator(Movable, Sized):
     fn DeviceAllocate(
         mut self,
         mut device: Int,
-        out d_ptr: DevicePtr,
+        out d_ptr: UnsafePointer[UInt8, MutAnyOrigin],
         bytes: UInt,
-        active_stream: cudaStream_t = cudaStreamDefault
-    ) -> cudaError_t raises:
+        active_stream: CUDAStreamType = cudaStreamDefault
+    ) raises -> cudaError_t:
         # CMS: use RAII instead of (un)locking explicitly
-        d_ptr = DevicePtr()
-        var entrypoint_device = INVALID_DEVICE_ORDINAL
+        d_ptr = UnsafePointer[UInt8, MutAnyOrigin]()
+        var entrypoint_device = Self.INVALID_DEVICE_ORDINAL
         var error: cudaError_t = cudaSuccess
 
-        if device == INVALID_DEVICE_ORDINAL:
+        if device == Self.INVALID_DEVICE_ORDINAL:
             # CMS: throw exception on error
 
             error = cudaGetDevice(entrypoint_device)
@@ -399,7 +413,7 @@ struct CachingDeviceAllocator(Movable, Sized):
             # Bin is greater than our maximum bin: allocate the request
             # exactly and give out-of-bounds bin.  It will not be cached
             # for reuse when returned.
-            search_key.bin = INVALID_BIN
+            search_key.bin = Self.INVALID_BIN
             search_key.bytes = bytes
         else:
             # Search for a suitable cached allocation: lock
@@ -624,12 +638,12 @@ struct CachingDeviceAllocator(Movable, Sized):
     # */
     fn DeviceAllocate(
         mut self,
-        out d_ptr: DevicePtr,
+        out d_ptr: UnsafePointer[UInt8, MutAnyOrigin],
         bytes: UInt,
-        active_stream: cudaStream_t = cudaStreamDefault
-    ) -> cudaError_t raises:
+        active_stream: CUDAStreamType = cudaStreamDefault
+    ) raises -> cudaError_t:
         return self.DeviceAllocate(
-            INVALID_DEVICE_ORDINAL,
+            Self.INVALID_DEVICE_ORDINAL,
             d_ptr,
             bytes,
             active_stream
@@ -645,14 +659,14 @@ struct CachingDeviceAllocator(Movable, Sized):
     fn DeviceFree(
         mut self,
         mut device: Int,
-        d_ptr: DevicePtr
-    ) -> cudaError_t raises:
-        var entrypoint_device = INVALID_DEVICE_ORDINAL
+        d_ptr: UnsafePointer[UInt8, MutAnyOrigin]
+    ) raises -> cudaError_t:
+        var entrypoint_device = Self.INVALID_DEVICE_ORDINAL
         var error: cudaError_t = cudaSuccess
         var recached = False
         var search_key = BlockDescriptor(d_ptr, device)
 
-        if device == INVALID_DEVICE_ORDINAL:
+        if device == Self.INVALID_DEVICE_ORDINAL:
             error = cudaGetDevice(entrypoint_device)
             if error != cudaSuccess:
                 return error
@@ -674,7 +688,7 @@ struct CachingDeviceAllocator(Movable, Sized):
 
                 # Keep the returned allocation if bin is valid and we won't exceed the max cached threshold.
                 if (
-                    (search_key.bin != INVALID_BIN) and
+                    (search_key.bin != Self.INVALID_BIN) and
                     (totals.free + search_key.bytes <= self.max_cached_bytes)
                 ):
                     recached = True
@@ -754,14 +768,14 @@ struct CachingDeviceAllocator(Movable, Sized):
     # */
     fn DeviceFree(
         mut self,
-        d_ptr: DevicePtr
-    ) -> cudaError_t raises:
-        return self.DeviceFree(INVALID_DEVICE_ORDINAL, d_ptr)
+        d_ptr: UnsafePointer[UInt8, MutAnyOrigin]
+    ) raises -> cudaError_t:
+        return self.DeviceFree(Self.INVALID_DEVICE_ORDINAL, d_ptr)
 
     #/**
     # * \brief Frees all cached device allocations on all devices.
     # */
-    fn FreeAllCached(mut self) -> cudaError_t raises:
+    fn FreeAllCached(mut self) raises -> cudaError_t:
         var error: cudaError_t = cudaSuccess
 
         with BlockingScopedLock(self.mutex):

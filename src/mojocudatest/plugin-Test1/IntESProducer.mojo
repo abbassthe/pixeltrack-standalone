@@ -18,8 +18,8 @@ struct IntESProducer(Defaultable, ESProducer, Movable, Typeable):
         self.x = 0
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self.x = other.x
+    fn __moveinit__(out self, var take: Self):
+        self.x = take.x
 
     fn produce(mut self, mut eventSetup: EventSetup):
         try:

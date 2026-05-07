@@ -48,7 +48,7 @@ struct Source(Defaultable, Movable, Typeable):
         self._runForMinutes = 0
         self._startTime = 0
         self._numEventsTimeLastCheck = 0
-        self._shouldStop = 0
+        self._shouldStop = False
 
         self._numEvents = 0
         self._rawToken = EDPutTokenT[FEDRawDataCollection]()
@@ -75,7 +75,7 @@ struct Source(Defaultable, Movable, Typeable):
             self._runForMinutes = runForMinutes
             self._startTime = 0
             self._numEventsTimeLastCheck = 0
-            self._shouldStop = 0
+            self._shouldStop = False
 
             self._numEvents = 0
             self._rawToken = reg.produces[FEDRawDataCollection]()
@@ -141,24 +141,25 @@ struct Source(Defaultable, Movable, Typeable):
             return Self()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._maxEvents = other._maxEvents
+    fn __moveinit__(out self, deinit take: Self):
+        self._maxEvents = take._maxEvents
 
-        self._runForMinutes = other._runForMinutes
-        self._startTime = other._startTime
-        self._numEventsTimeLastCheck = other._numEventsTimeLastCheck
-        self._shouldStop = other._shouldStop
+        self._runForMinutes = take._runForMinutes
+        self._startTime = take._startTime
+        self._numEventsTimeLastCheck = take._numEventsTimeLastCheck
+        self._shouldStop = take._shouldStop
 
-        self._numEvents = other._numEvents
-        self._rawToken = other._rawToken
-        self._digiClusterToken = other._digiClusterToken
-        self._trackToken = other._trackToken
-        self._vertexToken = other._vertexToken
-        self._raw = other._raw^
-        self._digiclusters = other._digiclusters^
-        self._tracks = other._tracks^
-        self._vertices = other._vertices^
-        self._validation = other._validation
+        self._numEvents = take._numEvents
+        self._rawToken = take._rawToken
+        self._digiClusterToken = take._digiClusterToken
+        self._trackToken = take._trackToken
+        self._vertexToken = take._vertexToken
+        self._validation = take._validation
+        self._raw = take._raw^
+        self._digiclusters = take._digiclusters^
+        self._tracks = take._tracks^
+        self._vertices = take._vertices^
+
 
     @always_inline
     fn reconfigure(mut self, var maxEvents: Int32, var runForMinutes: Int32):
@@ -183,12 +184,12 @@ struct Source(Defaultable, Movable, Typeable):
 
     fn produce(
         mut self, streamId: Int32, ref reg: ProductRegistry
-    ) -> UnsafePointer[Event]:
+    ) -> UnsafePointer[Event, MutAnyOrigin]:
         """
         Returns a HEAP-ALLOCATED event. Deallocate memory after using.
         Note: When Mojo supports this, it would be optimal to revamp this function with an Optional[OwnedPointer[Event]] return value.
         """
-        var res = UnsafePointer[Event]()
+        var res = UnsafePointer[Event, MutAnyOrigin]()
         if self._shouldStop:
             return res
         var old = self._numEvents
@@ -227,8 +228,8 @@ struct Source(Defaultable, Movable, Typeable):
             )
             ev.put[TrackCount](self._trackToken, self._tracks[index])
             ev.put[VertexCount](self._vertexToken, self._vertices[index])
-        res = UnsafePointer[Event].alloc(1)
-        res.init_pointee_move(ev^)
+        res = alloc[Event](1)
+        __get_address_as_uninit_lvalue(res.address) = ev^
         return res
 
     @staticmethod

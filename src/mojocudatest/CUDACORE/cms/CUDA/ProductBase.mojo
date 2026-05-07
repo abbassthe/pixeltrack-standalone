@@ -1,4 +1,4 @@
-from memory import Arc
+from std.memory.arc_pointer import ArcPointer
 from os.atomic import Atomic
 
 from CUDACompat import CUDAStreamType, CUDAEventType, cudaEventQuery, cudaSuccess
@@ -40,20 +40,20 @@ struct ProductBase(Movable):
     fn __init__(
         out self,
         device: Int,
-        owned stream: SharedStreamPtr,
-        owned event: SharedEventPtr,
+        var stream: SharedStreamPtr,
+        var event: SharedEventPtr,
     ):
         self.stream_ = stream^
         self.event_ = event^
         self.mayReuseStream_ = Atomic[DType.uint8](1)
         self.device_ = device
 
-    fn __moveinit__(out self, var other: Self):
-        self.stream_ = other.stream_^
-        self.event_ = other.event_^
+    fn __moveinit__(out self, deinit take: Self):
+        self.stream_ = take.stream_^
+        self.event_ = take.event_^
         # Mojo: Atomic is not copyable/movable — read value and construct fresh
-        self.mayReuseStream_ = Atomic[DType.uint8](other.mayReuseStream_.load())
-        self.device_ = other.device_
+        self.mayReuseStream_ = Atomic[DType.uint8](take.mayReuseStream_.load())
+        self.device_ = take.device_
 
     fn __del__(var self):
         # Make sure that the production of the product in the GPU is
@@ -101,8 +101,6 @@ struct ProductBase(Movable):
         return self.stream_
 
     fn mayReuseStream(mut self) -> Bool:
-        var expected: UInt8 = 1
-        var changed = self.mayReuseStream_.compare_exchange_weak(expected, 0)
-        # If the current thread is the one flipping the flag, it may
-        # reuse the stream.
-        return changed
+        # compare_exchange_weak not available in Mojo 0.26.2; fetch_sub is equivalent
+        # for this binary flag: first caller decrements 1→0 and gets True.
+        return self.mayReuseStream_.fetch_sub(1) == UInt8(1)

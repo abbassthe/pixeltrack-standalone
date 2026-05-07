@@ -1,15 +1,15 @@
 from MojoBridge.DTypes import Typeable
 
 
-struct ESWrapperBase(Copyable, Defaultable, Movable, Typeable):
-    var _ptr: UnsafePointer[NoneType]
+struct ESWrapperBase(Copyable, Defaultable, ImplicitlyCopyable, Movable, Typeable):
+    var _ptr: UnsafePointer[NoneType, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
-        self._ptr = UnsafePointer[NoneType]()
+        self._ptr = UnsafePointer[NoneType, MutAnyOrigin]()
 
     @always_inline
-    fn product(self) -> UnsafePointer[NoneType, mut=False]:
+    fn product(self) -> UnsafePointer[NoneType, MutAnyOrigin]:
         return self._ptr
 
     @staticmethod
@@ -22,17 +22,17 @@ fn det_blank(mut wrapper: ESWrapperBase):
     pass
 
 
-struct ESWrapper[T: Typeable & Movable](Movable, Typeable):
-    var _ptr: UnsafePointer[T]
+struct ESWrapper[T: Typeable & Movable & ImplicitlyDestructible](Movable, Typeable):
+    var _ptr: UnsafePointer[Self.T, MutAnyOrigin]
 
     @always_inline
-    fn __init__(out self, var obj: T):
-        self._ptr = UnsafePointer[T].alloc(1)
-        self._ptr.init_pointee_move(obj^)
+    fn __init__(out self, var obj: Self.T):
+        self._ptr = alloc[Self.T](1)
+        __get_address_as_uninit_lvalue(self._ptr.address) = obj^
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    fn __moveinit__(out self, var take: Self):
+        self._ptr = take._ptr
 
     @always_inline
     fn delete(self):
@@ -40,13 +40,13 @@ struct ESWrapper[T: Typeable & Movable](Movable, Typeable):
         self._ptr.free()
 
     @always_inline
-    fn product(self) -> UnsafePointer[T, mut=False]:
+    fn product(self) -> UnsafePointer[Self.T, MutAnyOrigin]:
         return self._ptr
 
     @staticmethod
     @always_inline
     fn dtype() -> String:
-        return "ESWrapper[" + T.dtype() + "]"
+        return "ESWrapper[" + Self.T.dtype() + "]"
 
 
 struct EventSetup(Defaultable, Movable, Typeable):
@@ -59,14 +59,18 @@ struct EventSetup(Defaultable, Movable, Typeable):
         self._dets = Dict[String, fn (mut ESWrapperBase)]()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
-        self._typeToProduct = other._typeToProduct^
-        self._dets = other._dets^
+    fn __moveinit__(out self, deinit take: Self):
+        self._typeToProduct = take._typeToProduct^
+        self._dets = take._dets^
 
     fn __del__(var self):
+        var keys = List[String]()
         for k in self._typeToProduct.keys():
+            keys.append(k)
+        for k in keys:
             try:
-                self._dets[k](self._typeToProduct[k])
+                var det_fn = self._dets[k]
+                det_fn(self._typeToProduct[k])
             except e:
                 print(
                     (
@@ -78,9 +82,9 @@ struct EventSetup(Defaultable, Movable, Typeable):
                     e,
                 )
 
-    fn put[T: Typeable & Movable](mut self, var prod: T) raises:
+    fn put[T: Typeable & Movable & ImplicitlyDestructible](mut self, var prod: T) raises:
         @always_inline
-        fn det[T: Typeable & Movable](mut wrapper: ESWrapperBase):
+        fn det[T: Typeable & Movable & ImplicitlyDestructible](mut wrapper: ESWrapperBase):
             rebind[ESWrapper[T]](wrapper).delete()
 
         if T.dtype() in self._typeToProduct:
@@ -90,7 +94,7 @@ struct EventSetup(Defaultable, Movable, Typeable):
         )
         self._dets[T.dtype()] = det[T]
 
-    fn get[T: Typeable & Movable](self) raises -> ref [self._typeToProduct] T:
+    fn get[T: Typeable & Movable & ImplicitlyDestructible](self) raises -> ref [self._typeToProduct] T:
         if T.dtype() not in self._typeToProduct:
             raise "RuntimeError: Product of type " + T.dtype() + " is not produced."
         return rebind[ESWrapper[T]](self._typeToProduct[T.dtype()]).product()[]
