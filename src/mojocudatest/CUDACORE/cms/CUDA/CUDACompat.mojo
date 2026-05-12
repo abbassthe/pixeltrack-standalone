@@ -39,7 +39,7 @@ struct CUDAStreamType(Copyable, ImplicitlyCopyable, Defaultable, ImplicitlyDestr
     fn get(self) raises -> DeviceStream:
         if self.stream:
             return self.stream.value()
-        var ctx = DeviceContext()
+        var ctx = DeviceContext(api="cuda")
         return ctx.stream()
 
     @always_inline
@@ -262,7 +262,7 @@ struct CUDARuntime(Movable):
 
 @always_inline
 fn _default_device_stream() raises -> CUDAStreamType:
-    var ctx = DeviceContext()
+    var ctx = DeviceContext(api="cuda")
     return CUDAStreamType(ctx.stream())
 
 
@@ -283,7 +283,7 @@ fn _ensure_real_event(mut event: CUDAEventType) -> Bool:
         return True
 
     try:
-        var ctx = DeviceContext()
+        var ctx = DeviceContext(api="cuda")
         event.real_event = ctx.create_event()
         event.has_real_event = True
         return True

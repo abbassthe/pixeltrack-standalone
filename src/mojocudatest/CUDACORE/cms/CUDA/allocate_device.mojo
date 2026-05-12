@@ -33,7 +33,7 @@ struct _AllocateDeviceState(Movable):
             return DevicePtr()
         try:
             # keep the DeviceBuffer alive as long as you intend to use the pointer.
-            var ctx = DeviceContext(device_id = Int(device))
+            var ctx = DeviceContext(api="cuda", device_id = Int(device))
             var buffer = ctx.create_buffer_sync[DType.uint8](Int(nbytes))
             var ptr = buffer.unsafe_ptr()
             if ptr != DevicePtr():
@@ -61,6 +61,3 @@ struct _AllocateDeviceState(Movable):
                         pass
                     break
                 i += 1
-
-
-

@@ -75,9 +75,11 @@ struct TestProducer(Defaultable, EDProducer, Typeable):
                 sep="",
             )
 
-            var ctx = ScopedContextProduce(event.streamID(), self._cudaCtx)
-            var result = gpuAlgo1(ctx.stream(), self._cudaCtx[])
-            ctx.emplace(
+            var ctx_value = ScopedContextProduce(event.streamID(), self._cudaCtx)
+            var ctx = alloc[ScopedContextProduce](1)
+            __get_address_as_uninit_lvalue(ctx.address) = ctx_value^
+            var result = gpuAlgo1(ctx[].stream(), self._cudaCtx[])
+            ctx[].emplace(
                 event, self._putToken, TypeableFloatBuffer(result^)
             )
         except e:

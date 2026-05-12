@@ -35,8 +35,8 @@ struct EventProcessor(Defaultable, Typeable):
         var runForMinutes: Int,
         var path: Path,
         var validation: Bool,
-        mut esreg: Framework.ESPluginFactory.Registry,
-        mut edreg: Framework.PluginFactory.Registry,
+        esreg: UnsafePointer[Framework.ESPluginFactory.Registry, MutAnyOrigin],
+        edreg: UnsafePointer[Framework.PluginFactory.Registry, MutAnyOrigin],
     ):
         try:
             self._registry = ProductRegistry()
@@ -48,8 +48,8 @@ struct EventProcessor(Defaultable, Typeable):
             self._maxEvents = maxEvents
             self._runForMinutes = runForMinutes
 
-            for name in ESPluginFactory.getAll(esreg):
-                var esp = ESPluginFactory.create(name, path, esreg)
+            for name in ESPluginFactory.getAll(esreg[]):
+                var esp = ESPluginFactory.create(name, path, esreg[])
                 esp.produce(self._eventSetup)
 
             self._schedule = StreamSchedule(

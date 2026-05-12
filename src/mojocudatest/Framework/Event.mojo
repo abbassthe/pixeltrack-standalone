@@ -20,6 +20,7 @@ struct WrapperBase(Copyable, Defaultable, ImplicitlyCopyable, Movable, Typeable)
     @always_inline
     fn __moveinit__(out self, var take: Self):
         self._ptr = take._ptr
+        take._ptr = UnsafePointer[NoneType, MutAnyOrigin]()
 
     @always_inline
     fn product(self) -> UnsafePointer[NoneType, MutAnyOrigin]:
@@ -45,12 +46,14 @@ struct Wrapper[T: Typeable & Movable & ImplicitlyDestructible](Movable, Typeable
 
     @always_inline
     fn delete(self):
-        self._ptr.destroy_pointee()
+        if self._ptr == UnsafePointer[Self.T, MutAnyOrigin]():
+            return
         self._ptr.free()
 
     @always_inline
     fn __moveinit__(out self, var take: Self):
         self._ptr = take._ptr
+        take._ptr = UnsafePointer[Self.T, MutAnyOrigin]()
 
     @always_inline
     fn product(self) -> UnsafePointer[Self.T, MutAnyOrigin]:

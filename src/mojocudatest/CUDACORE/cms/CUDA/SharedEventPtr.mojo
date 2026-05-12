@@ -93,8 +93,8 @@ struct _EventOwner(Movable):
         self.event = event^
         self.cache = cache
 
-    fn __moveinit__(out self, var take: Self):
-        self.event = take.event
+    fn __moveinit__(out self, deinit take: Self):
+        self.event = take.event^
         self.cache = take.cache
         take.event = CUDAEventType()
         take.cache = UnsafePointer[_EventCacheSlot, MutAnyOrigin]()

@@ -3,4 +3,7 @@ from deviceCount import deviceCount
 
 
 fn chooseDevice(id: StreamID) -> Int:
-    return Int(id) % deviceCount()
+    var count = deviceCount()
+    if count <= 0:
+        return 0
+    return Int(id) % count

@@ -1,4 +1,5 @@
 from collections import Deque
+from sys.terminate import exit
 
 from Framework.Event import Event
 from Framework.EventSetup import EventSetup
@@ -31,7 +32,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
         reg: UnsafePointer[ProductRegistry, MutAnyOrigin],
         source: UnsafePointer[Source, MutAnyOrigin],
         eventSetup: UnsafePointer[EventSetup, MutAnyOrigin],
-        mut edreg: Framework.PluginFactory.Registry,
+        edreg: UnsafePointer[Framework.PluginFactory.Registry, MutAnyOrigin],
         streamId: Int32 = 0,
     ):
         try:
@@ -42,7 +43,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             self._cuda_ctx = alloc[CUDAAppContext](1)
             __get_address_as_uninit_lvalue(self._cuda_ctx.address) = CUDAAppContext()
 
-            var nModules = PluginFactory.size(edreg)
+            var nModules = PluginFactory.size(edreg[])
             debug_assert(nModules > 0)
 
             var producers = List[EDProducerConcrete](capacity=nModules)
@@ -50,10 +51,10 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             var in_degree = List[Int](length=nModules, fill=0)
 
             var i: Int = 0
-            for name in PluginFactory.getAll(edreg):
+            for name in PluginFactory.getAll(edreg[]):
                 self._registry[].beginModuleConstruction(Int32(i + 1))
                 producers.append(
-                    PluginFactory.create(name, self._registry[], edreg)
+                    PluginFactory.create(name, self._registry[], edreg[])
                 )
                 # remove dependency on FEDRawDataCollection from resolver logic
                 # it is the parent of all producers (guaranteed by Source)
@@ -113,13 +114,12 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
         self._cuda_ctx = take._cuda_ctx
 
     fn run(mut self):
-        var event: Event
         var ptr = self._source[].produce(self._streamId, self._registry[])
         while ptr != UnsafePointer[Event, MutAnyOrigin]():
-            event = ptr.take_pointee()
-            ptr.free()
             for i in range(self._path.__len__()):
-                self._path[i].produce(event, self._eventSetup[])
+                self._path[i].produce(ptr[], self._eventSetup[])
+            if self._source[].maxEvents() >= 0 and self._source[].processedEvents() >= self._source[].maxEvents():
+                exit(0)
             ptr = self._source[].produce(self._streamId, self._registry[])
 
     fn endJob(mut self):

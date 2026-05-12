@@ -73,7 +73,13 @@ fn main() raises:
         fwkModule[TestProducer](_edreg)
 
     var processor = EventProcessor(
-        warmupEvents, maxEvents, runForMinutes, path, False, _esreg, _edreg
+        warmupEvents,
+        maxEvents,
+        runForMinutes,
+        path,
+        False,
+        UnsafePointer(to=_esreg),
+        UnsafePointer(to=_edreg),
     )
 
     if runForMinutes < 0:
@@ -106,3 +112,4 @@ fn main() raises:
         nevents / time, "events/s, CPU usage:",
         round(cpu / time * 100), "%",
     )
+    exit(0)

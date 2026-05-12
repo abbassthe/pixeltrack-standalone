@@ -39,9 +39,9 @@ struct _AllocateHostState(Movable):
             return HostPtr()
 
         try:
-            var ctx = DeviceContext()
+            var ctx = DeviceContext(api="cuda")
             if device >= Int32(0):
-                ctx = DeviceContext(device_id = Int(device))
+                ctx = DeviceContext(api="cuda", device_id = Int(device))
             var buf = ctx.enqueue_create_host_buffer[DType.uint8](Int(nbytes))
             ctx.synchronize()          # ensure allocation is complete
 

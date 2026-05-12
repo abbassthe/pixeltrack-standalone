@@ -21,7 +21,7 @@ struct StreamMaker(ReusableObjectMaker, Movable):
 
     def make(mut self) -> CUDAStreamType:
         try:
-            var ctx = DeviceContext(device_id=self.dev)
+            var ctx = DeviceContext(api="cuda", device_id=self.dev)
             return CUDAStreamType(ctx.create_stream())
         except:
             return CUDAStreamType()

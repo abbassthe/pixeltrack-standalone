@@ -113,25 +113,22 @@ struct EDProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
 
 struct Registry(Typeable):
     alias _pluginRegistryType = Dict[String, EDProducerConcrete]
-    var _pluginRegistry: Self._pluginRegistryType
+    var _pluginRegistry: UnsafePointer[Self._pluginRegistryType, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
-        self._pluginRegistry = {}
-
-
-    fn __del__(var self):
-        self.delete()
+        self._pluginRegistry = alloc[Self._pluginRegistryType](1)
+        __get_address_as_uninit_lvalue(self._pluginRegistry.address) = Self._pluginRegistryType()
 
     @always_inline
     fn __getitem__(self, var name: String) raises -> EDProducerConcrete:
-        return self._pluginRegistry[name^]
+        return self._pluginRegistry[][name^]
 
     @always_inline
     fn __setitem__(
         mut self, var name: String, var esproducer: EDProducerConcrete
     ) raises:
-        self._pluginRegistry[name^] = esproducer^
+        self._pluginRegistry[][name^] = esproducer^
 
     @always_inline
     fn delete(mut self):
@@ -154,27 +151,28 @@ struct PluginFactory:
     @staticmethod
     @always_inline
     fn getAll(
-        mut reg: Registry,
+        ref reg: Registry,
     ) -> _DictKeyIter[
         Registry._pluginRegistryType.K,
         Registry._pluginRegistryType.V,
         Registry._pluginRegistryType.H,
-        origin_of(reg._pluginRegistry),
+        origin_of(reg._pluginRegistry[]),
     ]:
-        return reg._pluginRegistry.keys()
+        return reg._pluginRegistry[].keys()
 
     @staticmethod
     @always_inline
-    fn size(mut reg: Registry) -> Int:
-        return reg._pluginRegistry.__len__()
+    fn size(ref reg: Registry) -> Int:
+        return reg._pluginRegistry[].__len__()
 
     @staticmethod
     @always_inline
     fn create(
-        var name: String, mut preg: ProductRegistry, mut reg: Registry
+        var name: String, mut preg: ProductRegistry, ref reg: Registry
     ) raises -> EDProducerConcrete:
-        reg[name].create(preg)
-        return reg[name^]
+        var producer = reg[name^]
+        producer.create(preg)
+        return producer^
 
 
 @always_inline

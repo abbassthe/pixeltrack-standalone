@@ -121,17 +121,14 @@ struct ReusableObjectHolder[T: Copyable & ImplicitlyDestructible](Movable):
     # If one is available, returns ArcPointer[_HeldItem[T]] whose destructor automatically
     # returns the item to the pool — equivalent to shared_ptr<T> with custom deleter.
     # Use this function in conjunction with add().
-    fn tryToGet(mut self) -> ArcPointer[_HeldItem[Self.T]]:
+    fn tryToGet(mut self) -> Optional[ArcPointer[_HeldItem[Self.T]]]:
         var item = self.m_availableQueue.dequeue()
         if item:
             _ = self.m_outstandingObjects.fetch_add(1)
             return ArcPointer[_HeldItem[Self.T]](
                 _HeldItem[Self.T](item^, UnsafePointer(to=self))
             )
-        # Empty Arc — equivalent to std::shared_ptr<T>{}
-        return ArcPointer[_HeldItem[Self.T]](
-            _HeldItem[Self.T](None, UnsafePointer[ReusableObjectHolder[Self.T], MutAnyOrigin]())
-        )
+        return None
 
     # Private — mirrors C++ addBack, called only by _HeldItem.__del__.
     fn _addBack(mut self, var item: Self.T):
@@ -148,19 +145,19 @@ fn makeOrGet[FM: ReusableObjectMaker](
     mut holder: ReusableObjectHolder[FM.Output], mut iMakeFunc: FM
 ) raises -> ArcPointer[_HeldItem[FM.Output]]:
     var returnValue = holder.tryToGet()
-    while not returnValue[]._item:
+    while not returnValue:
         holder.add(iMakeFunc.make())
         returnValue = holder.tryToGet()
-    return returnValue
+    return returnValue.take()
 
 
 fn makeOrGetAndClear[FM: ReusableObjectFactory](
     mut holder: ReusableObjectHolder[FM.Output], mut iFactory: FM
 ) raises -> ArcPointer[_HeldItem[FM.Output]]:
     var returnValue = holder.tryToGet()
-    while not returnValue[]._item:
+    while not returnValue:
         holder.add(iFactory.make())
         returnValue = holder.tryToGet()
 
-    iFactory.clear(returnValue[]._item.value())
-    return returnValue
+    iFactory.clear(returnValue.value()[]._item.value())
+    return returnValue.take()

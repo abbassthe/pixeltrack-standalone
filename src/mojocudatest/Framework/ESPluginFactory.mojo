@@ -142,7 +142,7 @@ struct ESPluginFactory:
     @staticmethod
     @always_inline
     fn getAll(
-        mut reg: Registry,
+        ref reg: Registry,
     ) -> _DictKeyIter[
         Registry._pluginRegistryType.K,
         Registry._pluginRegistryType.V,
@@ -153,16 +153,17 @@ struct ESPluginFactory:
 
     @staticmethod
     @always_inline
-    fn size(mut reg: Registry) -> Int:
+    fn size(ref reg: Registry) -> Int:
         return reg._pluginRegistry.__len__()
 
     @staticmethod
     @always_inline
     fn create(
-        var name: String, var path: Path, mut reg: Registry
+        var name: String, var path: Path, ref reg: Registry
     ) raises -> ESProducerConcrete:
-        reg[name].create(path^)
-        return reg[name^]
+        var producer = reg[name^]
+        producer.create(path^)
+        return producer^
 
 
 @always_inline

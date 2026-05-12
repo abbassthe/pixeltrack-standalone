@@ -87,7 +87,7 @@ fn minCachedBytes() -> UInt:
 
     for i in range(number_of_devices):
         try:
-            var ctx = DeviceContext(device_id = i)
+            var ctx = DeviceContext(api="cuda", device_id = i)
             var (free_mem, total_mem) = ctx.get_memory_info()
             _ = total_mem
 

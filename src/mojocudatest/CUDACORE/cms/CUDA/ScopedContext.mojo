@@ -79,7 +79,7 @@ struct ScopedContextBase(Movable):
         return self.stream_[]._item.value()
 
     fn streamPtr(self) -> SharedStreamPtr:
-        return self.stream_
+        return self.stream_.copy()
 
 
 struct ScopedContextGetterBase(Movable):

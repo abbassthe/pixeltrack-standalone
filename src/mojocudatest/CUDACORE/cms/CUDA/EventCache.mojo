@@ -48,7 +48,8 @@ struct EventCache(Movable):
             cudaEventCreateWithFlags(event, cudaEventDisableTiming, runtime),
         )
         slot[].addNewOutstanding()
-        return SharedEventPtr(_EventOwner(event^, slot))
+        var owner = SharedEventPtr(_EventOwner(event^, slot))
+        return owner^
 
     fn clear(mut self):
         self._destroySlots()
