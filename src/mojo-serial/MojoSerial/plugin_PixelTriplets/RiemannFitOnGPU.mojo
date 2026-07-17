@@ -12,8 +12,7 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
 )
 
 
-@parameter
-let RIEMANN_DEBUG = False
+alias RIEMANN_DEBUG = False
 
 
 alias HitsOnGPU = TrackingRecHit2DSOAView
@@ -40,7 +39,7 @@ fn kernelFastFit[N: Int](
     assert(foundNtuplets)
     assert(tupleMultiplicity)
 
-    let local_start = 0
+    var local_start = 0
 
     @parameter
     if RIEMANN_DEBUG:
@@ -50,13 +49,13 @@ fn kernelFastFit[N: Int](
             )
 
     var local_idx: Int = local_start
-    let nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
+    var nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
     while local_idx < nt:
-        let tuple_idx = local_idx + offset.cast[Int]()
+        var tuple_idx = local_idx + offset.cast[Int]()
         if tuple_idx >= tupleMultiplicity[].size(nHits).cast[Int]():
             break
 
-        let tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
+        var tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
         assert(tkid < foundNtuplets[].nbins())
         assert(foundNtuplets[].size(tkid) == nHits)
 
@@ -64,11 +63,11 @@ fn kernelFastFit[N: Int](
         var fast_fit = Rfit.Map4d(pfast_fit + local_idx)
         var hits_ge = Rfit.Map6xNf[N](phits_ge + local_idx)
 
-        let hitId = foundNtuplets[].begin(tkid)
+        var hitId = foundNtuplets[].begin(tkid)
         var i: UInt32 = 0
         while i < hitsInFit:
-            let idx = i.cast[Int]()
-            let hit = hitId[idx]
+            var idx = i.cast[Int]()
+            var hit = hitId[idx]
             var ge = InlineArray[Float32, 6](fill=0)
             hhp[].cpeParams().detParams(hhp[].detectorIndex(hit)).frame.toGlobal(
                 hhp[].xerrLocal(hit),
@@ -110,11 +109,11 @@ fn kernelCircleFit[N: Int](
     assert(circle_fit)
     assert(N <= nHits)
 
-    let local_start = 0
+    var local_start = 0
     var local_idx: Int = local_start
-    let nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
+    var nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
     while local_idx < nt:
-        let tuple_idx = local_idx + offset.cast[Int]()
+        var tuple_idx = local_idx + offset.cast[Int]()
         if tuple_idx >= tupleMultiplicity[].size(nHits).cast[Int]():
             break
 
@@ -125,8 +124,8 @@ fn kernelCircleFit[N: Int](
         var rad = FitRfit.VectorNd[N]()
         var i: Int = 0
         while i < N:
-            let x = hits[0, i]
-            let y = hits[1, i]
+            var x = hits[0, i]
+            var y = hits[1, i]
             rad[i] = sqrt(x * x + y * y)
             i += 1
 
@@ -167,16 +166,16 @@ fn kernelLineFit[N: Int](
     assert(circle_fit)
     assert(N <= nHits)
 
-    let local_start = 0
+    var local_start = 0
     var local_idx: Int = local_start
-    let nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
-    let tuples_for_size = tupleMultiplicity[].size(nHits).cast[Int]()
+    var nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
+    var tuples_for_size = tupleMultiplicity[].size(nHits).cast[Int]()
     while local_idx < nt:
-        let tuple_idx = local_idx + offset.cast[Int]()
+        var tuple_idx = local_idx + offset.cast[Int]()
         if tuple_idx >= tuples_for_size:
             break
 
-        let tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
+        var tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
 
         var hits = Rfit.Map3xNd[N](phits + local_idx)
         var fast_fit = Rfit.Map4d(pfast_fit_input + local_idx)
@@ -193,7 +192,7 @@ fn kernelLineFit[N: Int](
 
         FitRfit.fromCircleToPerigee(circle_fit[local_idx])
 
-        let track_idx = tkid.cast[Int]()
+        var track_idx = tkid.cast[Int]()
         results[].stateAtBS.copyFromCircle(
             circle_fit[local_idx].par,
             circle_fit[local_idx].cov,
@@ -206,7 +205,7 @@ fn kernelLineFit[N: Int](
             abs(circle_fit[local_idx].par[2])
         )
         results[].eta[track_idx] = Float32(math.asinh(line_fit.par[0]))
-        let chi2 = Float64(circle_fit[local_idx].chi2) + line_fit.chi2
+        var chi2 = Float64(circle_fit[local_idx].chi2) + line_fit.chi2
         results[].chi2[track_idx] = Float32(
             chi2 / Float64(2 * N - 5)
         )

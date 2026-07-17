@@ -96,9 +96,9 @@ fn Kernel_checkOverflows(
                 )
     @parameter
     if is_defined["NTUPLE_DEBUG"]():
-        let nBins = foundNtuplets[].nbins().cast[Int]()
+        var nBins = foundNtuplets[].nbins().cast[Int]()
         for idx in range(first.cast[Int](), nBins, 1):
-            let idx_u = idx.cast[UInt32]()
+            var idx_u = idx.cast[UInt32]()
             if foundNtuplets[].size(idx_u) > 5:
                 print("ERROR", idx, ",", foundNtuplets[].size(idx_u))
             debug_assert(foundNtuplets[].size(idx_u) < 6)
@@ -161,7 +161,7 @@ fn kernel_fishboneCleaner(
     quality: UnsafePointer[Quality],
 ):
     comptime bad = trackQuality.bad
-    let nt = nCells[].cast[Int]()
+    var nt = nCells[].cast[Int]()
     for idx in range(0, nt, 1):
         ref thisCell = (cells + idx)[]
         if thisCell.theDoubletId >= 0:
@@ -181,7 +181,7 @@ fn kernel_earlyDuplicateRemover(
     comptime dup = trackQuality.dup
 
     assert nCells != 0
-    let nt = nCells[].cast[Int]()
+    var nt = nCells[].cast[Int]()
     for idx in range(0, nt, 1):
         ref thisCell = (cells + idx)[]
 
@@ -191,7 +191,7 @@ fn kernel_earlyDuplicateRemover(
         var maxNh: UInt32 = 0
 
         for it in thisCell.tracks():
-            let nh = foundNtuplets[].size(it.cast[UInt32]())
+            var nh = foundNtuplets[].size(it.cast[UInt32]())
             maxNh = math.max(nh, maxNh)
 
         for it in thisCell.tracks():
@@ -205,13 +205,13 @@ fn kernel_fastDuplicateRemover(
     foundNtuplets: UnsafePointer[HitContainer],
     tracks: UnsafePointer[TkSoA]
 ) :
-    let bad = trackQuality.bad
-    let dup = trackQuality.dup
-    let loose = trackQuality.loose
+    var bad = trackQuality.bad
+    var dup = trackQuality.dup
+    var loose = trackQuality.loose
 
     assert nCells != 0
 
-    let nt = nCells[].cast[Int]()
+    var nt = nCells[].cast[Int]()
     for idx in range(0, nt, 1):
         ref thisCell = (cells + idx)[]
         if len(thisCell.tracks()) < 2:
@@ -268,7 +268,7 @@ fn kernel_connect(
         ref thisCell  = (cells + idx)[]
 
         var innerHitId = thisCell.get_inner_hit_id()
-        let innerHitIdx = innerHitId.cast[Int]()
+        var innerHitIdx = innerHitId.cast[Int]()
         var numberOfPossibleNeighbors : Int = len(isOuterHitOfCell[innerHitIdx])
         var vi = isOuterHitOfCell[innerHitIdx].data()
 
@@ -324,14 +324,14 @@ fn kernel_find_ntuplets(
 
     ref hh = hhp[]
 
-    let nt = nCells[].cast[Int]()
+    var nt = nCells[].cast[Int]()
     for idx in range(0, nt, 1):
         ref thisCell =  (cells + idx)[]
         if thisCell.theDoubletId < 0:
             continue
 
-        let pid = thisCell.theLayerPairId.cast[Int]()
-        let doit: Bool = (pid < 3) if minHitsPerNtuplet > 3 else (pid < 8 or pid > 12)
+        var pid = thisCell.theLayerPairId.cast[Int]()
+        var doit: Bool = (pid < 3) if minHitsPerNtuplet > 3 else (pid < 8 or pid > 12)
         if doit:
             var stack = GPUCACell.TmpTuple()
             stack.reset()
@@ -353,7 +353,7 @@ fn kernel_mark_used(
     cells: UnsafePointer[GPUCACell],
     nCells: UnsafePointer[UInt32],
 ):
-    let nt = nCells[].cast[Int]()
+    var nt = nCells[].cast[Int]()
     for idx in range(0, nt, 1):
         ref thisCell = (cells + idx)[]
         if not thisCell.tracks().empty():
@@ -362,9 +362,9 @@ fn kernel_mark_used(
 fn kernel_countMultiplicity(  foundNtuplets : UnsafePointer[HitContainer],
                               quality : UnsafePointer[Quality],
                               tupleMultiplicity : UnsafePointer[CAConstants.TupleMultiplicity ]):
-    let nt = foundNtuplets[].nbins().cast[Int]()
+    var nt = foundNtuplets[].nbins().cast[Int]()
     for it in range(0, nt, 1):
-        let it_u = it.cast[UInt32]()
+        var it_u = it.cast[UInt32]()
         var nhits = foundNtuplets[].size(it_u)
         if nhits < 3:
             continue
@@ -379,9 +379,9 @@ fn kernel_countMultiplicity(  foundNtuplets : UnsafePointer[HitContainer],
 fn kernel_fillMultiplicity(foundNtuplets : UnsafePointer[HitContainer],
                               quality : UnsafePointer[Quality],
                               tupleMultiplicity : UnsafePointer[CAConstants.TupleMultiplicity ]):
-    let nt = foundNtuplets[].nbins().cast[Int]()
+    var nt = foundNtuplets[].nbins().cast[Int]()
     for it in range(0, nt, 1):
-        let it_u = it.cast[UInt32]()
+        var it_u = it.cast[UInt32]()
         var nhits = foundNtuplets[].size(it_u)
         if nhits < 3:
             continue
@@ -402,10 +402,10 @@ fn kernel_classifyTracks(
     cuts: CAHitNtupletGeneratorKernelsCPU.QualityCuts,
     quality: UnsafePointer[Quality],
 ):
-    let nt = tuples[].nbins().cast[Int]()
+    var nt = tuples[].nbins().cast[Int]()
     for it in range(0, nt, 1):
-        let it_u = it.cast[UInt32]()
-        let it_i = it.cast[Int32]()
+        var it_u = it.cast[UInt32]()
+        var it_i = it.cast[Int32]()
         var nhits = tuples[].size(it_u)
         if nhits == 0:
             break # guard
@@ -443,8 +443,8 @@ fn kernel_classifyTracks(
         #   - chi2Coeff = { 0.68177776, 0.74609577, -0.08035491, 0.00315399 }
         #   - chi2Scale = 30 for broken line fit, 45 for Riemann fit
         # (see CAHitNtupletGeneratorGPU.cc)
-        let pt :float32= min(tracks[].pt[it], cuts.chi2MaxPt)
-        let chi2Cut: Float32 = cuts.chi2Scale * (
+        var pt :float32= min(tracks[].pt[it], cuts.chi2MaxPt)
+        var chi2Cut: Float32 = cuts.chi2Scale * (
             cuts.chi2Coeff[0]
             + pt
             * (cuts.chi2Coeff[1] + pt * (cuts.chi2Coeff[2] + pt * cuts.chi2Coeff[3]))
@@ -471,10 +471,10 @@ fn kernel_classifyTracks(
         #   - for triplets:    |Tip| < 0.3 cm, pT > 0.5 GeV, |Zip| < 12.0 cm
         #   - for quadruplets: |Tip| < 0.5 cm, pT > 0.3 GeV, |Zip| < 12.0 cm
         # (see CAHitNtupletGeneratorGPU.cc)  
-        let region = cuts.quadruplet if nhits > 3 else cuts.triplet
-        let tip = tracks[].tip(it_i)
-        let zip = tracks[].zip(it_i)
-        let isOk: Bool = (
+        var region = cuts.quadruplet if nhits > 3 else cuts.triplet
+        var tip = tracks[].tip(it_i)
+        var zip = tracks[].zip(it_i)
+        var isOk: Bool = (
             math.abs(tip) < region.maxTip
             and tracks[].pt[it] > region.minPt
             and math.abs(zip) < region.maxZip
@@ -486,9 +486,9 @@ fn kernel_classifyTracks(
 fn kernel_doStatsForTracks(tuples  : UnsafePointer[HitContainer] , 
                            quality : UnsafePointer[Quality] , 
                            counters : UnsafePointer[CAHitNtupletGeneratorKernelsCPU.Counters] ):
-    let nt = tuples[].nbins().cast[Int]()
+    var nt = tuples[].nbins().cast[Int]()
     for idx in range(0, nt, 1):
-        let idx_u = idx.cast[UInt32]()
+        var idx_u = idx.cast[UInt32]()
         if tuples[].size(idx_u) == 0:
             break # guard
         if quality[idx] != trackQuality.loose:
@@ -502,9 +502,9 @@ fn kernel_doStatsForTracks(tuples  : UnsafePointer[HitContainer] ,
 fn kernel_countHitInTracks(tuples  : UnsafePointer[HitContainer] , 
                            quality : UnsafePointer[Quality] , 
                            hitToTuple : UnsafePointer[CAHitNtupletGeneratorKernelsCPU.HitToTuple] ):
-    let nt = tuples[].nbins().cast[Int]()
+    var nt = tuples[].nbins().cast[Int]()
     for idx in range(0, nt, 1):
-        let idx_u = idx.cast[UInt32]()
+        var idx_u = idx.cast[UInt32]()
         if tuples[].size(idx_u) == 0:
             break # guard
         if quality[idx] != trackQuality.loose:
@@ -518,10 +518,10 @@ fn kernel_countHitInTracks(tuples  : UnsafePointer[HitContainer] ,
 fn kernel_fillHitInTracks(tuples  : UnsafePointer[HitContainer] , 
                            quality : UnsafePointer[Quality] , 
                            hitToTuple : UnsafePointer[CAHitNtupletGeneratorKernelsCPU.HitToTuple] ):
-    let nt = tuples[].nbins().cast[Int]()
+    var nt = tuples[].nbins().cast[Int]()
 
     for idx in range(0, nt, 1):
-        let idx_u = idx.cast[UInt32]()
+        var idx_u = idx.cast[UInt32]()
         if tuples[].size(idx_u) == 0:
             break #guard
         if quality[idx] != trackQuality.loose:
@@ -539,22 +539,22 @@ fn kernel_fillHitDetIndices(tuples  : UnsafePointer[HitContainer] ,
                            hhp : UnsafePointer[TrackingRecHit2DSOAView] , 
                            hitDetIndices : UnsafePointer[HitContainer] ):
     # copy offsets
-    let total_bins = tuples[].totbins().cast[Int]()
+    var total_bins = tuples[].totbins().cast[Int]()
     for idx in range(0, total_bins, 1):
         hitDetIndices[].off[idx] = tuples[].off[idx]
     # fill hit indices
     ref hh = hhp[]
     var nhits = hh.nHits()
-    let total_size = tuples[].size().cast[Int]()
+    var total_size = tuples[].size().cast[Int]()
     for idx in range(0, total_size, 1):
         assert tuples[].bins[idx] < nhits
         hitDetIndices[].bins[idx] = hh.detectorIndex(tuples[].bins[idx])
 
 fn kernel_doStatsForHitInTracks(hitToTuple: UnsafePointer[CAHitNtupletGeneratorKernelsCPU.HitToTuple] ,counters :  UnsafePointer[CAHitNtupletGeneratorKernelsCPU.Counters]):
     ref c = counters[]
-    let nt = hitToTuple[].nbins().cast[Int]()
+    var nt = hitToTuple[].nbins().cast[Int]()
     for idx in range(0, nt, 1):
-        let idx_u = idx.cast[UInt32]()
+        var idx_u = idx.cast[UInt32]()
         if hitToTuple[].size(idx_u) == 0:
             continue # SHALL NOT BE break
         Atomic.fetch_add[ordering = Consistency.SEQUENTIAL](
@@ -568,17 +568,17 @@ fn kernel_doStatsForHitInTracks(hitToTuple: UnsafePointer[CAHitNtupletGeneratorK
             )
 
 fn kernel_tripletCleaner(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[CAHitNtupletGeneratorKernelsCPU.HitToTuple]):
-    let bad  = trackQuality.bad
-    let dup  = trackQuality.dup
+    var bad  = trackQuality.bad
+    var dup  = trackQuality.dup
 
     ref hitToTuple = phitToTuple[]
     ref foundNtuplets = ptuples[]
     ref tracks = ptracks[]
 
     # loop over hits
-    let nt = hitToTuple.nbins().cast[Int]()
+    var nt = hitToTuple.nbins().cast[Int]()
     for idx in range(0, nt, 1):
-        let idx_u = idx.cast[UInt32]()
+        var idx_u = idx.cast[UInt32]()
         if hitToTuple.size(idx_u) < 2:
             continue
         
@@ -609,8 +609,8 @@ fn kernel_tripletCleaner(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples 
         var ip = hitToTuple.begin(idx_u)
         var ip_end = hitToTuple.end(idx_u)
         while ip != ip_end:
-            let it_val = ip[]
-            let it_i = it_val.cast[Int32]()
+            var it_val = ip[]
+            var it_i = it_val.cast[Int32]()
             if quality[it_val.cast[Int]()] != bad and math.abs(tracks.tip(it_i)) < mc:
                 mc = math.abs(tracks.tip(it_i))
                 im = it_val
@@ -618,7 +618,7 @@ fn kernel_tripletCleaner(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples 
 
         ip = hitToTuple.begin(idx_u)
         while ip != ip_end:
-            let it_val = ip[]
+            var it_val = ip[]
             if quality[it_val.cast[Int]()] != bad and it_val != im:
                 quality[it_val.cast[Int]()] = dup # no race:  simple assignment of the same constant
             ip += 1
@@ -631,7 +631,7 @@ fn kernel_print_found_ntuplets(hhp : UnsafePointer[TrackingRecHit2DSOAView] , pt
 
     var i: Int = 0
     while i < min(maxPrint, foundNtuplets.nbins()).cast[Int]():
-        let i_u = i.cast[UInt32]()
+        var i_u = i.cast[UInt32]()
         var nh = foundNtuplets.size(i_u)
         if nh < 3: 
             i += 1
@@ -678,8 +678,8 @@ fn kernel_printCounters(
         c.nEmptyCells,
         c.nZeroTrackCells,
     )
-    let events = c.nEvents.cast[Float64]()
-    let cells = c.nCells.cast[Float64]()
+    var events = c.nEvents.cast[Float64]()
+    var cells = c.nCells.cast[Float64]()
     print(
         "Counters Norm",
         c.nEvents,

@@ -11,11 +11,9 @@ alias HitsOnGPU = TrackingRecHit2DSOAView
 alias Tuples = pixelTrack.HitContainer
 alias OutputSoA = pixelTrack.TrackSoA
 
-@parameter
-let BROKENLINE_DEBUG = False
+alias BROKENLINE_DEBUG = False
 
-@parameter
-let BL_DUMP_HITS = False
+alias BL_DUMP_HITS = False
 
 
 fn kernelBLFastFit[N: Int](
@@ -28,7 +26,7 @@ fn kernelBLFastFit[N: Int](
     nHits: UInt32,
     offset: UInt32,
 ):
-    let hitsInFit: UInt32 = N
+    var hitsInFit: UInt32 = N
     assert(hitsInFit <= nHits)
 
     assert(hhp)
@@ -36,7 +34,7 @@ fn kernelBLFastFit[N: Int](
     assert(foundNtuplets)
     assert(tupleMultiplicity)
 
-    let local_start = 0
+    var local_start = 0
 
     @parameter
     if BROKENLINE_DEBUG:
@@ -49,14 +47,14 @@ fn kernelBLFastFit[N: Int](
             )
 
     var local_idx: Int = local_start
-    let nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
+    var nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
 
     while local_idx < nt:
-        let tuple_idx = local_idx + offset.cast[Int]()
+        var tuple_idx = local_idx + offset.cast[Int]()
         if tuple_idx >= tupleMultiplicity[].size(nHits).cast[Int]():
             break
 
-        let tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
+        var tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
         assert(tkid < foundNtuplets[].nbins())
         assert(foundNtuplets[].size(tkid) == nHits)
 
@@ -67,15 +65,15 @@ fn kernelBLFastFit[N: Int](
         @parameter
         if BL_DUMP_HITS:
             var done = AtomicInt(0)
-            let dump = (
+            var dump = (
                 foundNtuplets[].size(tkid) == 5 and done.fetch_add(1) == 0
             )
 
-        let hitId = foundNtuplets[].begin(tkid)
+        var hitId = foundNtuplets[].begin(tkid)
         var i: UInt32 = 0
         while i < hitsInFit:
-            let idx = i.cast[Int]()
-            let hit = hitId[idx]
+            var idx = i.cast[Int]()
+            var hit = hitId[idx]
             var ge = InlineArray[Float32, 6](fill=0)
             hhp[].cpeParams().detParams(hhp[].detectorIndex(hit)).frame.toGlobal(
                 hhp[].xerrLocal(hit),
@@ -131,16 +129,16 @@ fn kernelBLFit[N: Int](
     assert(results)
     assert(pfast_fit)
 
-    let local_start = 0
+    var local_start = 0
     var local_idx: Int = local_start
-    let nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
-    let tuples_for_size = tupleMultiplicity[].size(nHits).cast[Int]()
+    var nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
+    var tuples_for_size = tupleMultiplicity[].size(nHits).cast[Int]()
     while local_idx < nt:
-        let tuple_idx = local_idx + offset.cast[Int]()
+        var tuple_idx = local_idx + offset.cast[Int]()
         if tuple_idx >= tuples_for_size:
             break
 
-        let tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
+        var tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
 
         var hits = Rfit.Map3xNd[N](phits + local_idx)
         var fast_fit = Rfit.Map4d(pfast_fit + local_idx)
@@ -155,7 +153,7 @@ fn kernelBLFit[N: Int](
         BrokenLine.BL_Line_fit(hits_ge, fast_fit, B, data, line)
         BrokenLine.BL_Circle_fit(hits, hits_ge, fast_fit, B, data, circle)
 
-        let track_idx = tkid.cast[Int]()
+        var track_idx = tkid.cast[Int]()
         results[].stateAtBS.copyFromCircle(
             circle.par,
             circle.cov,
@@ -166,7 +164,7 @@ fn kernelBLFit[N: Int](
         )
         results[].pt[track_idx] = Float32(B) / Float32(abs(circle.par[2]))
         results[].eta[track_idx] = Float32(math.asinh(line.par[0]))
-        let chi2 = Float64(circle.chi2) + line.chi2
+        var chi2 = Float64(circle.chi2) + line.chi2
         results[].chi2[track_idx] = Float32(
             chi2 / Float64(2 * N - 5)
         )

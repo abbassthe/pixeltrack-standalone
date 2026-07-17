@@ -34,40 +34,40 @@ struct Counters:
 
 struct QualityCuts:
     # chi2 cut = chi2Scale * (chi2Coeff[0] + pT/GeV * (chi2Coeff[1] + pT/GeV * (chi2Coeff[2] + pT/GeV * chi2Coeff[3])))
-    let chi2Coeff: Float32[4]
-    let chi2MaxPt: Float32  # GeV
-    let chi2Scale: Float32
+    var chi2Coeff: Float32[4]
+    var chi2MaxPt: Float32  # GeV
+    var chi2Scale: Float32
 
     struct region:
-        let maxTip: Float32  # cm
-        let minPt: Float32   # GeV
-        let maxZip: Float32  # cm
+        var maxTip: Float32  # cm
+        var minPt: Float32   # GeV
+        var maxZip: Float32  # cm
 
-    let triplet: region
-    let quadruplet: region
+    var triplet: region
+    var quadruplet: region
 
 
 struct Params:
-    let onGPU: Bool
-    let minHitsPerNtuplet: UInt32
-    let maxNumberOfDoublets: UInt32
-    let useRiemannFit: Bool
-    let fit5as4: Bool
-    let includeJumpingForwardDoublets: Bool
-    let earlyFishbone: Bool
-    let lateFishbone: Bool
-    let idealConditions: Bool
-    let doStats: Bool
-    let doClusterCut: Bool
-    let doZ0Cut: Bool
-    let doPtCut: Bool
-    let ptmin: Float32
-    let CAThetaCutBarrel: Float32
-    let CAThetaCutForward: Float32
-    let hardCurvCut: Float32
-    let dcaCutInnerTriplet: Float32
-    let dcaCutOuterTriplet: Float32
-    let cuts: QualityCuts
+    var onGPU: Bool
+    var minHitsPerNtuplet: UInt32
+    var maxNumberOfDoublets: UInt32
+    var useRiemannFit: Bool
+    var fit5as4: Bool
+    var includeJumpingForwardDoublets: Bool
+    var earlyFishbone: Bool
+    var lateFishbone: Bool
+    var idealConditions: Bool
+    var doStats: Bool
+    var doClusterCut: Bool
+    var doZ0Cut: Bool
+    var doPtCut: Bool
+    var ptmin: Float32
+    var CAThetaCutBarrel: Float32
+    var CAThetaCutForward: Float32
+    var hardCurvCut: Float32
+    var dcaCutInnerTriplet: Float32
+    var dcaCutOuterTriplet: Float32
+    var cuts: QualityCuts
 
     fn __init__(
         onGPU: Bool,

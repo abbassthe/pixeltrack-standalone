@@ -39,7 +39,7 @@ fn computeRadLenUniformMaterial[
     # Radiation length of the pixel detector in the uniform assumption, with
     # 0.06 rad_len at 16 cm
     comptime XX_0_inv: Float64 = 0.06 / 16.0
-    let n = length_values.rows()
+    var n = length_values.num_rows()
     rad_lengths[0] = length_values[0] * XX_0_inv
     var j: Int = 1
     while j < n:
@@ -77,7 +77,7 @@ fn Scatter_cov_line[
     z_values: VNd2,
     theta: Float64,
     B: Float64,
-    ret: inout Rfit.MatrixNd[N],
+    mut ret: Rfit.MatrixNd[N],
 ):
 
     @parameter
@@ -96,8 +96,8 @@ fn Scatter_cov_line[
     var S_values = Rfit.VectorNd[N]()
     var i = 0
     while i < n:
-        let s_val = s_arcs[i]
-        let z_val = z_values[i]
+        var s_val = s_arcs[i]
+        var z_val = z_values[i]
         S_values[i] = s_val * s_val + z_val * z_val
         i += 1
      
@@ -110,7 +110,7 @@ fn Scatter_cov_line[
     
     i = 0
     while i < n:
-        let tmp = 1.0 + 0.038 * math.log(rad_lengths_S[i])
+        var tmp = 1.0 + 0.038 * math.log(rad_lengths_S[i])
         sig2_S[i] = 0.000225 / p_2 * (tmp * tmp) * rad_lengths_S[i]
         i += 1
 
@@ -196,20 +196,20 @@ fn Scatter_cov_rad[
 
     # associated Jacobian, used in weights and errors computation
     for i in range(n):  # x
-        let px = p2D[0, i] - o[0]
-        let py = p2D[1, i] - o[1]
+        var px = p2D[0, i] - o[0]
+        var py = p2D[1, i] - o[1]
         var p = Rfit.Vector2d()
         p[0] = px
         p[1] = py
         var o_neg = Rfit.Vector2d()
         o_neg[0] = -o[0]
         o_neg[1] = -o[1]
-        let cross: Float64 = Rfit.cross2D(o_neg, p)
-        let dot: Float64 = o_neg[0] * p[0] + o_neg[1] * p[1]
-        let atan2_: Float64 = math.atan2(cross, dot)
+        var cross: Float64 = Rfit.cross2D(o_neg, p)
+        var dot: Float64 = o_neg[0] * p[0] + o_neg[1] * p[1]
+        var atan2_: Float64 = math.atan2(cross, dot)
         s_values[i] = abs(atan2_ * fast_fit[2])
 
-    let scale = math.sqrt(1.0 + 1.0 / (fast_fit[3] * fast_fit[3]))
+    var scale = math.sqrt(1.0 + 1.0 / (fast_fit[3] * fast_fit[3]))
     var scaled_s_values = Rfit.VectorNd[N]()
     for i in range(n):
         scaled_s_values[i] = s_values[i] * scale
@@ -218,10 +218,10 @@ fn Scatter_cov_rad[
 
     var scatter_cov_rad = Rfit.MatrixNd[N].Zero()
     var sig2 = Rfit.VectorNd[N]()
-    let sin_theta = math.sin(theta)
-    let inv_factor = 0.000225 / (p_2 * Rfit.sqr(sin_theta))
+    var sin_theta = math.sin(theta)
+    var inv_factor = 0.000225 / (p_2 * Rfit.sqr(sin_theta))
     for i in range(n):
-        let tmp = 1.0 + 0.038 * math.log(rad_lengths[i])
+        var tmp = 1.0 + 0.038 * math.log(rad_lengths[i])
         sig2[i] = (tmp * tmp) * rad_lengths[i] * inv_factor
 
     for k in range(n):
@@ -306,7 +306,7 @@ fn cov_carttorad[
     var cov_rad = Rfit.VectorNd[N]()
     var rad_inv2 = Rfit.VectorNd[N]()
     for i in range(n):
-        let inv = 1.0 / rad[i]
+        var inv = 1.0 / rad[i]
         rad_inv2[i] = inv * inv
 
     for i in range(n):
@@ -352,20 +352,20 @@ fn cov_carttorad_prefit[
         if rad[i] < 1.0e-4:
             cov_rad[i] = cov_cart[i, i]  # TO FIX
         else:
-            let ax = p2D[0, i]
-            let ay = p2D[1, i]
-            let bx = p2D[0, i] - fast_fit[0]
-            let by = p2D[1, i] - fast_fit[1]
-            let x2 = ax * bx + ay * by
+            var ax = p2D[0, i]
+            var ay = p2D[1, i]
+            var bx = p2D[0, i] - fast_fit[0]
+            var by = p2D[1, i] - fast_fit[1]
+            var x2 = ax * bx + ay * by
             var a = Rfit.Vector2d()
             a[0] = ax
             a[1] = ay
             var b = Rfit.Vector2d()
             b[0] = bx
             b[1] = by
-            let y2 = Rfit.cross2D(a, b)
-            let tan_c = -y2 / x2
-            let tan_c2 = Rfit.sqr(tan_c)
+            var y2 = Rfit.cross2D(a, b)
+            var tan_c = -y2 / x2
+            var tan_c2 = Rfit.sqr(tan_c)
             cov_rad[i] = 1.0 / (1.0 + tan_c2) * (
                 cov_cart[i, i]
                 + cov_cart[i + n, i + n] * tan_c2
@@ -388,7 +388,7 @@ fn cov_carttorad_prefit[
 fn Weight_circle[
     N: Int,
 ](cov_rad_inv: Rfit.MatrixNd[N]) -> Rfit.VectorNd[N]:
-    let n: Int = N
+    var n: Int = N
     var weight = Rfit.VectorNd[N]()
     for j in range(n):
         var sum: Float64 = 0.0
@@ -409,7 +409,7 @@ fn Weight_circle[
 fn Charge[
     M2xN: AnyType,
 ](p2D: M2xN, par_uvr: Rfit.Vector3d) -> Int32:
-    let val = (
+    var val = (
         (p2D[0, 1] - p2D[0, 0]) * (par_uvr[1] - p2D[1, 0])
         - (p2D[1, 1] - p2D[1, 0]) * (par_uvr[0] - p2D[0, 0])
     )
@@ -432,13 +432,13 @@ fn Charge[
 # */
 fn min_eigen3D(
     A: Rfit.Matrix3d,
-    chi2: inout Float64,
+    mut chi2: Float64,
 ) -> Rfit.Vector3d:
     @parameter
     if is_defined["RFIT_DEBUG"]():
         print("min_eigen3D - enter")
 
-    let v = min_eigen_3x3(A, chi2)
+    var v = min_eigen_3x3(A, chi2)
 
     @parameter
     if is_defined["RFIT_DEBUG"]():
@@ -474,7 +474,7 @@ fn min_eigen3D_fast(
 # */
 fn min_eigen2D(
     A: Rfit.Matrix2d,
-    chi2: inout Float64,
+    mut chi2: Float64,
 ) -> Rfit.Vector2d:
     return min_eigen_2x2(A, chi2)
 
@@ -494,9 +494,9 @@ fn min_eigen2D(
 fn Fast_fit[
     M3xN: AnyType,
     V4: AnyType,
-](hits: M3xN, result: inout V4):
+](hits: M3xN, mut result: V4):
     # get the number of hits
-    let n = M3xN.ColsAtCompileTime()
+    var n = M3xN.ColsAtCompileTime()
 
     @parameter
     if is_defined["RFIT_DEBUG"]():
@@ -504,15 +504,15 @@ fn Fast_fit[
 
     # CIRCLE FIT
     # Make segments between middle-to-first(b) and last-to-first(c) hits
-    let mid = n // 2
-    let b0 = hits[0, mid] - hits[0, 0]
-    let b1 = hits[1, mid] - hits[1, 0]
-    let c0 = hits[0, n - 1] - hits[0, 0]
-    let c1 = hits[1, n - 1] - hits[1, 0]
+    var mid = n // 2
+    var b0 = hits[0, mid] - hits[0, 0]
+    var b1 = hits[1, mid] - hits[1, 0]
+    var c0 = hits[0, n - 1] - hits[0, 0]
+    var c1 = hits[1, n - 1] - hits[1, 0]
 
     # Compute their lengths
-    let b2 = b0 * b0 + b1 * b1
-    let c2 = c0 * c0 + c1 * c1
+    var b2 = b0 * b0 + b1 * b1
+    var c2 = c0 * c0 + c1 * c1
 
     var b = Rfit.Vector2d()
     b[0] = b0
@@ -532,17 +532,17 @@ fn Fast_fit[
     # * build orthogonal lines through mid points
     # * make a system and solve for X0 and Y0.
     # * add the initial point
-    let flip = abs(b0) < abs(b1)
-    let bx = b1 if flip else b0
-    let by = b0 if flip else b1
-    let cx = c1 if flip else c0
-    let cy = c0 if flip else c1
+    var flip = abs(b0) < abs(b1)
+    var bx = b1 if flip else b0
+    var by = b0 if flip else b1
+    var cx = c1 if flip else c0
+    var cy = c0 if flip else c1
 
     # in case b.x is 0 (2 hits with same x)
-    let div = 2.0 * (cx * by - bx * cy)
+    var div = 2.0 * (cx * by - bx * cy)
     # if aligned TO FIX
-    let Y0 = (cx * b2 - bx * c2) / div
-    let X0 = (0.5 * b2 - Y0 * by) / bx
+    var Y0 = (cx * b2 - bx * c2) / div
+    var X0 = (0.5 * b2 - Y0 * by) / bx
 
     result[0] = hits[0, 0] + (Y0 if flip else X0)
     result[1] = hits[1, 0] + (X0 if flip else Y0)
@@ -553,10 +553,10 @@ fn Fast_fit[
         Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=result), "Fast_fit - result: ")
 
     # LINE FIT
-    let d0 = hits[0, 0] - result[0]
-    let d1 = hits[1, 0] - result[1]
-    let e0 = hits[0, n - 1] - result[0]
-    let e1 = hits[1, n - 1] - result[1]
+    var d0 = hits[0, 0] - result[0]
+    var d1 = hits[1, 0] - result[1]
+    var e0 = hits[0, n - 1] - result[0]
+    var e1 = hits[1, n - 1] - result[1]
 
     var d = Rfit.Vector2d()
     d[0] = d0
@@ -570,12 +570,12 @@ fn Fast_fit[
         Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=e), "Fast_fit - e: ")
         Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=d), "Fast_fit - d: ")
 
-    let cross = Rfit.cross2D(d, e)
-    let dot = d0 * e0 + d1 * e1
+    var cross = Rfit.cross2D(d, e)
+    var dot = d0 * e0 + d1 * e1
     # Compute the arc-length between first and last point: L = R * theta = R * atan (tan (Theta) )
-    let dr = result[2] * math.atan2(cross, dot)
+    var dr = result[2] * math.atan2(cross, dot)
     # Simple difference in Z between last and first hit
-    let dz = hits[2, n - 1] - hits[2, 0]
+    var dz = hits[2, n - 1] - hits[2, 0]
 
     result[3] = dr / dz
 
@@ -647,12 +647,12 @@ fn Circle_fit[
 
 
     {
-        let cov_rad_vec = cov_carttorad_prefit[M2xN, V4, N](hits2D, V, fast_fit, rad)
+        var cov_rad_vec = cov_carttorad_prefit[M2xN, V4, N](hits2D, V, fast_fit, rad)
         var cov_rad = Rfit.MatrixNd[N].Zero()
         for i in range(n):
             cov_rad[i, i] = cov_rad_vec[i]
 
-        let scatter_cov_rad = Scatter_cov_rad[M2xN, V4, N](hits2D, fast_fit, rad, B)
+        var scatter_cov_rad = Scatter_cov_rad[M2xN, V4, N](hits2D, fast_fit, rad, B)
 
         @parameter
         if is_defined["RFIT_DEBUG"]():
@@ -675,7 +675,7 @@ fn Circle_fit[
         choleskyInversion.invert(cov_rad, G)
         # G = cov_rad.inverse();
         renorm = Float64(G.reduce_add())
-        let scale = 1.0 / renorm
+        var scale = 1.0 / renorm
         for i in range(n):
             for j in range(n):
                 G[i, j] *= scale
@@ -731,7 +731,7 @@ fn Circle_fit[
         q += mc[i] * mc[i]
 
     # scaling factor
-    let s = math.sqrt(Float64(n) / q)
+    var s = math.sqrt(Float64(n) / q)
     for i in range(3):
         for j in range(n):
             p3D[i, j] *= s
@@ -760,7 +760,7 @@ fn Circle_fit[
         for i in range(3):
             X[i, j] = p3D[i, j] - r0[i]
 
-    let A = (X @ G) @ X.transpose()
+    var A = (X @ G) @ X.transpose()
 
     @parameter
     if is_defined["RFIT_DEBUG"]():
@@ -792,7 +792,7 @@ fn Circle_fit[
     if is_defined["RFIT_DEBUG"]():
         print("circle_fit - AFTER MIN_EIGEN 1")
 
-    var cm = Matrix[Float64, 1, 1]()
+    var cm = Matrix[DType.float64, 1, 1]()
 
     @parameter
     if is_defined["RFIT_DEBUG"]():
@@ -804,7 +804,7 @@ fn Circle_fit[
     if is_defined["RFIT_DEBUG"]():
         print("circle_fit - AFTER MIN_EIGEN 3")
 
-    let c = cm[0, 0]
+    var c = cm[0, 0]
     # const double c = -v.transpose() * r0;
 
     @parameter
@@ -813,9 +813,9 @@ fn Circle_fit[
 
     # COMPUTE CIRCLE PARAMETER
     # auxiliary quantities
-    let h = math.sqrt(1.0 - Rfit.sqr(v[2]) - 4.0 * c * v[2])
-    let v2x2_inv = 1.0 / (2.0 * v[2])
-    let s_inv = 1.0 / s
+    var h = math.sqrt(1.0 - Rfit.sqr(v[2]) - 4.0 * c * v[2])
+    var v2x2_inv = 1.0 / (2.0 * v[2])
+    var s_inv = 1.0 / s
 
     # used in error propagation
     var par_uvr_ = Rfit.Vector3d()
@@ -853,10 +853,10 @@ fn Circle_fit[
             print("circle_fit - ERROR PRPAGATION ACTIVATED 2")
 
         {
-            var cm = Matrix[Float64, 1, 1]()
-            var cm2 = Matrix[Float64, 1, 1]()
+            var cm = Matrix[DType.float64, 1, 1]()
+            var cm2 = Matrix[DType.float64, 1, 1]()
             cm = (mc.transpose() @ V) @ mc
-            let c = cm[0, 0]
+            var c = cm[0, 0]
 
             var Vcs = Rfit.Matrix2Nd[N].Zero()
             var V_sq_norm: Float64 = 0.0
@@ -865,7 +865,7 @@ fn Circle_fit[
                     V_sq_norm += V[i, j] * V[i, j]
 
             # mc.transpose() * V * mc) *
-            let scale = (Rfit.sqr(s) * Rfit.sqr(s)) * (2.0 * V_sq_norm + 4.0 * c) / (4.0 * q * Float64(n))
+            var scale = (Rfit.sqr(s) * Rfit.sqr(s)) * (2.0 * V_sq_norm + 4.0 * c) / (4.0 * q * Float64(n))
             for i in range(2 * n):
                 for j in range(2 * n):
                     Vcs[i, j] = Rfit.sqr(s) * V[i, j] + scale * mc[i] * mc[j]
@@ -916,13 +916,13 @@ fn Circle_fit[
             var tmp = Rfit.MatrixNd[N]()
             for i in range(n):
                 for j in range(n):
-                    let term1 = (
+                    var term1 = (
                         Vcs_[0][0][i, j] * Vcs_[0][0][i, j]
                         + Vcs_[0][0][i, j] * Vcs_[0][1][i, j]
                         + Vcs_[1][1][i, j] * Vcs_[1][0][i, j]
                         + Vcs_[1][1][i, j] * Vcs_[1][1][i, j]
                     )
-                    let term2 = (
+                    var term2 = (
                         Vcs_[0][0][i, j] * t00[i, j]
                         + Vcs_[0][1][i, j] * t01[i, j]
                         + Vcs_[1][0][i, j] * t10[i, j]
@@ -962,7 +962,7 @@ fn Circle_fit[
             for j in range(n):
                 H[i, j] -= weight[j]
 
-        let s_v = H @ p3D.transpose()
+        var s_v = H @ p3D.transpose()
 
         @parameter
         if is_defined["RFIT_DEBUG"]():
@@ -973,12 +973,12 @@ fn Circle_fit[
         # cov(s_v)
         var D_ = InlineArray[InlineArray[Rfit.MatrixNd[N], 3], 3]()
         {
-            let tmp00 = (H @ C[0][0]) @ H.transpose()
-            let tmp01 = (H @ C[0][1]) @ H.transpose()
-            let tmp02 = (H @ C[0][2]) @ H.transpose()
-            let tmp11 = (H @ C[1][1]) @ H.transpose()
-            let tmp12 = (H @ C[1][2]) @ H.transpose()
-            let tmp22 = (H @ C[2][2]) @ H.transpose()
+            var tmp00 = (H @ C[0][0]) @ H.transpose()
+            var tmp01 = (H @ C[0][1]) @ H.transpose()
+            var tmp02 = (H @ C[0][2]) @ H.transpose()
+            var tmp11 = (H @ C[1][1]) @ H.transpose()
+            var tmp12 = (H @ C[1][2]) @ H.transpose()
+            var tmp22 = (H @ C[2][2]) @ H.transpose()
 
             for i in range(n):
                 for j in range(n):
@@ -1010,11 +1010,11 @@ fn Circle_fit[
         # cov matrix of the 6 independent elements of A
         var E = Rfit.Matrix6d()
         for a in range(6):
-            let i = nu[a][0].cast[Int]()
-            let j = nu[a][1].cast[Int]()
+            var i = nu[a][0].cast[Int]()
+            var j = nu[a][1].cast[Int]()
             for b in range(a, 6):
-                let k = nu[b][0].cast[Int]()
-                let l = nu[b][1].cast[Int]()
+                var k = nu[b][0].cast[Int]()
+                var l = nu[b][1].cast[Int]()
 
                 var t0 = Rfit.VectorNd[N]()
                 var t1 = Rfit.VectorNd[N]()
@@ -1072,17 +1072,17 @@ fn Circle_fit[
             Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=E), "circle_fit - E:")
 
         # Jacobian of min_eigen() (numerically computed)
-        var J2 = Matrix[Float64, 3, 6]()
+        var J2 = Matrix[DType.float64, 3, 6]()
         for a in range(6):
-            let i : UInt32= nu[a][0].cast[UInt32]()
-            let j : UInt32= nu[a][1].cast[UInt32]()
+            var i : UInt32= nu[a][0].cast[UInt32]()
+            var j : UInt32= nu[a][1].cast[UInt32]()
             var Delta = Rfit.Matrix3d.Zero()
-            let delta_val = abs(A[i, j] * Rfit.d)
+            var delta_val = abs(A[i, j] * Rfit.d)
             Delta[i, j] = delta_val
             Delta[j, i] = delta_val
 
             var J2_col = min_eigen3D_fast(A + Delta)
-            let sign = 1.0 if J2_col[2] > 0.0 else -1.0
+            var sign = 1.0 if J2_col[2] > 0.0 else -1.0
             for r in range(3):
                 J2_col[r] = (J2_col[r] * sign - v[r]) / delta_val
             for r in range(3):
@@ -1095,7 +1095,7 @@ fn Circle_fit[
         # joint cov matrix of (v0,v1,v2,c)
         var Cvc = Rfit.Matrix4d()
         {
-            let t0 = (J2 @ E) @ J2.transpose()
+            var t0 = (J2 @ E) @ J2.transpose()
             var t1 = Rfit.Vector3d()
             for r in range(3):
                 t1[r] = -(t0[r, 0] * r0[0] + t0[r, 1] * r0[1] + t0[r, 2] * r0[2])
@@ -1129,9 +1129,9 @@ fn Circle_fit[
             Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=Cvc), "circle_fit - Cvc:")
 
         # Jacobian (v0,v1,v2,c)->(X0,Y0,R)
-        var J3 = Matrix[Float64, 3, 4]()
+        var J3 = Matrix[DType.float64, 3, 4]()
         {
-            let t: Float64= 1.0 / h
+            var t: Float64= 1.0 / h
             J3[0, 0] = -v2x2_inv
             J3[0, 1] = 0.0
             J3[0, 2] = v[0] * Rfit.sqr(v2x2_inv) * 2.0
@@ -1161,7 +1161,7 @@ fn Circle_fit[
 
         # cov(X0,Y0,R)
         var cov_uvr = (J3 @ Cvc) @ J3.transpose()
-        let scale = Rfit.sqr(s_inv)
+        var scale = Rfit.sqr(s_inv)
         for i in range(3):
             for j in range(3):
                 cov_uvr[i, j] *= scale
@@ -1236,7 +1236,7 @@ fn Line_fit[
     # s values will be ordinary x-values
     # z values will be ordinary y-values
     var p2D = Rfit.Matrix2xNd[N].Zero()
-    var Jx = Matrix[Float64, 2, 6]()
+    var Jx = Matrix[DType.float64, 2, 6]()
 
     @parameter
     if is_defined["RFIT_DEBUG"]():
@@ -1250,32 +1250,32 @@ fn Line_fit[
     # Slide 11
     # a ==> -o i.e. the origin of the circle in XY plane, negative
     # b ==> p i.e. distances of the points wrt the origin of the circle.
-    let ox = circle.par[0]
-    let oy = circle.par[1]
+    var ox = circle.par[0]
+    var oy = circle.par[1]
 
     # associated Jacobian, used in weights and errors computation
     var Cov = Rfit.Matrix6d.Zero()
     var cov_sz = InlineArray[Rfit.Matrix2d, N]()
 
     for i in range(n):
-        let px = hits[0, i] - ox
-        let py = hits[1, i] - oy
+        var px = hits[0, i] - ox
+        var py = hits[1, i] - oy
         var p = Rfit.Vector2d()
         p[0] = px
         p[1] = py
         var o_neg = Rfit.Vector2d()
         o_neg[0] = -ox
         o_neg[1] = -oy
-        let cross :Float64 = Rfit.cross2D(o_neg, p)
-        let dot : Float64 = o_neg[0] * p[0] + o_neg[1] * p[1]
+        var cross :Float64 = Rfit.cross2D(o_neg, p)
+        var dot : Float64 = o_neg[0] * p[0] + o_neg[1] * p[1]
         # atan2(cross, dot) give back the angle in the transverse plane so tha the
         # final equation reads: x_i = -q*R*theta (theta = angle returned by atan2)
-        let atan2_ : float64= -Float64(circle.q) * math.atan2(cross, dot)
+        var atan2_ : float64= -Float64(circle.q) * math.atan2(cross, dot)
         #    p2D.coeffRef(1, i) = atan2_ * circle.par(2);
         p2D[0, i] = atan2_ * circle.par[2]
 
         # associated Jacobian, used in weights and errors- computation
-        let temp0 :Float64 = -Float64(circle.q) * circle.par[2] * 1.0 / (Rfit.sqr(dot) + Rfit.sqr(cross))
+        var temp0 :Float64 = -Float64(circle.q) * circle.par[2] * 1.0 / (Rfit.sqr(dot) + Rfit.sqr(cross))
         # good approximation for big pt and eta
         var d_X0 : Float64= 0.0
         var d_Y0 : Float64= 0.0
@@ -1284,8 +1284,8 @@ fn Line_fit[
             d_X0 = -temp0 * ((py + oy) * dot - (px - ox) * cross)
             d_Y0 = temp0 * ((px + ox) * dot - (oy - py) * cross)
             d_R = atan2_
-        let d_x : Float64 = temp0 * (oy * dot + ox * cross)
-        let d_y : Float64 = temp0 * (-ox * dot + oy * cross)
+        var d_x : Float64 = temp0 * (oy * dot + ox * cross)
+        var d_y : Float64 = temp0 * (-ox * dot + oy * cross)
 
         Jx[0, 0] = d_X0
         Jx[0, 1] = d_Y0
@@ -1320,7 +1320,7 @@ fn Line_fit[
         Cov[4, 5] = hits_ge[4, i]
         Cov[5, 4] = hits_ge[4, i]
 
-        let tmp : Matrix2d= (Jx @ Cov) @ Jx.transpose()
+        var tmp : Matrix2d= (Jx @ Cov) @ Jx.transpose()
         cov_sz[i] = (rot @ tmp) @ rot.transpose()
 
     # Math of d_{X0,Y0,R,x,y} all verified by hand
@@ -1352,7 +1352,7 @@ fn Line_fit[
         Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=cov_with_ms), "line_fit - cov_with_ms: ")
 
     # Rotate Points with the shape [2, n]
-    let p2D_rot : Rfit.Matrix2xNd[N]= rot @ p2D
+    var p2D_rot : Rfit.Matrix2xNd[N]= rot @ p2D
 
     @parameter
     if is_defined["RFIT_DEBUG"]():
@@ -1396,19 +1396,19 @@ fn Line_fit[
         Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=sol), "Rotated solutions:")
 
     # We need now to transfer back the results in the original s-z plane
-    let common_factor = 1.0 / (math.sin(theta) - sol[1, 0] * math.cos(theta))
+    var common_factor = 1.0 / (math.sin(theta) - sol[1, 0] * math.cos(theta))
     var J = Rfit.Matrix2d()
     J[0, 0] = 0.0
     J[0, 1] = common_factor * common_factor
     J[1, 0] = common_factor
     J[1, 1] = sol[0, 0] * math.cos(theta) * common_factor * common_factor
 
-    let m = common_factor * (sol[1, 0] * math.sin(theta) + math.cos(theta))
-    let q = common_factor * sol[0, 0]
-    let cov_mq = (J @ Cov_params) @ J.transpose()
+    var m = common_factor * (sol[1, 0] * math.sin(theta) + math.cos(theta))
+    var q = common_factor * sol[0, 0]
+    var cov_mq = (J @ Cov_params) @ J.transpose()
 
-    let res = p2D_rot_row1 - (A.transpose() @ sol)
-    let chi2 = (res.transpose() @ (Vy_inv @ res))[0, 0]
+    var res = p2D_rot_row1 - (A.transpose() @ sol)
+    var chi2 = (res.transpose() @ (Vy_inv @ res))[0, 0]
 
     var line = Rfit.line_fit()
     line.par[0] = m
@@ -1466,11 +1466,11 @@ fn Helix_fit[
     N: Int,
 ](
     hits: Rfit.Matrix3xNd[N],
-    hits_ge: Matrix[Float32, 6, N],
+    hits_ge: Matrix[DType.float32, 6, N],
     B: Float64,
     error: Bool,
 ) -> Rfit.helix_fit:
-    let n: Int = N
+    var n: Int = N
     var rad = Rfit.VectorNd[N]()
     for i in range(n):
         rad[i] = math.sqrt(hits[0, i] * hits[0, i] + hits[1, i] * hits[1, i])
@@ -1495,7 +1495,7 @@ fn Helix_fit[
         B,
         error,
     )
-    let line = Line_fit(
+    var line = Line_fit(
         hits,
         hits_ge,
         circle,

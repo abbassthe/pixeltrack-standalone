@@ -25,26 +25,26 @@ struct ExpectedResult:
 
 
 fn fill_hits_and_hitscov[N: Int](
-    hits: inout Rfit.Matrix3xNd[N],
-    hits_ge: inout Matrix[Float32, 6, N],
+    mut hits: Rfit.Matrix3xNd[N],
+    mut hits_ge: Matrix[DType.float32, 6, N],
 ):
     @parameter
     if N == 5:
-        let xs = InlineArray[Float64, 5](
+        var xs = InlineArray[Float64, 5](
             2.934787,
             6.314229,
             8.936963,
             10.360559,
             12.856387,
         )
-        let ys = InlineArray[Float64, 5](
+        var ys = InlineArray[Float64, 5](
             0.773211,
             1.816356,
             2.765734,
             3.330824,
             4.422212,
         )
-        let zs = InlineArray[Float64, 5](
+        var zs = InlineArray[Float64, 5](
             -10.980247,
             -23.162731,
             -32.759060,
@@ -90,17 +90,17 @@ fn fill_hits_and_hitscov[N: Int](
 
     @parameter
     if N > 3:
-        let xs = InlineArray[Float64, 4](1.98645, 4.72598, 7.65632, 11.3151)
-        let ys = InlineArray[Float64, 4](2.18002, 4.88864, 7.75845, 11.3134)
-        let zs = InlineArray[Float64, 4](2.46338, 6.99838, 11.808, 17.793)
+        var xs = InlineArray[Float64, 4](1.98645, 4.72598, 7.65632, 11.3151)
+        var ys = InlineArray[Float64, 4](2.18002, 4.88864, 7.75845, 11.3134)
+        var zs = InlineArray[Float64, 4](2.46338, 6.99838, 11.808, 17.793)
         for i in range(4):
             hits[0, i] = xs[i]
             hits[1, i] = ys[i]
             hits[2, i] = zs[i]
     else:
-        let xs = InlineArray[Float64, 3](1.98645, 4.72598, 7.65632)
-        let ys = InlineArray[Float64, 3](2.18002, 4.88864, 7.75845)
-        let zs = InlineArray[Float64, 3](2.46338, 6.99838, 11.808)
+        var xs = InlineArray[Float64, 3](1.98645, 4.72598, 7.65632)
+        var ys = InlineArray[Float64, 3](2.18002, 4.88864, 7.75845)
+        var zs = InlineArray[Float64, 3](2.46338, 6.99838, 11.808)
         for i in range(3):
             hits[0, i] = xs[i]
             hits[1, i] = ys[i]
@@ -138,16 +138,16 @@ fn fill_hits_and_hitscov[N: Int](
 fn compute_rad[N: Int](hits: Rfit.Matrix3xNd[N]) -> Rfit.VectorNd[N]:
     var rad = Rfit.VectorNd[N]()
     for i in range(N):
-        let x = hits[0, i]
-        let y = hits[1, i]
+        var x = hits[0, i]
+        var y = hits[1, i]
         rad[i] = math.sqrt(x * x + y * y)
     return rad
 
 
 fn run_fit[N: Int]() -> FitResult:
-    let B: Float64 = 0.0113921
+    var B: Float64 = 0.0113921
     var hits = Rfit.Matrix3xNd[N]()
-    var hits_ge = Matrix[Float32, 6, N]()
+    var hits_ge = Matrix[DType.float32, 6, N]()
     fill_hits_and_hitscov[N](hits, hits_ge)
 
     var fast_fit = Rfit.Vector4d()
@@ -161,7 +161,7 @@ fn run_fit[N: Int]() -> FitResult:
         hits2D[0, i] = hits[0, i]
         hits2D[1, i] = hits[1, i]
 
-    let rad = compute_rad[N](hits)
+    var rad = compute_rad[N](hits)
     var circle = Circle_fit(hits2D, hits_cov, fast_fit, rad, B, True)
     var line = Line_fit(hits, hits_ge, circle, fast_fit, B, True)
     Rfit.par_uvrtopak(circle, B, True)
@@ -190,8 +190,8 @@ fn expected_for[N: Int]() -> ExpectedResult:
 
 
 fn near(a: Float64, b: Float64, rtol: Float64, atol: Float64) -> Bool:
-    let diff = abs(a - b)
-    let scale = max(abs(a), abs(b))
+    var diff = abs(a - b)
+    var scale = max(abs(a), abs(b))
     return diff <= max(atol, rtol * scale)
 
 
@@ -202,15 +202,15 @@ fn check_matrix(
     rtol: Float64,
     atol: Float64,
 ) -> Bool:
-    if a.rows() != b.rows() or a.cols() != b.cols():
-        print(name, " shape mismatch: ", a.rows(), "x", a.cols(), " vs ", b.rows(), "x", b.cols())
+    if a.num_rows() != b.num_rows() or a.cols() != b.cols():
+        print(name, " shape mismatch: ", a.num_rows(), "x", a.cols(), " vs ", b.num_rows(), "x", b.cols())
         return False
 
     var ok = True
-    for r in range(a.rows()):
+    for r in range(a.num_rows()):
         for c in range(a.cols()):
-            let av = Float64(a[r, c])
-            let bv = Float64(b[r, c])
+            var av = Float64(a[r, c])
+            var bv = Float64(b[r, c])
             if not near(av, bv, rtol, atol):
                 print(name, "[", r, ",", c, "] ", av, " != ", bv)
                 ok = False
@@ -222,8 +222,8 @@ fn compare_fit[N: Int](res: FitResult, expected: ExpectedResult) -> Bool:
         print("Expected values not set for N=", N)
         return False
 
-    let rtol: Float64 = 1e-6
-    let atol: Float64 = 1e-8
+    var rtol: Float64 = 1e-6
+    var atol: Float64 = 1e-8
     var ok = True
     ok = check_matrix("fast_fit", res.fast_fit, expected.fast_fit, rtol, atol) and ok
     ok = check_matrix("circle_par", res.circle.par, expected.circle_par, rtol, atol) and ok
@@ -266,11 +266,11 @@ fn main() raises:
 
     if compare:
         var ok = True
-        let res4 = run_fit[4]()
+        var res4 = run_fit[4]()
         ok = compare_fit[4](res4, expected_for[4]()) and ok
-        let res3 = run_fit[3]()
+        var res3 = run_fit[3]()
         ok = compare_fit[3](res3, expected_for[3]()) and ok
-        let res5 = run_fit[5]()
+        var res5 = run_fit[5]()
         ok = compare_fit[5](res5, expected_for[5]()) and ok
         if not ok:
             exit(1)

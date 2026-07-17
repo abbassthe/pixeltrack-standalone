@@ -403,11 +403,11 @@ struct GPUCACell(Copyable, Defaultable, Movable):
     # trying to free the track building process from hardcoded layers, leaving
     # the visit of the graph based on the neighborhood connections between cells.
     fn find_ntuplets[
-        DEPTH: Int
+        origin: MutableOrigin, //, DEPTH: Int
     ](
         self,
         hh: Self.Hits,
-        cells: UnsafePointer[GPUCACell],
+        cells: UnsafePointer[GPUCACell, mut=True, origin=origin],
         mut cellTracks: Self.CellTracksVector,
         mut foundNtuplets: Self.HitContainer,
         mut apc: AtomicPairCounter,
@@ -423,80 +423,85 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         # than a threshold
 
         @parameter
-        if DEPTH == 0:
+        if DEPTH <= 0:
+            # mirrors the C++ find_ntuplets<0> specialization: no recursive call
+            # is elaborated here, terminating the compile-time instantiation chain
             print("ERROR: GPUCACell::find_ntuplets reached full depth!")
             debug_assert(False)
-            return
-
-        _ = tmpNtuplet.push_back_unsafe(self.theDoubletId.cast[DType.uint32]())
-        debug_assert(len(tmpNtuplet) <= 4)
-
-        var last = True
-        var nNeighbors = len(self.outerNeighbors())
-        var j: Int = 0
-        while j < nNeighbors:
-            var otherCell = self.outerNeighbors()[Int32(j)]
-            var otherIdx = Int(otherCell)
-            if (cells + otherIdx)[].theDoubletId < 0:
-                # killed by earlyFishbone
-                j += 1
-                continue
-            last = False
-            (cells + otherIdx)[].find_ntuplets[DEPTH - 1](
-                hh,
-                cells,
-                cellTracks,
-                foundNtuplets,
-                apc,
-                quality,
-                tmpNtuplet,
-                minHitsPerNtuplet,
-                startAt0,
+        else:
+            _ = tmpNtuplet.push_back_unsafe(
+                self.theDoubletId.cast[DType.uint32]()
             )
-            j += 1
+            debug_assert(len(tmpNtuplet) <= 4)
+            var last = True
+            var nNeighbors = len(self.outerNeighbors())
+            var j: Int = 0
+            while j < nNeighbors:
+                var otherCell = self.outerNeighbors()[Int32(j)]
+                var otherIdx = Int(otherCell)
+                if (cells + otherIdx)[].theDoubletId < 0:
+                    # killed by earlyFishbone
+                    j += 1
+                    continue
+                last = False
+                var otherCellCopy = (cells + otherIdx)[]
+                otherCellCopy.find_ntuplets[DEPTH - 1](
+                    hh,
+                    cells,
+                    cellTracks,
+                    foundNtuplets,
+                    apc,
+                    quality,
+                    tmpNtuplet,
+                    minHitsPerNtuplet,
+                    startAt0,
+                )
+                j += 1
 
-        if last:  # if long enough save...
-            if UInt32(len(tmpNtuplet)) >= minHitsPerNtuplet - 1:
-                var accept = True
+            if last:  # if long enough save...
+                if UInt32(len(tmpNtuplet)) >= minHitsPerNtuplet - 1:
+                    var accept = True
 
-                @parameter
-                if is_defined["ONLY_TRIPLETS_IN_HOLE"]():
-                    # triplets accepted only pointing to the hole
-                    var firstCell = tmpNtuplet[0]
-                    var inner = (cells + Int(firstCell))[]
-                    accept = (
-                        len(tmpNtuplet) >= 3
-                        or (startAt0 and self.hole4(hh, inner))
-                        or ((not startAt0) and self.hole0(hh, inner))
-                    )
-                if accept:
-                    var hits = InlineArray[Self.hindex_type, 6](fill=0)
-                    var nh: UInt32 = 0
-                    var tupleSize = len(tmpNtuplet)
-                    var i: Int = 0
-                    while i < tupleSize:
-                        var cellIdx = tmpNtuplet[Int32(i)]
-                        hits[Int(nh)] = (cells + Int(cellIdx))[].theInnerHitId
-                        nh += 1
-                        i += 1
-                    hits[Int(nh)] = self.theOuterHitId
-                    var it = foundNtuplets.bulkFill(
-                        apc,
-                        hits.unsafe_ptr(),
-                        UInt32(tupleSize + 1),
-                    )
-                    if it >= 0:  # if negative is overflow....
-                        i = 0
+                    @parameter
+                    if is_defined["ONLY_TRIPLETS_IN_HOLE"]():
+                        # triplets accepted only pointing to the hole
+                        var firstCell = tmpNtuplet[0]
+                        var inner = (cells + Int(firstCell))[]
+                        accept = (
+                            len(tmpNtuplet) >= 3
+                            or (startAt0 and self.hole4(hh, inner))
+                            or ((not startAt0) and self.hole0(hh, inner))
+                        )
+                    if accept:
+                        var hits = InlineArray[Self.hindex_type, 6](fill=0)
+                        var nh: UInt32 = 0
+                        var tupleSize = len(tmpNtuplet)
+                        var i: Int = 0
                         while i < tupleSize:
                             var cellIdx = tmpNtuplet[Int32(i)]
-                            _ = (cells + Int(cellIdx))[].addTrack(
-                                UInt16(it), cellTracks
-                            )
+                            hits[Int(nh)] = (
+                                cells + Int(cellIdx)
+                            )[].theInnerHitId
+                            nh += 1
                             i += 1
-                        quality[Int(it)] = Self.bad  # initialize to bad
+                        hits[Int(nh)] = self.theOuterHitId
+                        var it = foundNtuplets.bulkFill(
+                            apc,
+                            hits.unsafe_ptr(),
+                            UInt32(tupleSize + 1),
+                        )
+                        if it >= 0:  # if negative is overflow....
+                            i = 0
+                            while i < tupleSize:
+                                var cellIdx = tmpNtuplet[Int32(i)]
+                                _ = (cells + Int(cellIdx))[].addTrack(
+                                    UInt16(it), cellTracks
+                                )
+                                i += 1
+                            quality[Int(it)] = Self.bad  # initialize to bad
 
-        _ = tmpNtuplet.pop_back()
-        debug_assert(len(tmpNtuplet) < 4)
+            _ = tmpNtuplet.pop_back()
+            debug_assert(len(tmpNtuplet) < 4)
 
     @always_inline
     @staticmethod

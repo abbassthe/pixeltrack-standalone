@@ -18,10 +18,10 @@ trait gpuPixelDoublets:
 
         comptime maxCellsPerHit = GPUCACell.maxCellsPerHit
 
-        let hh = hhp[]
+        var hh = hhp[]
 
-        let firstY = 0 + 0 * 1
-        let firstX : UInt32 = 0
+        var firstY = 0 + 0 * 1
+        var firstX : UInt32 = 0
 
         var x = InlineArray[Float32, maxCellsPerHit]()
         var y = InlineArray[Float32, maxCellsPerHit]()
@@ -35,14 +35,14 @@ trait gpuPixelDoublets:
         var nt = nHits
         for idy in range(firstY, nt):
             ref vc  = isOuterHitOfCell[idy]
-            let s = vc.size()
+            var s = vc.size()
 
             if s < 2 :
                 continue
-            let c0 = cells[vc[0]]
-            let xo = c0.get_outer_x(hh)
-            let yo = c0.get_outer_y(hh)
-            let zo = c0.get_outer_z(hh)
+            var c0 = cells[vc[0]]
+            var xo = c0.get_outer_x(hh)
+            var yo = c0.get_outer_y(hh)
+            var zo = c0.get_outer_z(hh)
             var sg = 0
             for ic in range(s):
                 ref ci = cells[vc[ic]]
@@ -66,7 +66,7 @@ trait gpuPixelDoublets:
             ref ci = cells[cc[ic]]
             for jc in range(ic + 1 , sg):
                 cj = cells[cc[jc]]
-                let cos12 = x[ic] * x[jc] + y[ic] * y[jc] + z[ic] * z[jc]
+                var cos12 = x[ic] * x[jc] + y[ic] * y[jc] + z[ic] * z[jc]
                 if d[ic] != d[jc] and cos12 * cos12 >= 0.99999 * n[ic] * n[jc]:
                     if n[ic] > n[jc]:
                         ci.theDoubletId = -1

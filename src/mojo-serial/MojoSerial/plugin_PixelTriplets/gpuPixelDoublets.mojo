@@ -5,8 +5,7 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import TrackingRecHit2DS
 
 
 
-@parameter
-let nPairs: Int = 13 + 2 + 4
+alias nPairs: Int = 13 + 2 + 4
 @assert(nPairs <= CAConstants.maxNumberOfLayerPairs().cast[Int]())
 
 comptime layerPairs = InlineArray[UInt8, 2 * nPairs](
@@ -125,7 +124,7 @@ fn initDoublets(
     cellTracksContainer: UnsafePointer[CellTracks],
 ):
     assert(isOuterHitOfCell)
-    let first: UInt32 = 0
+    var first: UInt32 = 0
     for i in range(first, nHits):
         isOuterHitOfCell[i.cast[Int]()].reset()
 
@@ -166,7 +165,7 @@ fn getDoubletsFromHisto(
     doPtCut: Bool,
     maxNumOfDoublets: UInt32,
 ):
-    let hh = hhp[]
+    var hh = hhp[]
     gpuPixelDoubleAlgo.doubletsFromHisto(
         layerPairs.unsafe_ptr(),
         nActualPairs.cast[UInt32](),

@@ -338,7 +338,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         return colns
 
     @always_inline
-    fn rows(self) -> Int:
+    fn num_rows(self) -> Int:
         return rows
 
     @always_inline
@@ -1359,10 +1359,8 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         return Self(res)
 
 
-@fieldwise_init
 struct Map[T: DType, rows: Int, colns: Int, default_inner_stride: Int = 1](
     Copyable,
-    Defaultable,
     Movable,
     Typeable,
 ):
@@ -1421,22 +1419,16 @@ struct Map[T: DType, rows: Int, colns: Int, default_inner_stride: Int = 1](
         return res
 
     @always_inline
-    fn block(
-        self,
-        row: Int,
-        col: Int,
-        br: IntLiteral,
-        bc: IntLiteral,
-    ) -> Matrix[T, br, bc]:
+    fn block[br: Int, bc: Int](self, row: Int, col: Int) -> Matrix[T, br, bc]:
         var res = Matrix[T, br, bc]()
         for r in range(br):
             for c in range(bc):
                 res[r, c] = self[row + r, col + c]
         return res
-        
+
     #this is not flattening it is just taking first col
     @always_inline
-    fn head(self, n: IntLiteral) -> Matrix[T, n, 1]:
+    fn head[n: Int](self) -> Matrix[T, n, 1]:
         constrained[colns == 1, "Map head() requires a column vector"]()
         var res = Matrix[T, n, 1]()
         for i in range(n):
@@ -1503,15 +1495,15 @@ struct MatrixXd(Defaultable, Movable, Typeable):
 
     @staticmethod
     fn Zero[rows: Int, cols: Int](
-        _: IntLiteral, _: IntLiteral
-    ) -> Matrix[Float64, rows, cols]:
-        return Matrix[Float64, rows, cols]()
+        rows_hint: IntLiteral, cols_hint: IntLiteral
+    ) -> Matrix[DType.float64, rows, cols]:
+        return Matrix[DType.float64, rows, cols]()
 
     @staticmethod
     fn zero[rows: Int, cols: Int](
-        _: IntLiteral, _: IntLiteral
-    ) -> Matrix[Float64, rows, cols]:
-        return Matrix[Float64, rows, cols]()
+        rows_hint: IntLiteral, cols_hint: IntLiteral
+    ) -> Matrix[DType.float64, rows, cols]:
+        return Matrix[DType.float64, rows, cols]()
 
 
 
@@ -1569,18 +1561,18 @@ struct VectorXd(Defaultable, Movable, Typeable):
         self._data[i] = val
 
     @staticmethod
-    fn Zero[rows: Int](_: IntLiteral) -> Matrix[Float64, rows, 1]:
-        return Matrix[Float64, rows, 1]()
+    fn Zero[rows: Int](rows_hint: IntLiteral) -> Matrix[DType.float64, rows, 1]:
+        return Matrix[DType.float64, rows, 1]()
 
     @staticmethod
-    fn zero[rows: Int](_: IntLiteral) -> Matrix[Float64, rows, 1]:
-        return Matrix[Float64, rows, 1]()
+    fn zero[rows: Int](rows_hint: IntLiteral) -> Matrix[DType.float64, rows, 1]:
+        return Matrix[DType.float64, rows, 1]()
 
     @staticmethod
     fn Constant[rows: Int](
-        _: IntLiteral, val: Float64
-    ) -> Matrix[Float64, rows, 1]:
-        return Matrix[Float64, rows, 1](val)
+        rows_hint: IntLiteral, val: Float64
+    ) -> Matrix[DType.float64, rows, 1]:
+        return Matrix[DType.float64, rows, 1](val)
 
     @staticmethod
     fn Zero(size: Int) -> VectorXd:

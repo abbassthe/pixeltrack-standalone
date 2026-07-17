@@ -20,14 +20,14 @@ struct Rfit:
     fn stride() -> UInt32:
         return Rfit.maxNumberOfConcurrentFits()
 
-    alias Matrix3x4d = Matrix[Float64, 3, 4]
+    alias Matrix3x4d = Matrix[DType.float64, 3, 4]
     alias Map3x4d = Map[
         Float64,
         3,
         4,
         stride(),
     ]
-    alias Matrix6x4f = Matrix[Float32, 6, 4]
+    alias Matrix6x4f = Matrix[DType.float32, 6, 4]
     alias Map6x4f = Map[
         Float32,
         6,
@@ -36,7 +36,7 @@ struct Rfit:
     ]
 
     # hits
-    alias Matrix3xNd[N: Int] = Matrix[Float64, 3, N]
+    alias Matrix3xNd[N: Int] = Matrix[DType.float64, 3, N]
     alias Map3xNd[N: Int] = Map[
         Float64,
         3,
@@ -45,7 +45,7 @@ struct Rfit:
     ]
 
     # errors
-    alias Matrix6xNf[N: Int] = Matrix[Float32, 6, N]
+    alias Matrix6xNf[N: Int] = Matrix[DType.float32, 6, N]
     alias Map6xNf[N: Int] = Map[
         Float32,
         6,
@@ -54,7 +54,7 @@ struct Rfit:
     ]
 
     # fast fit
-    alias Vector4d = Matrix[Float64, 4, 1]
+    alias Vector4d = Matrix[DType.float64, 4, 1]
     alias Map4d = Map[Float64, 4, 1, stride()]
 
 

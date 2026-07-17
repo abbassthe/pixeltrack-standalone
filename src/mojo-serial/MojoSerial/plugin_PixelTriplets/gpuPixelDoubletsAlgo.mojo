@@ -45,11 +45,11 @@ fn doubletsFromHisto(
     var isOuterLadder: Bool = ideal_cond
 
     ref hist = hh.phiBinner()
-    let offsets : UnsafePointer[UInt32] = hh.hitsLayerStart()
+    var offsets : UnsafePointer[UInt32] = hh.hitsLayerStart()
     assert(offsets)
 
     fn layerSize(li: UInt8) -> UInt32:
-        let idx = li.cast[Int]()
+        var idx = li.cast[Int]()
         return offsets[idx + 1] - offsets[idx]
 
     # nPairsMax to be optimized later (originally was 64).
@@ -86,13 +86,13 @@ fn doubletsFromHisto(
         else:
             assert(0 == pairLayerId)
 
-        let inner :UInt8 = layerPairs[(2 * pairLayerId).cast[Int]()]
-        let outer :UInt8= layerPairs[(2 * pairLayerId + 1).cast[Int]()]
+        var inner :UInt8 = layerPairs[(2 * pairLayerId).cast[Int]()]
+        var outer :UInt8= layerPairs[(2 * pairLayerId + 1).cast[Int]()]
         assert(outer > inner)
-        let inner_idx = inner.cast[Int]()
-        let outer_idx = outer.cast[Int]()
+        var inner_idx = inner.cast[Int]()
+        var outer_idx = outer.cast[Int]()
 
-        let hoff = Hist.histOff(outer.cast[UInt32]())
+        var hoff = Hist.histOff(outer.cast[UInt32]())
 
         var i = j
         if pairLayerId != 0:
@@ -105,7 +105,7 @@ fn doubletsFromHisto(
         assert(i < offsets[inner_idx + 1])
 
         # found hit corresponding to our cuda thread, now do the job
-        let mi = hh.detectorIndex(i.cast[Int]())
+        var mi = hh.detectorIndex(i.cast[Int]())
         if mi > 2000:
             j += 1
             continue  # invalid
@@ -115,7 +115,7 @@ fn doubletsFromHisto(
         # auto fpos = (outer>3) & (outer<7)
         # if ((inner<3) & (outer>3)) and bpos!=fpos: continue
 
-        let mez = hh.zGlobal(i.cast[Int]())
+        var mez = hh.zGlobal(i.cast[Int]())
 
         if mez < minz[pairLayerId.cast[Int]()] or mez > maxz[pairLayerId.cast[Int]()]:
             j += 1
@@ -138,18 +138,18 @@ fn doubletsFromHisto(
                 mes = -1
 
             if inner == 0 and outer > 3:  # B1 and F1
-                let mes_i = mes.cast[Int]()
+                var mes_i = mes.cast[Int]()
                 if mes_i > 0 and mes_i < minYsizeB1:
                     j += 1
                     continue  # only long cluster  (5*8)
             if inner == 1 and outer > 3:  # B2 and F1
-                let mes_i = mes.cast[Int]()
+                var mes_i = mes.cast[Int]()
                 if mes_i > 0 and mes_i < minYsizeB2:
                     j += 1
                     continue
 
-        let mep = hh.iphi(i.cast[Int]())
-        let mer = hh.rGlobal(i.cast[Int]())
+        var mep = hh.iphi(i.cast[Int]())
+        var mer = hh.rGlobal(i.cast[Int]())
 
         # all cuts: true if fails
         comptime z0cut: Float32 = 12.0  # cm
@@ -160,36 +160,36 @@ fn doubletsFromHisto(
         fn ptcut(j: Int, idphi: Int) -> Bool:
             var r2t4 = minRadius2T4
             var ri = mer
-            let ro = hh.rGlobal(j)
-            let dphi = ApproxAtan2.short2phi(idphi.cast[Int16]())
+            var ro = hh.rGlobal(j)
+            var dphi = ApproxAtan2.short2phi(idphi.cast[Int16]())
             return dphi * dphi * (r2t4 - ri * ro) > (ro - ri) * (ro - ri)
 
         fn z0cutoff(j: Int) -> Bool:
-            let zo = hh.zGlobal(j)
-            let ro = hh.rGlobal(j)
-            let dr = ro - mer
+            var zo = hh.zGlobal(j)
+            var ro = hh.rGlobal(j)
+            var dr = ro - mer
             return dr > maxr[pairLayerId.cast[Int]()] or dr < 0.0 or abs(mez * ro - mer * zo) > z0cut * dr
 
         fn zsizeCut(j: Int) -> Bool:
-            let onlyBarrel = outer < 4
-            let so = hh.clusterSizeY(j)
-            let dy = maxDYsize12 if inner == 0 else maxDYsize
+            var onlyBarrel = outer < 4
+            var so = hh.clusterSizeY(j)
+            var dy = maxDYsize12 if inner == 0 else maxDYsize
             # in the barrel cut on difference in size
             # in the endcap on the prediction on the first layer (actually in the barrel only: happen to be safe for endcap as well)
             # FIXME move pred cut to z0cutoff to optmize loading of and computaiton ...
-            let zo = hh.zGlobal(j)
-            let ro = hh.rGlobal(j)
+            var zo = hh.zGlobal(j)
+            var ro = hh.rGlobal(j)
             if onlyBarrel:
-                let mes_i = mes.cast[Int]()
-                let so_i = so.cast[Int]()
+                var mes_i = mes.cast[Int]()
+                var so_i = so.cast[Int]()
                 return mes_i > 0 and so_i > 0 and abs(so_i - mes_i) > dy
-            let mes_i = mes.cast[Int]()
+            var mes_i = mes.cast[Int]()
             return inner < 4 and mes_i > 0 and abs(mes_i -  Int((abs((mez - zo) / (mer - ro)) * dzdrFact + 0.5))) > maxDYPred
 
 
-        let iphicut = phicuts[pairLayerId.cast[Int]()]
-        let kl = Hist.bin((mep - iphicut).cast[Int16]()).cast[UInt32]()
-        let kh = Hist.bin((mep + iphicut).cast[Int16]()).cast[UInt32]()
+        var iphicut = phicuts[pairLayerId.cast[Int]()]
+        var kl = Hist.bin((mep - iphicut).cast[Int16]()).cast[UInt32]()
+        var kh = Hist.bin((mep + iphicut).cast[Int16]()).cast[UInt32]()
         fn incr(mut k: UInt32) -> UInt32:
             k = (k + 1) % Hist.nbins()
             return k
@@ -209,15 +209,15 @@ fn doubletsFromHisto(
                 if kk != kl and kk != kh:
                     nmin += hist.size(kk + hoff).cast[Int]()
             var p = hist.begin(kk + hoff)
-            let e = hist.end(kk + hoff)
+            var e = hist.end(kk + hoff)
             p += first.cast[Int]()
             while p < e:
-                let oi = p[]
-                let oi_i = oi.cast[Int]()
-                let oi_u = oi.cast[UInt32]()
+                var oi = p[]
+                var oi_i = oi.cast[Int]()
+                var oi_u = oi.cast[UInt32]()
                 assert(oi_u >= offsets[outer_idx])
                 assert(oi_u < offsets[outer_idx + 1])
-                let mo = hh.detectorIndex(oi_i)
+                var mo = hh.detectorIndex(oi_i)
                 if mo > 2000:
                     p += stride
                     continue  # invalid
@@ -226,9 +226,9 @@ fn doubletsFromHisto(
                         p += stride
                         continue
 
-                let mop = hh.iphi(oi_i)
+                var mop = hh.iphi(oi_i)
 
-                let idphi = min(abs((mop - mep).cast[Int]()), abs((mep - mop).cast[Int]()))
+                var idphi = min(abs((mop - mep).cast[Int]()), abs((mep - mop).cast[Int]()))
                 if idphi > iphicut.cast[Int]():
                     p += stride
                     continue
@@ -241,7 +241,7 @@ fn doubletsFromHisto(
                         p += stride
                         continue
 
-                let ind = CUDACompat.atomicAdd(nCells, UInt32(1))
+                var ind = CUDACompat.atomicAdd(nCells, UInt32(1))
                 if ind >= maxNumOfDoublets:
                     _ = CUDACompat.atomicSub(nCells, UInt32(1))
                     break

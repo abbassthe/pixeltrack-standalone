@@ -6,15 +6,15 @@ from MojoSerial.MojoBridge.Matrix import Matrix
 from math import sqrt, sin, cos, asin, pi, abs
 
 fn min_eigen_2x2(
-    A: Matrix[Float64, 2, 2], chi2: inout Float64
-) -> Matrix[Float64, 2, 1]:
-    let a = A[0, 0]
-    let b = A[0, 1]
-    let c = A[1, 1]
-    let tr = a + c
-    let diff = a - c
-    let delta = math.sqrt(diff * diff + 4.0 * b * b)
-    let lambda_min = 0.5 * (tr - delta)
+    A: Matrix[DType.float64, 2, 2], mut chi2: Float64
+) -> Matrix[DType.float64, 2, 1]:
+    var a = A[0, 0]
+    var b = A[0, 1]
+    var c = A[1, 1]
+    var tr = a + c
+    var diff = a - c
+    var delta = math.sqrt(diff * diff + 4.0 * b * b)
+    var lambda_min = 0.5 * (tr - delta)
     chi2 = lambda_min
 
     var v0 = b
@@ -27,12 +27,12 @@ fn min_eigen_2x2(
             v0 = 0.0
             v1 = 1.0
 
-    let norm = math.sqrt(v0 * v0 + v1 * v1)
+    var norm = math.sqrt(v0 * v0 + v1 * v1)
     if norm != 0.0:
         v0 /= norm
         v1 /= norm
 
-    var vec = Matrix[Float64, 2, 1]()
+    var vec = Matrix[DType.float64, 2, 1]()
     vec[0, 0] = v0
     vec[1, 0] = v1
     return vec
@@ -67,7 +67,7 @@ fn norm3(x: Float64, y: Float64, z: Float64) -> Float64:
 
 @always_inline
 fn normalize3(x: Float64, y: Float64, z: Float64) -> (Float64, Float64, Float64):
-    let n = norm3(x, y, z)
+    var n = norm3(x, y, z)
     if n > 0.0:
         return (x / n, y / n, z / n)
     return (1.0, 0.0, 0.0)
@@ -88,9 +88,9 @@ fn best_of_three_vectors(
     v2x: Float64, v2y: Float64, v2z: Float64
 ) -> (Float64, Float64, Float64, Float64):
     # returns (x,y,z, n2)
-    let n0 = v0x*v0x + v0y*v0y + v0z*v0z
-    let n1 = v1x*v1x + v1y*v1y + v1z*v1z
-    let n2 = v2x*v2x + v2y*v2y + v2z*v2z
+    var n0 = v0x*v0x + v0y*v0y + v0z*v0z
+    var n1 = v1x*v1x + v1y*v1y + v1z*v1z
+    var n2 = v2x*v2x + v2y*v2y + v2z*v2z
 
     var x = v0x
     var y = v0y
@@ -123,9 +123,9 @@ fn nullvec_from_rows_rank12(
     # ============================================================
 
     # Try null vector via cross products of row pairs (rank-2 case).
-    let (c01x, c01y, c01z) = cross3(r0x, r0y, r0z, r1x, r1y, r1z)
-    let (c02x, c02y, c02z) = cross3(r0x, r0y, r0z, r2x, r2y, r2z)
-    let (c12x, c12y, c12z) = cross3(r1x, r1y, r1z, r2x, r2y, r2z)
+    var (c01x, c01y, c01z) = cross3(r0x, r0y, r0z, r1x, r1y, r1z)
+    var (c02x, c02y, c02z) = cross3(r0x, r0y, r0z, r2x, r2y, r2z)
+    var (c12x, c12y, c12z) = cross3(r1x, r1y, r1z, r2x, r2y, r2z)
 
     var (vx, vy, vz, nmax) = best_of_three_vectors(
         c01x, c01y, c01z,
@@ -138,9 +138,9 @@ fn nullvec_from_rows_rank12(
 
     # If all cross products are tiny, rows are nearly parallel (rank ~ 1),
     # or everything is tiny (near MMM). Pick a nonzero row and return a vector ⟂ to it.
-    let n0 = r0x*r0x + r0y*r0y + r0z*r0z
-    let n1 = r1x*r1x + r1y*r1y + r1z*r1z
-    let n2 = r2x*r2x + r2y*r2y + r2z*r2z
+    var n0 = r0x*r0x + r0y*r0y + r0z*r0z
+    var n1 = r1x*r1x + r1y*r1y + r1z*r1z
+    var n2 = r2x*r2x + r2y*r2y + r2z*r2z
 
     var rx = r0x
     var ry = r0y
@@ -174,20 +174,20 @@ fn nullvec_from_rows_rank12(
 # ---------------------------
 
 fn min_eigen_3x3(
-    A: Matrix[Float64, 3, 3],
-    chi2: inout Float64
-) -> Matrix[Float64, 3, 1]:
+    A: Matrix[DType.float64, 3, 3],
+    mut chi2: Float64
+) -> Matrix[DType.float64, 3, 1]:
 
     # ============================================================
     # Section 0: Read symmetric components
     # A = [[a00,a01,a02],[a01,a11,a12],[a02,a12,a22]]
     # ============================================================
-    let a00 = A[0, 0]
-    let a01 = A[0, 1]
-    let a02 = A[0, 2]
-    let a11 = A[1, 1]
-    let a12 = A[1, 2]
-    let a22 = A[2, 2]
+    var a00 = A[0, 0]
+    var a01 = A[0, 1]
+    var a02 = A[0, 2]
+    var a11 = A[1, 1]
+    var a12 = A[1, 2]
+    var a22 = A[2, 2]
 
     # ============================================================
     # Section 1: Deviatoric part S = A - (tr(A)/3) I   (Eq. 21.99)
@@ -196,15 +196,15 @@ fn min_eigen_3x3(
     # A and S share eigenvectors; eigenvalues satisfy:
     #   λ_k = s_k + I1/3   (Eq. 21.100)
     # ============================================================
-    let I1 = a00 + a11 + a22
-    let q = I1 / 3.0
+    var I1 = a00 + a11 + a22
+    var q = I1 / 3.0
 
-    let s00 = a00 - q
-    let s11 = a11 - q
-    let s22 = a22 - q
-    let s01 = a01
-    let s02 = a02
-    let s12 = a12
+    var s00 = a00 - q
+    var s11 = a11 - q
+    var s22 = a22 - q
+    var s01 = a01
+    var s02 = a02
+    var s12 = a12
 
     # ============================================================
     # Section 2: Compute J2 and r = ||S|| = sqrt(2 J2)
@@ -216,18 +216,18 @@ fn min_eigen_3x3(
     # For symmetric matrices, tr(S^2) expands to:
     #   s00^2+s11^2+s22^2 + 2(s01^2+s02^2+s12^2)
     # ============================================================
-    let trS2 = (
+    var trS2 = (
         s00*s00 + s11*s11 + s22*s22
         + 2.0*(s01*s01 + s02*s02 + s12*s12)
     )
-    let J2 = 0.5 * trS2
-    let r = sqrt(2.0 * J2)
+    var J2 = 0.5 * trS2
+    var r = sqrt(2.0 * J2)
 
     # If r ~ 0 => S ~ 0 => A ~ q I => triple root (MMM), any vector works.
     # (Page 398: if r=0, one distinct eigenvalue)
     if r <= 1.0e-18:
         chi2 = q
-        var v = Matrix[Float64, 3, 1]()
+        var v = Matrix[DType.float64, 3, 1]()
         v[0, 0] = 1.0
         v[1, 0] = 0.0
         v[2, 0] = 0.0
@@ -243,16 +243,16 @@ fn min_eigen_3x3(
     # We use the principal arcsin to enforce θ ∈ [-π/6, π/6],
     # which guarantees ordered eigenvalues λL ≤ λM ≤ λH.
     # ============================================================
-    let sh00 = s00 / r
-    let sh11 = s11 / r
-    let sh22 = s22 / r
-    let sh01 = s01 / r
-    let sh02 = s02 / r
-    let sh12 = s12 / r
+    var sh00 = s00 / r
+    var sh11 = s11 / r
+    var sh22 = s22 / r
+    var sh01 = s01 / r
+    var sh02 = s02 / r
+    var sh12 = s12 / r
 
     # det of symmetric 3x3:
     # det = s00*s11*s22 + 2*s01*s02*s12 - s00*s12^2 - s11*s02^2 - s22*s01^2
-    let det_sh = (
+    var det_sh = (
         sh00 * sh11 * sh22
         + 2.0 * sh01 * sh02 * sh12
         - sh00 * sh12 * sh12
@@ -264,7 +264,7 @@ fn min_eigen_3x3(
     sin3t = clamp(sin3t, -1.0, 1.0)
 
     # θ in principal range ensures ordering (discussion around Eq. 21.111)
-    let theta = asin(sin3t) / 3.0
+    var theta = asin(sin3t) / 3.0
 
     # ============================================================
     # Section 4: Eigenvalues from (r, θ, z)
@@ -277,10 +277,10 @@ fn min_eigen_3x3(
     #   λM = q - sqrt(2/3) r sin(θ)
     #   λL = q - sqrt(2/3) r cos(θ + π/6)
     # ============================================================
-    let k = sqrt(2.0 / 3.0) * r
-    let lamH = q + k * cos(theta - pi / 6.0)
-    let lamM = q - k * sin(theta)
-    let lamL = q - k * cos(theta + pi / 6.0)
+    var k = sqrt(2.0 / 3.0) * r
+    var lamH = q + k * cos(theta - pi / 6.0)
+    var lamM = q - k * sin(theta)
+    var lamL = q - k * cos(theta + pi / 6.0)
 
     # By construction lamL <= lamM <= lamH, so the minimum is lamL
     chi2 = lamL
@@ -289,28 +289,28 @@ fn min_eigen_3x3(
     # Section 5: Direct eigenvector from nullspace of M = A - λL I
     # Solve M v = 0 by row-cross-product method with rank-1 fallback.
     # ============================================================
-    let m00 = a00 - lamL
-    let m01 = a01
-    let m02 = a02
-    let m10 = a01
-    let m11 = a11 - lamL
-    let m12 = a12
-    let m20 = a02
-    let m21 = a12
-    let m22 = a22 - lamL
+    var m00 = a00 - lamL
+    var m01 = a01
+    var m02 = a02
+    var m10 = a01
+    var m11 = a11 - lamL
+    var m12 = a12
+    var m20 = a02
+    var m21 = a12
+    var m22 = a22 - lamL
 
     # rows of M
-    let r0x = m00; let r0y = m01; let r0z = m02
-    let r1x = m10; let r1y = m11; let r1z = m12
-    let r2x = m20; let r2y = m21; let r2z = m22
+    var r0x = m00; let r0y = m01; let r0z = m02
+    var r1x = m10; let r1y = m11; let r1z = m12
+    var r2x = m20; let r2y = m21; let r2z = m22
 
-    let (vx, vy, vz) = nullvec_from_rows_rank12(
+    var (vx, vy, vz) = nullvec_from_rows_rank12(
         r0x, r0y, r0z,
         r1x, r1y, r1z,
         r2x, r2y, r2z
     )
 
-    var vec = Matrix[Float64, 3, 1]()
+    var vec = Matrix[DType.float64, 3, 1]()
     vec[0, 0] = vx
     vec[1, 0] = vy
     vec[2, 0] = vz
@@ -318,7 +318,7 @@ fn min_eigen_3x3(
 
 
 fn min_eigen_3x3_fast(
-    A: Matrix[Float64, 3, 3]
-) -> Matrix[Float64, 3, 1]:
+    A: Matrix[DType.float64, 3, 3]
+) -> Matrix[DType.float64, 3, 1]:
     var chi2: Float64 = 0.0
     return min_eigen_3x3(A, chi2)

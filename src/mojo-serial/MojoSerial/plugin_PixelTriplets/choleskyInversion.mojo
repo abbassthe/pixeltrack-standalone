@@ -24,7 +24,7 @@ from MojoSerial.MojoBridge.DTypes import DType
 
 
 fn invert11[M1: AnyType, M2: AnyType](src: M1, dst: M2):
-    let inv = 1.0 / src[0, 0]
+    var inv = 1.0 / src[0, 0]
     dst[0, 0] = inv
 
 

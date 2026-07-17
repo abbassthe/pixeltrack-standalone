@@ -5,8 +5,7 @@ from MojoSerial.MojoBridge.Matrix import Matrix
 from FitUtils import Rfit
 import choleskyInversion
 
-@parameter
-let CPP_DUMP = False
+alias CPP_DUMP = False
 
 #< Karimäki's parameters: (phi, d, k=1/R)
 #< covariance matrix: \n
@@ -42,12 +41,12 @@ struct PreparedBrokenLineData[N: Int]:
 #\return the variance of the planar angle ((theta_0)^2 /3).
 fn MultScatt(length: Float64, B: Float64, R: Float64, Layer: Int, slope: Float64) -> Float64:
     # limit R to 20GeV...
-    let _ = Layer
+    var _ = Layer
     var pt2 = math.min(20.0, B * R)
     pt2 *= pt2
-    let XXI_0 = 0.06 / 16.0  #!< inverse of radiation length of the material in cm
-    let geometry_factor = 0.7  #!< number between 1/3 (uniform material) and 1 (thin scatterer) to be manually tuned
-    let fact = geometry_factor * Rfit.sqr(13.6 / 1000.0)
+    var XXI_0 = 0.06 / 16.0  #!< inverse of radiation length of the material in cm
+    var geometry_factor = 0.7  #!< number between 1/3 (uniform material) and 1 (thin scatterer) to be manually tuned
+    var fact = geometry_factor * Rfit.sqr(13.6 / 1000.0)
     return fact / (pt2 * (1.0 + Rfit.sqr(slope))) * (abs(length) * XXI_0) * Rfit.sqr(1.0 + 0.038 * math.log(abs(length) * XXI_0))
 
 
@@ -73,7 +72,7 @@ fn RotationMatrix(slope: Float64) -> Rfit.Matrix2d:
 #\param x0 x coordinate of the translation vector.
 #\param y0 y coordinate of the translation vector.
 #\param jacobian passed by reference in order to save stack.
-fn TranslateKarimaki(circle: inout karimaki_circle_fit, x0: Float64, y0: Float64, jacobian: inout Rfit.Matrix3d):
+fn TranslateKarimaki(mut circle: karimaki_circle_fit, x0: Float64, y0: Float64, mut jacobian: Rfit.Matrix3d):
     var A: Float64 = 0.0
     var U: Float64 = 0.0
     var BB: Float64 = 0.0
@@ -124,9 +123,9 @@ fn TranslateKarimaki(circle: inout karimaki_circle_fit, x0: Float64, y0: Float64
 #\param B magnetic field in Gev/cm/c.
 #\param results PreparedBrokenLineData to be filled (see description of PreparedBrokenLineData).
 fn prepareBrokenLineData[M3xN: AnyType, V4: AnyType, N: Int](
-    hits: M3xN, fast_fit: V4, B: Float64, results: inout PreparedBrokenLineData[N]
+    hits: M3xN, fast_fit: V4, B: Float64, mut results: PreparedBrokenLineData[N]
 ):
-    let n = N
+    var n = N
     var i: UInt32 = 0
     var d = Rfit.Vector2d()
     var e = Rfit.Vector2d()
@@ -138,9 +137,9 @@ fn prepareBrokenLineData[M3xN: AnyType, V4: AnyType, N: Int](
     else:
         results.q = 1
 
-    let slope: Float64 = -Float64(results.q) / fast_fit[3]
+    var slope: Float64 = -Float64(results.q) / fast_fit[3]
 
-    let R = RotationMatrix(slope)
+    var R = RotationMatrix(slope)
 
     results.radii = hits.block(0, 0, 2, n) - fast_fit.head(2) * Rfit.MatrixXd.Constant(1, n, 1)
     e = -fast_fit[2] * fast_fit.head(2) / fast_fit.head(2).norm()
@@ -178,7 +177,7 @@ fn prepareBrokenLineData[M3xN: AnyType, V4: AnyType, N: Int](
 # 
 #\return the n-by-n matrix of the linear system
 fn MatrixC_u[N: Int](w: Rfit.VectorNd[N], S: Rfit.VectorNd[N], VarBeta: Rfit.VectorNd[N]) -> Rfit.MatrixNd[N]:
-    let n: UInt32 = N
+    var n: UInt32 = N
     var i: UInt32 = 0
 
     var C_U = Rfit.MatrixNd[N].Zero()
@@ -213,22 +212,22 @@ fn MatrixC_u[N: Int](w: Rfit.VectorNd[N], S: Rfit.VectorNd[N], VarBeta: Rfit.Vec
 #\return (X0,Y0,R,tan(theta)).
 # 
 #\warning sign of theta is (intentionally, for now) mistaken for negative charges.
-fn BL_Fast_fit[M3xN: AnyType, V4: AnyType](hits: M3xN, result: inout V4):
-    let N = M3xN.ColsAtCompileTime()
-    let n = N
+fn BL_Fast_fit[M3xN: AnyType, V4: AnyType](hits: M3xN, mut result: V4):
+    var N = M3xN.ColsAtCompileTime()
+    var n = N
 
-    let a: Rfit.Vector2d = hits.block(0, n // 2, 2, 1) - hits.block(0, 0, 2, 1)
-    let b: Rfit.Vector2d = hits.block(0, n - 1, 2, 1) - hits.block(0, n // 2, 2, 1)
-    let c: Rfit.Vector2d = hits.block(0, 0, 2, 1) - hits.block(0, n - 1, 2, 1)
+    var a: Rfit.Vector2d = hits.block(0, n // 2, 2, 1) - hits.block(0, 0, 2, 1)
+    var b: Rfit.Vector2d = hits.block(0, n - 1, 2, 1) - hits.block(0, n // 2, 2, 1)
+    var c: Rfit.Vector2d = hits.block(0, 0, 2, 1) - hits.block(0, n - 1, 2, 1)
 
-    let tmp = 0.5 / Rfit.cross2D(c, a)
+    var tmp = 0.5 / Rfit.cross2D(c, a)
     result[0] = hits[0, 0] - (a[1] * c.squaredNorm() + c[1] * a.squaredNorm()) * tmp
     result[1] = hits[1, 0] + (a[0] * c.squaredNorm() + c[0] * a.squaredNorm()) * tmp
 
     result[2] = math.sqrt(a.squaredNorm() * b.squaredNorm() * c.squaredNorm()) / (2.0 * abs(Rfit.cross2D(b, a)))
 
-    let d : Rfit.Vector2d= hits.block(0, 0, 2, 1) - result.head(2)
-    let e : Rfit.Vector2d= hits.block(0, n - 1, 2, 1) - result.head(2)
+    var d : Rfit.Vector2d= hits.block(0, 0, 2, 1) - result.head(2)
+    var e : Rfit.Vector2d= hits.block(0, n - 1, 2, 1) - result.head(2)
 
     result[3] = result[2] * math.atan2(Rfit.cross2D(d, e), d.dot(e)) / (hits[2, n - 1] - hits[2, 0])
 
@@ -250,18 +249,18 @@ fn BL_Fast_fit[M3xN: AnyType, V4: AnyType](hits: M3xN, result: inout V4):
 #The step 2 is the least square fit, done by imposing the minimum constraint on the cost function and solving the consequent linear system. It determines the fitted parameters u and \Delta\kappa and their covariance matrix.
 #The step 3 is the correction of the fast pre-fitted parameters for the innermost part of the track. It is first done in a comfortable coordinate system (the one in which the first hit is the origin) and then the parameters and their covariance matrix are transformed to the original coordinate system.
 fn BL_Circle_fit[M3xN: AnyType, M6xN: AnyType, V4: AnyType, N: Int](
-    hits: M3xN, hits_ge: M6xN, fast_fit: V4, B: Float64, data: inout PreparedBrokenLineData[N], circle_results: inout karimaki_circle_fit
+    hits: M3xN, hits_ge: M6xN, fast_fit: V4, B: Float64, mut data: PreparedBrokenLineData[N], mut circle_results: karimaki_circle_fit
 ):
-    let n: UInt32 = N
+    var n: UInt32 = N
     var i: UInt32 = 0
 
     circle_results.q = data.q
     var radii = data.radii
-    let s = data.s
-    let S = data.S
+    var s = data.s
+    var S = data.S
     var Z = data.Z
     var VarBeta = data.VarBeta
-    let slope: Float64 = -Float64(circle_results.q) / fast_fit[3]
+    var slope: Float64 = -Float64(circle_results.q) / fast_fit[3]
     VarBeta *= 1.0 + Rfit.sqr(slope)
 
     i = 0
@@ -306,8 +305,8 @@ fn BL_Circle_fit[M3xN: AnyType, M6xN: AnyType, V4: AnyType, N: Int](
 
     if CPP_DUMP:
         print("CU5")
-        let rowsCU = C_U.rows()
-        let colsCU = C_U.cols()
+        var rowsCU = C_U.num_rows()
+        var colsCU = C_U.cols()
         var rCU = 0
         while rCU < rowsCU:
             var lineCU = ""
@@ -323,8 +322,8 @@ fn BL_Circle_fit[M3xN: AnyType, M6xN: AnyType, V4: AnyType, N: Int](
 
     if CPP_DUMP:
         print("I5")
-        let rowsI = I.rows()
-        let colsI = I.cols()
+        var rowsI = I.num_rows()
+        var colsI = I.cols()
         var rI = 0
         while rI < rowsI:
             var lineI = ""
@@ -335,13 +334,13 @@ fn BL_Circle_fit[M3xN: AnyType, M6xN: AnyType, V4: AnyType, N: Int](
             print(lineI)
             rI += 1
 
-    let u = I * r_u
+    var u = I * r_u
 
     radii.block(0, 0, 2, 1) /= radii.block(0, 0, 2, 1).norm()
     radii.block(0, 1, 2, 1) /= radii.block(0, 1, 2, 1).norm()
 
-    let d : Rfit.Vector2d = hits.block(0, 0, 2, 1) + (-Z[0] + u[0]) * radii.block(0, 0, 2, 1)
-    let e : Rfit.Vector2d = hits.block(0, 1, 2, 1) + (-Z[1] + u[1]) * radii.block(0, 1, 2, 1)
+    var d : Rfit.Vector2d = hits.block(0, 0, 2, 1) + (-Z[0] + u[0]) * radii.block(0, 0, 2, 1)
+    var e : Rfit.Vector2d = hits.block(0, 1, 2, 1) + (-Z[1] + u[1]) * radii.block(0, 1, 2, 1)
 
     circle_results.par[0] = math.atan2((e - d)[1], (e - d)[0])
     circle_results.par[1] = -Float64(circle_results.q) * (fast_fit[2] - math.sqrt(Rfit.sqr(fast_fit[2]) - 0.25 * (e - d).squaredNorm()))
@@ -349,8 +348,8 @@ fn BL_Circle_fit[M3xN: AnyType, M6xN: AnyType, V4: AnyType, N: Int](
 
     assert(Float64(circle_results.q) * circle_results.par[1] <= 0)
 
-    let eMinusd : Rdit.Vector2d = e - d
-    let tmp1 = eMinusd.squaredNorm()
+    var eMinusd : Rdit.Vector2d = e - d
+    var tmp1 = eMinusd.squaredNorm()
 
     var jacobian: Rfit.Matrix3d() = Rfit.Matrix3d()
     jacobian[0, 0] = (radii[1, 0] * eMinusd[0] - eMinusd[1] * radii[0, 0]) / tmp1
@@ -406,18 +405,18 @@ fn BL_Circle_fit[M3xN: AnyType, M6xN: AnyType, V4: AnyType, N: Int](
 #The step 2 is the least square fit, done by imposing the minimum constraint on the cost function and solving the consequent linear system. It determines the fitted parameters u and their covariance matrix.
 #The step 3 is the correction of the fast pre-fitted parameters for the innermost part of the track. It is first done in a comfortable coordinate system (the one in which the first hit is the origin) and then the parameters and their covariance matrix are transformed to the original coordinate system.
 fn BL_Line_fit[V4: AnyType, M6xN: AnyType, N: Int](
-    hits_ge: M6xN, fast_fit: V4, B: Float64, data: PreparedBrokenLineData[N], line_results: inout Rfit.line_fit
+    hits_ge: M6xN, fast_fit: V4, B: Float64, data: PreparedBrokenLineData[N], mut line_results: Rfit.line_fit
 ):
-    let n: UInt32 = N
+    var n: UInt32 = N
     var i: UInt32 = 0
 
-    let radii = data.radii
-    let S = data.S
-    let Z = data.Z
-    let VarBeta = data.VarBeta
+    var radii = data.radii
+    var S = data.S
+    var Z = data.Z
+    var VarBeta = data.VarBeta
 
-    let slope: Float64 = -Float64(data.q) / fast_fit[3]
-    let R = RotationMatrix(slope)
+    var slope: Float64 = -Float64(data.q) / fast_fit[3]
+    var R = RotationMatrix(slope)
 
     var V : Rfit.Matrix3d = Rfit.Matrix3d.Zero()
     var JacobXYZtosZ : Rfit.Matrix2x3d = Rfit.Matrix2x3d.Zero()
@@ -433,7 +432,7 @@ fn BL_Line_fit[V4: AnyType, M6xN: AnyType, N: Int](
         V[2, 1] = hits_ge.col(i)[4]
         V[1, 2] = hits_ge.col(i)[4]
         V[2, 2] = hits_ge.col(i)[5]
-        let tmp = 1.0 / radii.block(0, i, 2, 1).norm()
+        var tmp = 1.0 / radii.block(0, i, 2, 1).norm()
         JacobXYZtosZ[0, 0] = radii[1, i] * tmp
         JacobXYZtosZ[0, 1] = -radii[0, i] * tmp
         JacobXYZtosZ[1, 2] = 1.0
@@ -447,9 +446,9 @@ fn BL_Line_fit[V4: AnyType, M6xN: AnyType, N: Int](
 
     if CPP_DUMP:
         print("CU4")
-        let CU = MatrixC_u(w, S, VarBeta)
-        let rowsCU = CU.rows()
-        let colsCU = CU.cols()
+        var CU = MatrixC_u(w, S, VarBeta)
+        var rowsCU = CU.num_rows()
+        var colsCU = CU.cols()
         var rCU = 0
         while rCU < rowsCU:
             var lineCU = ""
@@ -461,13 +460,13 @@ fn BL_Line_fit[V4: AnyType, M6xN: AnyType, N: Int](
             rCU += 1
 
     var I : Rfit.MatrixNd[N] = Rfit.MatrixNd[N]()
-    let CUmat = MatrixC_u(w, S, VarBeta)
+    var CUmat = MatrixC_u(w, S, VarBeta)
     choleskyInversion.invert(CUmat, I)
 
     if CPP_DUMP:
         print("I4")
-        let rowsI = I.rows()
-        let colsI = I.cols()
+        var rowsI = I.num_rows()
+        var colsI = I.cols()
         var rI = 0
         while rI < rowsI:
             var lineI = ""
@@ -478,11 +477,11 @@ fn BL_Line_fit[V4: AnyType, M6xN: AnyType, N: Int](
             print(lineI)
             rI += 1
 
-    let u : Rfit.VectorNd[N] = I * r_u
+    var u : Rfit.VectorNd[N] = I * r_u
 
     line_results.par[0] = (u[1] - u[0]) / (S[1] - S[0])
     line_results.par[1] = u[0]
-    let idiff = 1.0 / (S[1] - S[0])
+    var idiff = 1.0 / (S[1] - S[0])
     line_results.cov[0, 0] = (I[0, 0] - 2 * I[0, 1] + I[1, 1]) * Rfit.sqr(idiff) + MultScatt(S[1] - S[0], B, fast_fit[2], 2, slope)
     line_results.cov[0, 1] = (I[0, 1] - I[0, 0]) * idiff
     line_results.cov[1, 0] = (I[0, 1] - I[0, 0]) * idiff
@@ -496,7 +495,7 @@ fn BL_Line_fit[V4: AnyType, M6xN: AnyType, N: Int](
     line_results.par[1] += -line_results.par[0] * S[0]
     line_results.cov = jacobian * line_results.cov * jacobian.transpose()
 
-    let tmp2 = R[0, 0] - line_results.par[0] * R[0, 1]
+    var tmp2 = R[0, 0] - line_results.par[0] * R[0, 1]
     jacobian[1, 1] = 1.0 / tmp2
     jacobian[0, 0] = jacobian[1, 1] * jacobian[1, 1]
     jacobian[0, 1] = 0.0
@@ -549,7 +548,7 @@ fn BL_Line_fit[V4: AnyType, M6xN: AnyType, N: Int](
 #\return (phi,Tip,p_t,cot(theta)),Zip), their covariance matrix and the chi2's of the circle and line fits.
 fn BL_Helix_fit[N: Int](
     hits: Rfit.Matrix3xNd[N],
-    hits_ge: Matrix[Float32, 6, 4],
+    hits_ge: Matrix[DType.float32, 6, 4],
     B: Float64,
 ) -> Rfit.helix_fit:
     var helix = Rfit.helix_fit()
