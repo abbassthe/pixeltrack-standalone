@@ -117,4 +117,4 @@ struct PixelTrack:
     alias Quality = UInt8
 
 
-alias PixelTrackHeterogeneous = HeterogeneousSoA(PixelTrack.TrackSoA)
+alias PixelTrackHeterogeneous = HeterogeneousSoA[PixelTrack.TrackSoA]

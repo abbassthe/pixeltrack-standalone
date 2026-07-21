@@ -1,4 +1,4 @@
-from memory import bitcast
+from memory import bitcast, OwnedPointer
 
 alias SizeType = UInt32  # size_t
 alias Short = Int16  # short
@@ -66,3 +66,34 @@ struct TypeableUInt(Copyable, Movable, Typeable):
     @staticmethod
     fn dtype() -> String:
         return "TypeableUInt"
+
+
+# OwnedPointer itself doesn't conform to Typeable, so a bare OwnedPointer[T]
+# can't be registered with ProductRegistry.consumes/produces (both require
+# Typeable). This wrapper delegates dtype() to the inner type, closing that
+# gap so heterogeneous-SoA products (see CUDADataFormats/HeterogeneousSoA.mojo)
+# can be registered under their own concrete type, matching the C++ originals
+# (e.g. PixelTrackHeterogeneous, ZVertexHeterogeneous) directly.
+struct TypeableOwnedPointer[T: Typeable & Movable](Movable, Typeable):
+    var _inner: OwnedPointer[T]
+
+    @always_inline
+    fn __init__(out self, var value: T):
+        self._inner = OwnedPointer(value^)
+
+    @always_inline
+    fn __moveinit__(out self, var other: Self):
+        self._inner = other._inner^
+
+    @always_inline
+    fn unsafe_ptr(ref self) -> UnsafePointer[T]:
+        return self._inner.unsafe_ptr()
+
+    @always_inline
+    fn take(mut self) -> T:
+        return self._inner.unsafe_ptr().take_pointee()
+
+    @always_inline
+    @staticmethod
+    fn dtype() -> String:
+        return "TypeableOwnedPointer[" + T.dtype() + "]"

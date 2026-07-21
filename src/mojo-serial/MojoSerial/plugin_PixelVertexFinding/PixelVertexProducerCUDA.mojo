@@ -63,7 +63,7 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
             var vertices = self._gpuAlgo.make(
                 UnsafePointer(to=tracks), self._ptMin
             )
-            iEvent.put[ZVertexSoA](self._tokenCPUVertex, vertices^.take())
+            iEvent.put[ZVertexSoA](self._tokenCPUVertex, vertices.take())
         except e:
             print("Error during produce in PixelVertexProducerCUDA, ", e)
 

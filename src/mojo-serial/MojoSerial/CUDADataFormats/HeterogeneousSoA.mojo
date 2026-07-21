@@ -1,11 +1,11 @@
 from memory import OwnedPointer
 from MojoSerial.CUDACore.CUDACompat import CUDAStreamType
-from MojoSerial.MojoBridge.DTypes import SizeType, Typeable
+from MojoSerial.MojoBridge.DTypes import SizeType, Typeable, TypeableOwnedPointer
 
 # in principle, a heterogenous SoA implementation regardless of device it runs on should use UnsafePointers based on Mojo's intrinsics
 
-alias HeterogeneousSoA = OwnedPointer
-alias HeterogeneousSoAImpl = OwnedPointer
+alias HeterogeneousSoA = TypeableOwnedPointer
+alias HeterogeneousSoAImpl = TypeableOwnedPointer
 alias HeterogeneousSoACPU = HeterogeneousSoAImpl
 
 
