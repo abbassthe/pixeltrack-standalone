@@ -1,11 +1,12 @@
 from sys import alignof, is_gpu
 from bit import pop_count
-from math import Ceilable, CeilDivable, Floorable, Truncable
+from math import Ceilable, CeilDivable, Floorable, Truncable, sqrt
 from utils.numerics import max_finite as _max_finite
 from utils.numerics import max_or_inf as _max_or_inf
 from utils.numerics import min_finite as _min_finite
 from utils.numerics import min_or_neg_inf as _min_or_neg_inf
 from hashlib.hasher import Hasher
+from layout import Layout, LayoutTensor
 
 from MojoSerial.MojoBridge.DTypes import Double, Typeable
 from MojoSerial.MojoBridge.Vector import Vector
@@ -76,6 +77,43 @@ struct _MatIterator[
         )
 
 
+# Common interface satisfied by both Matrix (owns its storage) and Map (a
+# strided view over external storage), so generic code can accept either.
+trait MatrixLike:
+    alias ElemType: DType
+    alias Rows: Int
+
+    fn __getitem__(self, i: Int, j: Int) -> Scalar[Self.ElemType]:
+        ...
+
+    fn __setitem__(mut self, i: Int, j: Int, val: Scalar[Self.ElemType]):
+        ...
+
+    fn __getitem__(self, i: Int) -> Scalar[Self.ElemType]:
+        ...
+
+    fn __setitem__(mut self, i: Int, val: Scalar[Self.ElemType]):
+        ...
+
+    fn num_rows(self) -> Int:
+        ...
+
+    fn block[
+        br: Int, bc: Int
+    ](self, row: Int, col: Int) -> Matrix[Self.ElemType, br, bc]:
+        ...
+
+    fn head[n: Int](self) -> Matrix[Self.ElemType, n, 1]:
+        ...
+
+    fn col(self, c: Int) -> Vector[Self.ElemType, Self.Rows]:
+        ...
+
+    @staticmethod
+    fn ColsAtCompileTime() -> Int:
+        ...
+
+
 # A comment about this implementation: it is probably the speediest, but arguably not of the best memory efficiency (?)
 # Handling rows in a SIMD structure does give rows immense advantage over columns, it also simplfies implementation... but we are still using InlineArray for memory
 # TODO: Is implementing a matrix as an inline array of vectors faster or slower than a direct memory implementation using an unsafe pointer?
@@ -88,6 +126,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     ExplicitlyCopyable,
     Floorable,
     Hashable,
+    MatrixLike,
     Movable,
     Representable,
     Roundable,
@@ -97,6 +136,8 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     Typeable,
     Writable,
 ):
+    alias ElemType = T
+    alias Rows = rows
     alias _L = List[List[Scalar[T]]]
     alias _LS = InlineArray[InlineArray[Scalar[T], colns], rows]
     alias _R = Vector[T, colns]
@@ -141,7 +182,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     @always_inline
     fn __init__(out self):
         """Default constructor."""
-        self._data = Self._DC(Self._R())
+        self._data = Self._DC(fill=Self._R())
 
     @always_inline
     fn __init__(out self, *, uninitialized: Bool):
@@ -292,7 +333,11 @@ struct Matrix[T: DType, rows: Int, colns: Int](
             self[i] = values[i]
 
     @always_inline
-    fn __getitem__(self, i: Int, row_wise: Bool = True) -> Self._D:
+    fn __getitem__(self, i: Int) -> Self._D:
+        return self._data[i // colns][i % colns]
+
+    @always_inline
+    fn __getitem__(self, i: Int, row_wise: Bool) -> Self._D:
         if row_wise:
             return self._data[i // colns][i % colns]
         else:
@@ -328,12 +373,10 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         return res
 
     @staticmethod
-    @parameter
     fn RowsAtCompileTime() -> Int:
         return rows
 
     @staticmethod
-    @parameter
     fn ColsAtCompileTime() -> Int:
         return colns
 
@@ -392,14 +435,26 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         return res
 
     @always_inline
-    fn __mul__(self, rhs: Self) -> Self:
+    fn __mul__[trp: Int, //](self, rhs: Matrix[T, colns, trp]) -> Matrix[T, rows, trp]:
+        """Matrix product (rows x colns) @ (colns x trp), matching Eigen's operator*."""
+        return self @ rhs
+
+    @always_inline
+    fn __mul__(self, scalar: Self._D) -> Self:
         constrained[T.is_numeric(), "DType must be numeric"]()
         var res = self
+        # Splat explicitly: relying on implicit Scalar->Vector conversion in
+        # `res._data[i] * scalar` silently only fills lane 0 in this Mojo build.
+        var splatted = Self._R(scalar)
 
         @parameter
         for i in range(rows):
-            res._data[i] = res._data[i] * rhs._data[i]
+            res._data[i] = res._data[i] * splatted
         return res
+
+    @always_inline
+    fn __rmul__(self, scalar: Self._D) -> Self:
+        return self * scalar
 
     @no_inline
     fn __matmul__[
@@ -423,6 +478,17 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         @parameter
         for i in range(rows):
             res._data[i] = res._data[i] / rhs._data[i]
+        return res
+
+    @always_inline
+    fn __truediv__(self, scalar: Self._D) -> Self:
+        constrained[T.is_numeric(), "DType must be numeric"]()
+        var res = self
+        var splatted = Self._R(scalar)
+
+        @parameter
+        for i in range(rows):
+            res._data[i] = res._data[i] / splatted
         return res
 
     @always_inline
@@ -677,12 +743,24 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     @always_inline("nodebug")
     fn __imul__(mut self, rhs: Self):
         constrained[T.is_numeric(), "DType must be numeric"]()
-        self = self * rhs
+        constrained[rows == colns, "In-place matrix multiply requires a square matrix"]()
+        var result = rebind[Matrix[T, colns, colns]](self) @ rebind[Matrix[T, colns, colns]](rhs)
+        self = rebind[Self](result)
+
+    @always_inline("nodebug")
+    fn __imul__(mut self, scalar: Self._D):
+        constrained[T.is_numeric(), "DType must be numeric"]()
+        self = self * scalar
 
     @always_inline("nodebug")
     fn __itruediv__(mut self, rhs: Self):
         constrained[T.is_numeric(), "DType must be numeric"]()
         self = self / rhs
+
+    @always_inline("nodebug")
+    fn __itruediv__(mut self, scalar: Self._D):
+        constrained[T.is_numeric(), "DType must be numeric"]()
+        self = self / scalar
 
     @always_inline("nodebug")
     fn __ifloordiv__(mut self, rhs: Self):
@@ -755,11 +833,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     fn __rsub__(self, value: Self) -> Self:
         constrained[T.is_numeric(), "DType must be numeric"]()
         return value - self
-
-    @always_inline
-    fn __rmul__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
-        return value * self
 
     @always_inline
     fn __rfloordiv__(self, rhs: Self) -> Self:
@@ -1013,11 +1086,63 @@ struct Matrix[T: DType, rows: Int, colns: Int](
             res[i] = self[i, j]
         return res
 
+    @always_inline
+    fn col(self, c: Int) -> Vector[T, rows]:
+        return self.coln(c)
+
+    @always_inline
+    fn block[br: Int, bc: Int](self, row: Int, col: Int) -> Matrix[T, br, bc]:
+        var res = Matrix[T, br, bc]()
+        for r in range(br):
+            for c in range(bc):
+                res[r, c] = self[row + r, col + c]
+        return res
+
+    @always_inline
+    fn set_block[
+        br: Int, bc: Int
+    ](mut self, row: Int, col: Int, val: Matrix[T, br, bc]):
+        """Writes val into self at (row, col), the write-back counterpart to
+        block() (which returns a copy, unlike Eigen's reference-semantics
+        .block())."""
+        for r in range(br):
+            for c in range(bc):
+                self[row + r, col + c] = val[r, c]
+
+    #this is not flattening it is just taking first col
+    @always_inline
+    fn head[n: Int](self) -> Matrix[T, n, 1]:
+        constrained[colns == 1, "head() requires a column vector"]()
+        var res = Matrix[T, n, 1]()
+        for i in range(n):
+            res[i, 0] = self[i, 0]
+        return res
+
+    @always_inline
+    fn squaredNorm(self) -> Self._D:
+        var acc: Self._D = 0
+        for i in range(rows):
+            for j in range(colns):
+                acc += self[i, j] * self[i, j]
+        return acc
+
+    @always_inline
+    fn norm(self) -> Self._D:
+        return sqrt(self.squaredNorm())
+
+    @always_inline
+    fn dot(self, other: Self) -> Self._D:
+        var acc: Self._D = 0
+        for i in range(rows):
+            for j in range(colns):
+                acc += self[i, j] * other[i, j]
+        return acc
+
     @no_inline
     fn _row_by_coln(
         self, other: Matrix[T, colns, _], row: Int, coln: Int
     ) -> Self._D:
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        constrained[T.is_numeric(), "DType must be numeric"]()
         var sum: Self._D = 0
 
         @parameter
@@ -1301,7 +1426,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         var A = self._data[0].reduce_add()
 
         @parameter
-        for i in range(rows):
+        for i in range(1, rows):
             A = A + self._data[i].reduce_add()
         return A
 
@@ -1312,7 +1437,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         var A = self._data[0].reduce_mul()
 
         @parameter
-        for i in range(rows):
+        for i in range(1, rows):
             A = A * self._data[i].reduce_mul()
         return A
 
@@ -1361,9 +1486,12 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
 struct Map[T: DType, rows: Int, colns: Int, default_inner_stride: Int = 1](
     Copyable,
+    MatrixLike,
     Movable,
     Typeable,
 ):
+    alias ElemType = T
+    alias Rows = rows
     var data: UnsafePointer[Scalar[T]]
     var inner_stride: Int
     var outer_stride: Int
@@ -1436,14 +1564,16 @@ struct Map[T: DType, rows: Int, colns: Int, default_inner_stride: Int = 1](
         return res
 
     @staticmethod
-    @parameter
     fn RowsAtCompileTime() -> Int:
         return rows
 
     @staticmethod
-    @parameter
     fn ColsAtCompileTime() -> Int:
         return colns
+
+    @always_inline
+    fn num_rows(self) -> Int:
+        return rows
 
     @always_inline
     @staticmethod
@@ -1590,3 +1720,24 @@ struct VectorXd(Defaultable, Movable, Typeable):
     @staticmethod
     fn dtype() -> String:
         return "VectorXd"
+
+
+# Bridges MojoBridge's Matrix[T,rows,cols] (row-major storage) to layout's
+# LayoutTensor (used by TrajectoryStateSoA/EigenSoA, expects col-major
+# storage for a given Layout) -- two independently-ported Eigen equivalents
+# with different memory layouts, so this copies element-by-element into a
+# caller-owned buffer rather than reinterpreting the pointer directly.
+# `buf` must stay alive for as long as the returned LayoutTensor is used.
+fn to_layout_tensor[
+    T: DType, rows: Int, cols: Int
+](
+    m: Matrix[T, rows, cols], mut buf: InlineArray[Scalar[T], rows * cols]
+) -> LayoutTensor[
+    mut=True, T, Layout.col_major(rows, cols), MutableAnyOrigin
+]:
+    for c in range(cols):
+        for r in range(rows):
+            buf[c * rows + r] = m[r, c]
+    return LayoutTensor[
+        mut=True, T, Layout.col_major(rows, cols), MutableAnyOrigin
+    ](buf.unsafe_ptr())

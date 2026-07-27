@@ -151,6 +151,8 @@ fn main() raises:
             MojoSerial.plugin_SiPixelClusterizer.init(_esreg, _edreg)
             MojoSerial.plugin_BeamSpotProducer.init(_esreg, _edreg)
             MojoSerial.plugin_SiPixelRecHits.init(_esreg, _edreg)
+            MojoSerial.plugin_PixelTriplets.init(_esreg, _edreg)
+            MojoSerial.plugin_PixelVertexFinding.init(_esreg, _edreg)
 
         if validation:
             MojoSerial.plugin_Validation.CountValidator.init(_esreg, _edreg)

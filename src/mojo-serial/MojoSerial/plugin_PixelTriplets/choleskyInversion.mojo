@@ -5,9 +5,9 @@ import math
 from MojoSerial.MojoBridge.Matrix import Matrix
 from MojoSerial.MojoBridge.DTypes import DType
 
-# NOTE: This translation assumes matrix-like objects that support [row, col]
-# access/assignment and `inverse()`. Small sizes use explicit Cholesky-based
-# paths; larger ones fall back to the Matrix.inverse() provided by MojoBridge.
+# NOTE: src/dst are plain Matrix[T, rows, cols] (matching invert()'s own
+# signature below) rather than a generic AnyType/trait bound, since every
+# call site here only ever passes concrete Matrix values.
 
 
 #
@@ -22,14 +22,13 @@ from MojoSerial.MojoBridge.DTypes import DType
 #
 #
 
-
-fn invert11[M1: AnyType, M2: AnyType](src: M1, dst: M2):
+fn invert11[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var inv = 1.0 / src[0, 0]
     dst[0, 0] = inv
 
 
 
-fn invert22[M1: AnyType, M2: AnyType](src: M1, dst: M2):
+fn invert22[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0] * src[1, 0] * luc0
     var luc2 = 1.0 / (src[1, 1] - luc1)
@@ -42,7 +41,7 @@ fn invert22[M1: AnyType, M2: AnyType](src: M1, dst: M2):
 
 
 
-fn invert33[M1: AnyType, M2: AnyType](src: M1, dst: M2):
+fn invert33[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
     var luc2 = 1.0 / (src[1, 1] - luc0 * luc1 * luc1)
@@ -63,7 +62,7 @@ fn invert33[M1: AnyType, M2: AnyType](src: M1, dst: M2):
 
 
 
-fn invert44[M1: AnyType, M2: AnyType](src: M1, dst: M2):
+fn invert44[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
     var luc2 = 1.0 / (src[1, 1] - luc0 * luc1 * luc1)
@@ -95,7 +94,7 @@ fn invert44[M1: AnyType, M2: AnyType](src: M1, dst: M2):
 
 
 
-fn invert55[M1: AnyType, M2: AnyType](src: M1, dst: M2):
+fn invert55[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
     var luc2 = 1.0 / (src[1, 1] - luc0 * luc1 * luc1)
@@ -153,7 +152,7 @@ fn invert55[M1: AnyType, M2: AnyType](src: M1, dst: M2):
 
 
 
-fn invert66[M1: AnyType, M2: AnyType](src: M1, dst: M2):
+fn invert66[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
     var luc2 = 1.0 / (src[1, 1] - luc0 * luc1 * luc1)
@@ -266,24 +265,24 @@ fn invert66[M1: AnyType, M2: AnyType](src: M1, dst: M2):
 
 
 
-fn symmetrize11[M: AnyType](dst: M):
+fn symmetrize11[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     pass
 
 
 
-fn symmetrize22[M: AnyType](dst: M):
+fn symmetrize22[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     dst[0, 1] = dst[1, 0]
 
 
 
-fn symmetrize33[M: AnyType](dst: M):
+fn symmetrize33[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     symmetrize22(dst)
     dst[0, 2] = dst[2, 0]
     dst[1, 2] = dst[2, 1]
 
 
 
-fn symmetrize44[M: AnyType](dst: M):
+fn symmetrize44[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     symmetrize33(dst)
     dst[0, 3] = dst[3, 0]
     dst[1, 3] = dst[3, 1]
@@ -291,7 +290,7 @@ fn symmetrize44[M: AnyType](dst: M):
 
 
 
-fn symmetrize55[M: AnyType](dst: M):
+fn symmetrize55[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     symmetrize44(dst)
     dst[0, 4] = dst[4, 0]
     dst[1, 4] = dst[4, 1]
@@ -300,7 +299,7 @@ fn symmetrize55[M: AnyType](dst: M):
 
 
 
-fn symmetrize66[M: AnyType](dst: M):
+fn symmetrize66[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     symmetrize55(dst)
     dst[0, 5] = dst[5, 0]
     dst[1, 5] = dst[5, 1]
@@ -309,11 +308,10 @@ fn symmetrize66[M: AnyType](dst: M):
     dst[4, 5] = dst[5, 4]
 
 
-struct Inverter[M1: AnyType, M2: AnyType, N: Int]:
+struct Inverter[T: DType, rows: Int, cols: Int, N: Int]:
     @staticmethod
     @always_inline
-    
-    fn eval(src: M1, dst: M2):
+    fn eval(src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
         @parameter
         if N == 1:
             invert11(src, dst)
@@ -337,11 +335,12 @@ struct Inverter[M1: AnyType, M2: AnyType, N: Int]:
 
 
 
-fn invert[T1: DType, rows: Int, cols: Int, T2: DType](
-    src: Matrix[T1, rows, cols], dst: Matrix[T2, rows, cols]
+fn invert[T: DType, rows: Int, cols: Int](
+    src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]
 ):
     Inverter[
-        Matrix[T1, rows, cols],
-        Matrix[T2, rows, cols],
-        Matrix[T2, rows, cols].ColsAtCompileTime(),
+        T,
+        rows,
+        cols,
+        Matrix[T, rows, cols].ColsAtCompileTime(),
     ].eval(src, dst)

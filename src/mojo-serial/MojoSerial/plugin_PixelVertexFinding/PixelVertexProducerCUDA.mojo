@@ -1,4 +1,7 @@
-from MojoSerial.CUDADataFormats.ZVertexSoA import ZVertexSoA
+from MojoSerial.CUDADataFormats.ZVertexHeterogeneous import ZVertexHeterogeneous
+from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
+    PixelTrackHeterogeneous,
+)
 from MojoSerial.Framework.EDGetToken import EDGetTokenT
 from MojoSerial.Framework.EDProducer import EDProducer
 from MojoSerial.Framework.EDPutToken import EDPutTokenT
@@ -10,8 +13,8 @@ from MojoSerial.plugin_PixelVertexFinding.gpuVertexFinder import Producer, TkSoA
 
 
 struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
-    var _tokenCPUTrack: EDGetTokenT[TkSoA]
-    var _tokenCPUVertex: EDPutTokenT[ZVertexSoA]
+    var _tokenCPUTrack: EDGetTokenT[PixelTrackHeterogeneous]
+    var _tokenCPUVertex: EDPutTokenT[ZVertexHeterogeneous]
 
     var _gpuAlgo: Producer
 
@@ -20,8 +23,8 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
 
     @always_inline
     fn __init__(out self):
-        self._tokenCPUTrack = EDGetTokenT[TkSoA]()
-        self._tokenCPUVertex = EDPutTokenT[ZVertexSoA]()
+        self._tokenCPUTrack = EDGetTokenT[PixelTrackHeterogeneous]()
+        self._tokenCPUVertex = EDPutTokenT[ZVertexHeterogeneous]()
         self._gpuAlgo = Producer(
             True,  # oneKernel
             True,  # useDensity
@@ -37,8 +40,8 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
     @always_inline
     fn __init__(out self, mut reg: ProductRegistry):
         try:
-            self._tokenCPUTrack = reg.consumes[TkSoA]()
-            self._tokenCPUVertex = reg.produces[ZVertexSoA]()
+            self._tokenCPUTrack = reg.consumes[PixelTrackHeterogeneous]()
+            self._tokenCPUVertex = reg.produces[ZVertexHeterogeneous]()
 
             self._gpuAlgo = Producer(
                 True,  # oneKernel
@@ -57,13 +60,14 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
 
     fn produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
         try:
-            ref tracks = iEvent.get[TkSoA](self._tokenCPUTrack)
-            debug_assert(Bool(UnsafePointer(to=tracks)))
-
-            var vertices = self._gpuAlgo.make(
-                UnsafePointer(to=tracks), self._ptMin
+            ref tracks = iEvent.get[PixelTrackHeterogeneous](
+                self._tokenCPUTrack
             )
-            iEvent.put[ZVertexSoA](self._tokenCPUVertex, vertices.take())
+            var tksoa_ptr = tracks.unsafe_ptr()
+            debug_assert(Bool(tksoa_ptr))
+
+            var vertices = self._gpuAlgo.make(tksoa_ptr, self._ptMin)
+            iEvent.put[ZVertexHeterogeneous](self._tokenCPUVertex, vertices^)
         except e:
             print("Error during produce in PixelVertexProducerCUDA, ", e)
 

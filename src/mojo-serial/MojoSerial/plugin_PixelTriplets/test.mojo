@@ -2,18 +2,28 @@ import math
 from sys import argv
 from sys.terminate import exit
 
-from MojoSerial.MojoBridge.Matrix import Matrix
-from FitUtils import Rfit
-from RiemannFit import Circle_fit, Fast_fit, Line_fit
+from MojoSerial.MojoBridge.Matrix import Matrix, MatrixLike
+from MojoSerial.plugin_PixelTriplets.FitUtils import Rfit
+from MojoSerial.plugin_PixelTriplets.RiemannFit import Circle_fit, Fast_fit, Line_fit
 
 
-struct FitResult:
+struct FitResult(Copyable):
     var fast_fit: Rfit.Vector4d
     var circle: Rfit.circle_fit
     var line: Rfit.line_fit
 
+    fn __init__(out self):
+        self.fast_fit = Rfit.Vector4d()
+        self.circle = Rfit.circle_fit()
+        self.line = Rfit.line_fit()
 
-struct ExpectedResult:
+    fn __copyinit__(out self, other: Self):
+        self.fast_fit = other.fast_fit
+        self.circle = other.circle
+        self.line = other.line
+
+
+struct ExpectedResult(Copyable):
     var fast_fit: Rfit.Vector4d
     var circle_par: Rfit.Vector3d
     var circle_cov: Rfit.Matrix3d
@@ -22,6 +32,26 @@ struct ExpectedResult:
     var line_cov: Rfit.Matrix2d
     var line_chi2: Float64
     var valid: Bool
+
+    fn __init__(out self):
+        self.fast_fit = Rfit.Vector4d()
+        self.circle_par = Rfit.Vector3d()
+        self.circle_cov = Rfit.Matrix3d()
+        self.circle_chi2 = 0.0
+        self.line_par = Rfit.Vector2d()
+        self.line_cov = Rfit.Matrix2d()
+        self.line_chi2 = 0.0
+        self.valid = False
+
+    fn __copyinit__(out self, other: Self):
+        self.fast_fit = other.fast_fit
+        self.circle_par = other.circle_par
+        self.circle_cov = other.circle_cov
+        self.circle_chi2 = other.circle_chi2
+        self.line_par = other.line_par
+        self.line_cov = other.line_cov
+        self.line_chi2 = other.line_chi2
+        self.valid = other.valid
 
 
 fn fill_hits_and_hitscov[N: Int](
@@ -195,20 +225,22 @@ fn near(a: Float64, b: Float64, rtol: Float64, atol: Float64) -> Bool:
     return diff <= max(atol, rtol * scale)
 
 
-fn check_matrix(
+fn check_matrix[A: MatrixLike, B: MatrixLike](
     name: StringLiteral,
-    a: AnyType,
-    b: AnyType,
+    a: A,
+    b: B,
     rtol: Float64,
     atol: Float64,
 ) -> Bool:
-    if a.num_rows() != b.num_rows() or a.cols() != b.cols():
-        print(name, " shape mismatch: ", a.num_rows(), "x", a.cols(), " vs ", b.num_rows(), "x", b.cols())
+    alias a_cols = A.ColsAtCompileTime()
+    alias b_cols = B.ColsAtCompileTime()
+    if a.num_rows() != b.num_rows() or a_cols != b_cols:
+        print(name, " shape mismatch: ", a.num_rows(), "x", a_cols, " vs ", b.num_rows(), "x", b_cols)
         return False
 
     var ok = True
     for r in range(a.num_rows()):
-        for c in range(a.cols()):
+        for c in range(a_cols):
             var av = Float64(a[r, c])
             var bv = Float64(b[r, c])
             if not near(av, bv, rtol, atol):

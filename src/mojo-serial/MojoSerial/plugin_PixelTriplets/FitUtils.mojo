@@ -1,23 +1,47 @@
-from MojoSerial.MojoBridge.Matrix import Matrix, MatrixXd, VectorXd
+import math
+from MojoSerial.MojoBridge.Matrix import Matrix, MatrixLike, MatrixXd, VectorXd
 from MojoSerial.MojoBridge.DTypes import DType
 
-struct _Rfit_circle_fit:
-    var par: Matrix[DType.float64, 3, 1]
+@fieldwise_init
+struct _Rfit_circle_fit(Copyable, Defaultable, Movable):
+    var par: Matrix[DType.float64, 3, 1]  # (X0, Y0, R)
     var cov: Matrix[DType.float64, 3, 3]
-    var q: Int32
+    var q: Int32  # particle charge
     var chi2: Float32
 
-struct _Rfit_line_fit:
-    var par: Matrix[DType.float64, 2, 1]
+    fn __init__(out self):
+        self.par = Matrix[DType.float64, 3, 1]()
+        self.cov = Matrix[DType.float64, 3, 3]()
+        self.q = 0
+        self.chi2 = 0.0
+
+
+@fieldwise_init
+struct _Rfit_line_fit(Copyable, Defaultable, Movable):
+    var par: Matrix[DType.float64, 2, 1]  # (cotan(theta), Zip)
     var cov: Matrix[DType.float64, 2, 2]
     var chi2: Float64
 
-struct _Rfit_helix_fit:
-    var par: Matrix[DType.float64, 5, 1]
+    fn __init__(out self):
+        self.par = Matrix[DType.float64, 2, 1]()
+        self.cov = Matrix[DType.float64, 2, 2]()
+        self.chi2 = 0.0
+
+
+@fieldwise_init
+struct _Rfit_helix_fit(Copyable, Defaultable, Movable):
+    var par: Matrix[DType.float64, 5, 1]  # (phi, Tip, pt, cotan(theta), Zip)
     var cov: Matrix[DType.float64, 5, 5]
     var chi2_circle: Float32
     var chi2_line: Float32
-    var q: Int32
+    var q: Int32  # particle charge
+
+    fn __init__(out self):
+        self.par = Matrix[DType.float64, 5, 1]()
+        self.cov = Matrix[DType.float64, 5, 5]()
+        self.chi2_circle = 0.0
+        self.chi2_line = 0.0
+        self.q = 0
 
 struct Rfit:
 
@@ -67,13 +91,13 @@ struct Rfit:
     alias u_int = UInt32
 
     @staticmethod
-    fn printIt[C: AnyType, RFIT_DEBUG: Bool = False](m: UnsafePointer[C], prefix: String = ""):
+    fn printIt[M: MatrixLike, RFIT_DEBUG: Bool = False](m: UnsafePointer[M], prefix: String = ""):
         @parameter
         if RFIT_DEBUG:
-            var r: u_int = 0
+            var r: Int = 0
             while r < m[].num_rows():
-                var c: u_int = 0
-                while c < m[].cols():
+                var c: Int = 0
+                while c < M.ColsAtCompileTime():
                     print(prefix, "Matrix(", r, ",", c, ") =", m[][r, c])
                     c += 1
                 r += 1
@@ -87,72 +111,72 @@ struct Rfit:
         return a[0] * b[1] - a[1] * b[0]
 
     @staticmethod
-    fn loadCovariance2D[M6xNf: AnyType, M2Nd: AnyType](ge: M6xNf, mut hits_cov: M2Nd):
-        var hits_in_fit: UInt32 = M6xNf.ColsAtCompileTime()
-        var i: UInt32 = 0
+    fn loadCovariance2D[M6xN: MatrixLike, N: Int](ge: M6xN, mut hits_cov: Matrix[DType.float64, 2 * N, 2 * N]):
+        var hits_in_fit: Int = N
+        var i: Int = 0
         while i < hits_in_fit:
             var ge_idx = 0
             var j = 0
             var l = 0
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             ge_idx = 2
             j = 1
             l = 1
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             ge_idx = 1
             j = 1
             l = 0
-            hits_cov[i + l * hits_in_fit, i + j * hits_in_fit] = ge.col(i)[ge_idx]
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + l * hits_in_fit, i + j * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             i += 1
 
     @staticmethod
-    fn loadCovariance[M6xNf: AnyType, M3xNd: AnyType](ge: M6xNf, mut hits_cov: M3xNd):
-        var hits_in_fit: UInt32 = M6xNf.ColsAtCompileTime()
-        var i: UInt32 = 0
+    fn loadCovariance[M6xN: MatrixLike, N: Int](ge: M6xN, mut hits_cov: Matrix[DType.float64, 3 * N, 3 * N]):
+        var hits_in_fit: Int = N
+        var i: Int = 0
         while i < hits_in_fit:
             var ge_idx = 0
             var j = 0
             var l = 0
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             ge_idx = 2
             j = 1
             l = 1
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             ge_idx = 5
             j = 2
             l = 2
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             ge_idx = 1
             j = 1
             l = 0
-            hits_cov[i + l * hits_in_fit, i + j * hits_in_fit] = ge.col(i)[ge_idx]
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + l * hits_in_fit, i + j * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             ge_idx = 3
             j = 2
             l = 0
-            hits_cov[i + l * hits_in_fit, i + j * hits_in_fit] = ge.col(i)[ge_idx]
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + l * hits_in_fit, i + j * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             ge_idx = 4
             j = 2
             l = 1
-            hits_cov[i + l * hits_in_fit, i + j * hits_in_fit] = ge.col(i)[ge_idx]
-            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx]
+            hits_cov[i + l * hits_in_fit, i + j * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
+            hits_cov[i + j * hits_in_fit, i + l * hits_in_fit] = ge.col(i)[ge_idx].cast[DType.float64]()
             i += 1
 
     @staticmethod
     fn par_uvrtopak(mut circle: Self.circle_fit, B: Float64, error: Bool):
-        var par_pak = Vector3d()
-        var temp0 = circle.par.head(2).squaredNorm()
+        var par_pak = Self.Vector3d()
+        var temp0 = circle.par.head[2]().squaredNorm()
         var temp1 = math.sqrt(temp0)
         par_pak[0] = math.atan2(Float64(circle.q) * circle.par[0], -Float64(circle.q) * circle.par[1])
         par_pak[1] = Float64(circle.q) * (temp1 - circle.par[2])
         par_pak[2] = circle.par[2] * B
         if error:
-            var temp2 = sqr(circle.par[0]) * 1.0 / temp0
+            var temp2 = Self.sqr(circle.par[0]) * 1.0 / temp0
             var temp3 = 1.0 / temp1 * Float64(circle.q)
-            var J4 = Matrix3d()
-            J4[0, 0] = -circle.par[1] * temp2 * 1.0 / sqr(circle.par[0])
+            var J4 = Self.Matrix3d()
+            J4[0, 0] = -circle.par[1] * temp2 * 1.0 / Self.sqr(circle.par[0])
             J4[0, 1] = temp2 * 1.0 / circle.par[0]
             J4[0, 2] = 0.0
             J4[1, 0] = circle.par[0] * temp3
@@ -166,17 +190,17 @@ struct Rfit:
 
     @staticmethod
     fn fromCircleToPerigee(mut circle: Self.circle_fit):
-        var par_pak = Vector3d()
-        var temp0 = circle.par.head(2).squaredNorm()
+        var par_pak = Self.Vector3d()
+        var temp0 = circle.par.head[2]().squaredNorm()
         var temp1 = math.sqrt(temp0)
         par_pak[0] = math.atan2(Float64(circle.q) * circle.par[0], -Float64(circle.q) * circle.par[1])
         par_pak[1] = Float64(circle.q) * (temp1 - circle.par[2])
         par_pak[2] = Float64(circle.q) / circle.par[2]
 
-        var temp2 = sqr(circle.par[0]) * 1.0 / temp0
+        var temp2 = Self.sqr(circle.par[0]) * 1.0 / temp0
         var temp3 = 1.0 / temp1 * Float64(circle.q)
-        var J4 = Matrix3d()
-        J4[0, 0] = -circle.par[1] * temp2 * 1.0 / sqr(circle.par[0])
+        var J4 = Self.Matrix3d()
+        J4[0, 0] = -circle.par[1] * temp2 * 1.0 / Self.sqr(circle.par[0])
         J4[0, 1] = temp2 * 1.0 / circle.par[0]
         J4[0, 2] = 0.0
         J4[1, 0] = circle.par[0] * temp3
@@ -190,7 +214,12 @@ struct Rfit:
         circle.par = par_pak
 
     @staticmethod
-    fn transformToPerigeePlane[VI5: AnyType, MI5: AnyType, VO5: AnyType, MO5: AnyType](ip: VI5, icov: MI5, mut op: VO5, mut ocov: MO5):
+    fn transformToPerigeePlane(
+        ip: Self.Vector5d,
+        icov: Self.Matrix5d,
+        mut op: Self.Vector5d,
+        mut ocov: Self.Matrix5d,
+    ):
         var sinTheta2 = 1.0 / (1.0 + ip[3] * ip[3])
         var sinTheta = math.sqrt(sinTheta2)
         var cosTheta = ip[3] * sinTheta
@@ -201,7 +230,7 @@ struct Rfit:
         op[3] = ip[1]
         op[4] = -ip[4]
 
-        var J = Matrix5d.Zero()
+        var J = Self.Matrix5d.Zero()
 
         J[0, 2] = sinTheta
         J[0, 3] = -sinTheta2 * cosTheta * ip[2]

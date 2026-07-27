@@ -1,15 +1,16 @@
 import math
 
-import CAConstants
-import RiemannFit
-from FitUtils import Rfit as FitRfit
-from HelixFitOnGPU import Rfit
+import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
+import MojoSerial.plugin_PixelTriplets.RiemannFit as RiemannFit
+from MojoSerial.plugin_PixelTriplets.FitUtils import Rfit as FitRfit
+from MojoSerial.plugin_PixelTriplets.HelixFitOnGPU import Rfit
 from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
     PixelTrack as pixelTrack,
 )
 from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
     TrackingRecHit2DSOAView,
 )
+from MojoSerial.MojoBridge.Matrix import to_layout_tensor
 
 
 alias RIEMANN_DEBUG = False
@@ -31,33 +32,34 @@ fn kernelFastFit[N: Int](
     pfast_fit: UnsafePointer[Float64],
     offset: UInt32,
 ):
-    comptime hitsInFit: UInt32 = N
+    alias hitsInFit: UInt32 = N
 
-    assert(hitsInFit <= nHits)
+    debug_assert(hitsInFit <= nHits)
 
-    assert(pfast_fit)
-    assert(foundNtuplets)
-    assert(tupleMultiplicity)
+    debug_assert(pfast_fit)
+    debug_assert(foundNtuplets)
+    debug_assert(tupleMultiplicity)
 
     var local_start = 0
 
     @parameter
     if RIEMANN_DEBUG:
         if local_start == 0:
+            var tsize_val = tupleMultiplicity[].size(nHits)
             print(
-                f"{tupleMultiplicity[].size(nHits)} Ntuple of size {nHits} for {hitsInFit} hits to fit",
+                tsize_val, "Ntuple of size", nHits, "for", hitsInFit, "hits to fit"
             )
 
     var local_idx: Int = local_start
-    var nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
+    var nt = Int(Rfit.maxNumberOfConcurrentFits())
     while local_idx < nt:
-        var tuple_idx = local_idx + offset.cast[Int]()
-        if tuple_idx >= tupleMultiplicity[].size(nHits).cast[Int]():
+        var tuple_idx = local_idx + Int(offset)
+        if tuple_idx >= Int(tupleMultiplicity[].size(nHits)):
             break
 
-        var tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
-        assert(tkid < foundNtuplets[].nbins())
-        assert(foundNtuplets[].size(tkid) == nHits)
+        var tkid = UInt32((tupleMultiplicity[].begin(nHits) + tuple_idx)[])
+        debug_assert(tkid < foundNtuplets[].nbins())
+        debug_assert(foundNtuplets[].size(tkid) == nHits)
 
         var hits = Rfit.Map3xNd[N](phits + local_idx)
         var fast_fit = Rfit.Map4d(pfast_fit + local_idx)
@@ -66,19 +68,19 @@ fn kernelFastFit[N: Int](
         var hitId = foundNtuplets[].begin(tkid)
         var i: UInt32 = 0
         while i < hitsInFit:
-            var idx = i.cast[Int]()
-            var hit = hitId[idx]
+            var idx = Int(i)
+            var hit = Int(hitId[idx])
             var ge = InlineArray[Float32, 6](fill=0)
-            hhp[].cpeParams().detParams(hhp[].detectorIndex(hit)).frame.toGlobal(
+            hhp[].cpeParams().detParams(Int32(hhp[].detectorIndex(hit))).frame.toGlobal(
                 hhp[].xerrLocal(hit),
                 0,
                 hhp[].yerrLocal(hit),
                 ge.unsafe_ptr(),
             )
 
-            hits[0, idx] = hhp[].xGlobal(hit)
-            hits[1, idx] = hhp[].yGlobal(hit)
-            hits[2, idx] = hhp[].zGlobal(hit)
+            hits[0, idx] = hhp[].xGlobal(hit).cast[DType.float64]()
+            hits[1, idx] = hhp[].yGlobal(hit).cast[DType.float64]()
+            hits[2, idx] = hhp[].zGlobal(hit).cast[DType.float64]()
             hits_ge[0, idx] = ge[0]
             hits_ge[1, idx] = ge[1]
             hits_ge[2, idx] = ge[2]
@@ -89,10 +91,10 @@ fn kernelFastFit[N: Int](
 
         RiemannFit.Fast_fit(hits, fast_fit)
 
-        assert(fast_fit[0] == fast_fit[0])
-        assert(fast_fit[1] == fast_fit[1])
-        assert(fast_fit[2] == fast_fit[2])
-        assert(fast_fit[3] == fast_fit[3])
+        debug_assert(fast_fit[0] == fast_fit[0])
+        debug_assert(fast_fit[1] == fast_fit[1])
+        debug_assert(fast_fit[2] == fast_fit[2])
+        debug_assert(fast_fit[3] == fast_fit[3])
 
         local_idx += 1
 
@@ -106,15 +108,15 @@ fn kernelCircleFit[N: Int](
     circle_fit: UnsafePointer[CircleFit],
     offset: UInt32,
 ):
-    assert(circle_fit)
-    assert(N <= nHits)
+    debug_assert(circle_fit)
+    debug_assert(N <= Int(nHits))
 
     var local_start = 0
     var local_idx: Int = local_start
-    var nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
+    var nt = Int(Rfit.maxNumberOfConcurrentFits())
     while local_idx < nt:
-        var tuple_idx = local_idx + offset.cast[Int]()
-        if tuple_idx >= tupleMultiplicity[].size(nHits).cast[Int]():
+        var tuple_idx = local_idx + Int(offset)
+        if tuple_idx >= Int(tupleMultiplicity[].size(nHits)):
             break
 
         var hits = Rfit.Map3xNd[N](phits + local_idx)
@@ -126,14 +128,14 @@ fn kernelCircleFit[N: Int](
         while i < N:
             var x = hits[0, i]
             var y = hits[1, i]
-            rad[i] = sqrt(x * x + y * y)
+            rad[i] = math.sqrt(x * x + y * y)
             i += 1
 
         var hits_cov = FitRfit.Matrix2Nd[N].Zero()
         FitRfit.loadCovariance2D(hits_ge, hits_cov)
 
         circle_fit[local_idx] = RiemannFit.Circle_fit(
-            hits.block(0, 0, 2, N),
+            hits.block[2, N](0, 0),
             hits_cov,
             fast_fit,
             rad,
@@ -143,6 +145,7 @@ fn kernelCircleFit[N: Int](
 
         @parameter
         if RIEMANN_DEBUG:
+            pass
             # let tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
             # print(
             #     f"kernelCircleFit circle.par(0,1,2): {tkid} {circle_fit[local_idx].par[0]},{circle_fit[local_idx].par[1]},{circle_fit[local_idx].par[2]}",
@@ -162,16 +165,16 @@ fn kernelLineFit[N: Int](
     circle_fit: UnsafePointer[CircleFit],
     offset: UInt32,
 ):
-    assert(results)
-    assert(circle_fit)
-    assert(N <= nHits)
+    debug_assert(results)
+    debug_assert(circle_fit)
+    debug_assert(N <= Int(nHits))
 
     var local_start = 0
     var local_idx: Int = local_start
-    var nt = Rfit.maxNumberOfConcurrentFits().cast[Int]()
-    var tuples_for_size = tupleMultiplicity[].size(nHits).cast[Int]()
+    var nt = Int(Rfit.maxNumberOfConcurrentFits())
+    var tuples_for_size = Int(tupleMultiplicity[].size(nHits))
     while local_idx < nt:
-        var tuple_idx = local_idx + offset.cast[Int]()
+        var tuple_idx = local_idx + Int(offset)
         if tuple_idx >= tuples_for_size:
             break
 
@@ -192,14 +195,18 @@ fn kernelLineFit[N: Int](
 
         FitRfit.fromCircleToPerigee(circle_fit[local_idx])
 
-        var track_idx = tkid.cast[Int]()
+        var track_idx = Int(tkid)
+        var cp_buf = InlineArray[Scalar[DType.float64], 3](uninitialized=True)
+        var ccov_buf = InlineArray[Scalar[DType.float64], 9](uninitialized=True)
+        var lp_buf = InlineArray[Scalar[DType.float64], 2](uninitialized=True)
+        var lcov_buf = InlineArray[Scalar[DType.float64], 4](uninitialized=True)
         results[].stateAtBS.copyFromCircle(
-            circle_fit[local_idx].par,
-            circle_fit[local_idx].cov,
-            line_fit.par,
-            line_fit.cov,
+            to_layout_tensor(circle_fit[local_idx].par, cp_buf),
+            to_layout_tensor(circle_fit[local_idx].cov, ccov_buf),
+            to_layout_tensor(line_fit.par, lp_buf),
+            to_layout_tensor(line_fit.cov, lcov_buf),
             Float32(1.0 / B),
-            track_idx.cast[Int32](),
+            Int32(track_idx),
         )
         results[].pt[track_idx] = Float32(B) / Float32(
             abs(circle_fit[local_idx].par[2])
@@ -213,13 +220,18 @@ fn kernelLineFit[N: Int](
         @parameter
         if RIEMANN_DEBUG:
             print(
-                f"kernelLineFit size {N} for {nHits} hits circle.par(0,1,2): {tkid} {circle_fit[local_idx].par[0]},{circle_fit[local_idx].par[1]},{circle_fit[local_idx].par[2]}",
+                "kernelLineFit size", N, "for", nHits,
+                "hits circle.par(0,1,2):", tkid,
+                circle_fit[local_idx].par[0], ",", circle_fit[local_idx].par[1], ",", circle_fit[local_idx].par[2],
             )
             print(
-                f"kernelLineFit line.par(0,1): {tkid} {line_fit.par[0]},{line_fit.par[1]}",
+                "kernelLineFit line.par(0,1):", tkid,
+                line_fit.par[0], ",", line_fit.par[1],
             )
             print(
-                f"kernelLineFit chi2 cov {circle_fit[local_idx].chi2}/{line_fit.chi2} {circle_fit[local_idx].cov[0, 0]},{circle_fit[local_idx].cov[1, 1]},{circle_fit[local_idx].cov[2, 2]},{line_fit.cov[0, 0]},{line_fit.cov[1, 1]}",
+                "kernelLineFit chi2 cov", circle_fit[local_idx].chi2, "/", line_fit.chi2,
+                circle_fit[local_idx].cov[0, 0], ",", circle_fit[local_idx].cov[1, 1], ",", circle_fit[local_idx].cov[2, 2],
+                ",", line_fit.cov[0, 0], ",", line_fit.cov[1, 1],
             )
 
         local_idx += 1

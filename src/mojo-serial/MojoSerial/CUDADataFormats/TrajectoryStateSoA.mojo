@@ -2,6 +2,7 @@ from layout import Layout, LayoutTensor, IntTuple
 
 from MojoSerial.CUDACore.EigenSoA import MatrixSoA
 from MojoSerial.MojoBridge.DTypes import Float, Double, Typeable
+from MojoSerial.MojoBridge.Matrix import Matrix
 
 
 # WARNING: THIS STRUCT IS 128-ALIGNED
@@ -27,12 +28,12 @@ struct TrajectoryStateSoA[S: Int32](Copyable, Defaultable, Movable, Typeable):
         return S
 
     @always_inline
-    fn copyFromCircle(
+    fn copyFromCircle[T: DType](
         mut self,
-        cp: LayoutTensor[_, Layout.col_major(3, 1)],
-        ccov: LayoutTensor[_, Layout.col_major(3, 3)],
-        lp: LayoutTensor[_, Layout.col_major(2, 1)],
-        lcov: LayoutTensor[_, Layout.col_major(2, 2)],
+        cp: LayoutTensor[T, Layout.col_major(3, 1)],
+        ccov: LayoutTensor[T, Layout.col_major(3, 3)],
+        lp: LayoutTensor[T, Layout.col_major(2, 1)],
+        lcov: LayoutTensor[T, Layout.col_major(2, 2)],
         b: Float,
         i: Int32,
     ):

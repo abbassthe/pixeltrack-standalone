@@ -3,7 +3,7 @@ import math
 from MojoSerial.MojoBridge.Matrix import Matrix
 
 
-from math import sqrt, sin, cos, asin, pi, abs
+from math import sqrt, sin, cos, asin, pi
 
 fn min_eigen_2x2(
     A: Matrix[DType.float64, 2, 2], mut chi2: Float64
@@ -300,9 +300,9 @@ fn min_eigen_3x3(
     var m22 = a22 - lamL
 
     # rows of M
-    var r0x = m00; let r0y = m01; let r0z = m02
-    var r1x = m10; let r1y = m11; let r1z = m12
-    var r2x = m20; let r2y = m21; let r2z = m22
+    var r0x = m00; var r0y = m01; var r0z = m02
+    var r1x = m10; var r1y = m11; var r1z = m12
+    var r2x = m20; var r2y = m21; var r2z = m22
 
     var (vx, vy, vz) = nullvec_from_rows_rank12(
         r0x, r0y, r0z,

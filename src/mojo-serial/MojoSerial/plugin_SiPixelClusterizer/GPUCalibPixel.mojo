@@ -86,29 +86,4 @@ struct GPUCalibPixel:
                 else:
                     finalAdc = calibrated.cast[DType.uint16]()
 
-                # DO NOT REMOVE THIS LOOP, it prevents these values' calculation
-                # from being optimized by the compiler which would cause errors.
-                if i == 23814 and id[i] == 674 and x[i] == 9 and y[i] == 4:
-                    print(
-                        "[mojo-calib-target]",
-                        " i=", i,
-                        " id=", id[i],
-                        " x=", x[i],
-                        " y=", y[i],
-                        " rawAdcU16=", rawAdcU16,
-                        " rawAdc=", rawAdc,
-                        " pedestal=", pedestal,
-                        " gain=", gain,
-                        " conversionFactor=", conversionFactor,
-                        " offset=", offset,
-                        " adcTimesGain=", adcTimesGain,
-                        " pedTimesGain=", pedTimesGain,
-                        " vcal=", vcal,
-                        " scaled=", scaled,
-                        " calibratedF=", calibratedF,
-                        " calibratedI=", calibrated,
-                        " finalAdc=", finalAdc,
-                        sep="",
-                    )
-
                 adc[i] = finalAdc
