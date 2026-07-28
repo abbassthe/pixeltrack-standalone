@@ -1,0 +1,19 @@
+[workspace]
+authors = ["Ahmad Bassam El Bizri <34858431+1ahmadbassam@users.noreply.github.com>"]
+channels = ["https://conda.modular.com/mojo", "https://conda.modular.com/max", "https://conda.modular.com/max-nightly", "conda-forge"]
+name = "mojo-cudadev"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+# Mojo port of src/cudadev. Requires linux-64 + an NVIDIA GPU: unlike mojo-serial
+# this port executes real device kernels through std.gpu.host.DeviceContext.
+#
+# Package-qualified imports (MojoCudaDev.*), following mojo-serial rather than
+# mojocudatest's flat -I style. See doc/MojoCudaDevPort.md section 6.
+
+[tasks]
+run = { cmd = "mojo run -I . MojoCudaDev/bin/main.mojo" }
+build = { cmd = "mojo build -I . MojoCudaDev/bin/main.mojo -o mojo-cudadev" }
+
+[dependencies]
+mojo = "25.5.*"
