@@ -43,7 +43,7 @@ struct StreamCache(Movable):
     fn __moveinit__(out self, deinit take: Self):
         self.cache_ = take.cache_^
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         for i in range(self.cache_.__len__()):
             self.cache_[i].destroy_pointee()
             self.cache_[i].free()

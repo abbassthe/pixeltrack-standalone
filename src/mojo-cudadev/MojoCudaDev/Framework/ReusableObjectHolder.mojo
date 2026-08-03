@@ -86,7 +86,7 @@ struct _HeldItem[T: Copyable & ImplicitlyDestructible](Movable):
         self._item = take._item^
         self._holder = take._holder
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         # mirrors: pHolder->addBack(std::unique_ptr<T,Deleter>{iItem, deleter})
         # Empty Arc (null item) does nothing, mirroring empty shared_ptr destructor.
         if self._item:
@@ -106,7 +106,7 @@ struct ReusableObjectHolder[T: Copyable & ImplicitlyDestructible](Movable):
         self.m_availableQueue = take.m_availableQueue^
         self.m_outstandingObjects = Atomic[DType.int64](0)
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         debug_assert(self.m_outstandingObjects.load() == 0, "ReusableObjectHolder destroyed while items are still outstanding")
         # m_availableQueue drops here automatically, destroying all held items
 

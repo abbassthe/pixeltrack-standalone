@@ -16,11 +16,13 @@ alias ByteDeviceBuffer = DeviceBuffer[DType.uint8]
 
 struct _AllocateDeviceState(Movable):
     var _lock: BlockingSpinLock
-    var _allocated_buffers: List[Tuple[UInt, ByteDeviceBuffer]]
+    # DeviceContext stored alongside its buffer so it doesn't get destroyed
+    # (at allocate_device's return) before the buffer it owns.
+    var _allocated_buffers: List[Tuple[UInt, ByteDeviceBuffer, DeviceContext]]
 
     fn __init__(out self):
         self._lock = BlockingSpinLock()
-        self._allocated_buffers = List[Tuple[UInt, ByteDeviceBuffer]]()
+        self._allocated_buffers = List[Tuple[UInt, ByteDeviceBuffer, DeviceContext]]()
 
     fn __moveinit__(out self, deinit take: Self):
         self._lock = BlockingSpinLock()
@@ -32,13 +34,12 @@ struct _AllocateDeviceState(Movable):
         if nbytes == 0:
             return DevicePtr()
         try:
-            # keep the DeviceBuffer alive as long as you intend to use the pointer.
             var ctx = DeviceContext(api="cuda", device_id = Int(device))
             var buffer = ctx.create_buffer_sync[DType.uint8](Int(nbytes))
             var ptr = buffer.unsafe_ptr()
             if ptr != DevicePtr():
                 with BlockingScopedLock(self._lock):
-                    self._allocated_buffers.append((UInt(Int(ptr)), buffer))
+                    self._allocated_buffers.append((UInt(Int(ptr)), buffer, ctx))
             return ptr
         except e:
             return DevicePtr()

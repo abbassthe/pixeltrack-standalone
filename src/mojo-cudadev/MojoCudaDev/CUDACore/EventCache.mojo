@@ -17,7 +17,7 @@ struct EventCache(Movable):
     fn __moveinit__(out self, deinit take: Self):
         self.cache_ = take.cache_^
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         self._destroySlots()
 
     fn get(mut self, mut runtime: CUDARuntime) raises -> SharedEventPtr:

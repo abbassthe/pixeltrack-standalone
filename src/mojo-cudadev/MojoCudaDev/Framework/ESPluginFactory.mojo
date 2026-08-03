@@ -107,8 +107,7 @@ struct Registry(Typeable):
     fn __init__(out self):
         self._pluginRegistry = {}
 
-
-    fn __del__(var self):
+    fn __del__(deinit self):
         self.delete()
 
     @always_inline

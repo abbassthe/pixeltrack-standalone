@@ -99,7 +99,7 @@ struct _EventOwner(Movable):
         take.event = CUDAEventType()
         take.cache = UnsafePointer[_EventCacheSlot, MutAnyOrigin]()
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         if self.event.event_id == 0:
             return
         if self.cache != UnsafePointer[_EventCacheSlot, MutAnyOrigin]():

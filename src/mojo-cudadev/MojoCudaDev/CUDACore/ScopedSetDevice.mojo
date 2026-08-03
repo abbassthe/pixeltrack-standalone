@@ -1,3 +1,5 @@
+from std.reflection import source_location
+
 from MojoCudaDev.CUDACore.CUDACompat import cudaGetDevice, cudaSetDevice
 from MojoCudaDev.CUDACore.cudaCheck import cudaCheck_
 
@@ -6,22 +8,26 @@ struct ScopedSetDevice:
     var prevDevice_: Int
 
     fn __init__(out self, newDevice: Int) raises:
+        self.prevDevice_ = -1
+        var loc0 = source_location()
         _ = cudaCheck_(
-            __source_location().file_name(),
-            __source_location().line(),
+            String(loc0.file_name),
+            loc0.line,
             "cudaGetDevice",
             cudaGetDevice(self.prevDevice_),
         )
+        var loc1 = source_location()
         _ = cudaCheck_(
-            __source_location().file_name(),
-            __source_location().line(),
+            String(loc1.file_name),
+            loc1.line,
             "cudaSetDevice",
             cudaSetDevice(newDevice),
         )
         var currentDevice: Int = -1
+        var loc2 = source_location()
         _ = cudaCheck_(
-            __source_location().file_name(),
-            __source_location().line(),
+            String(loc2.file_name),
+            loc2.line,
             "cudaGetDevice",
             cudaGetDevice(currentDevice),
         )
@@ -34,7 +40,7 @@ struct ScopedSetDevice:
                 + ")"
             )
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         # Intentionally don't check the return value to avoid
         # exceptions to be thrown. If this call fails, the process is
         # doomed anyway.

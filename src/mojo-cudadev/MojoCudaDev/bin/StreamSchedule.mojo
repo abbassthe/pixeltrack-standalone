@@ -1,5 +1,4 @@
 from collections import Deque
-from sys.terminate import exit
 
 from MojoCudaDev.Framework.Event import Event
 from MojoCudaDev.Framework.EventSetup import EventSetup
@@ -99,7 +98,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
                 self._cuda_ctx = UnsafePointer[CUDAAppContext, MutAnyOrigin]()
             return Self()
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         if self._cuda_ctx != UnsafePointer[CUDAAppContext, MutAnyOrigin]():
             self._cuda_ctx.destroy_pointee()
             self._cuda_ctx.free()
@@ -119,7 +118,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             for i in range(self._path.__len__()):
                 self._path[i].produce(ptr[], self._eventSetup[])
             if self._source[].maxEvents() >= 0 and self._source[].processedEvents() >= self._source[].maxEvents():
-                exit(0)
+                return
             ptr = self._source[].produce(self._streamId, self._registry[])
 
     fn endJob(mut self):

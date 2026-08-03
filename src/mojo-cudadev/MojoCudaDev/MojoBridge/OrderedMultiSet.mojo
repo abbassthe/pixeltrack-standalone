@@ -1,10 +1,23 @@
-struct OrderedMultiSet[T: Copyable & ImplicitlyCopyable, Compare: AnyType](Movable, Sized):
+trait LessComparator:
+    alias ItemType: Copyable & ImplicitlyCopyable
+
+    @staticmethod
+    fn less(read a: Self.ItemType, read b: Self.ItemType) -> Bool:
+        ...
+
+
+struct OrderedMultiSet[Compare: LessComparator](Movable, Sized):
     # Sorted storage using a comparator type with `less(a, b) -> Bool`.
-    var _items: List[Self.T]
+    # The stored item type is Compare.ItemType, not a separate parameter --
+    # Mojo traits can't be parametrized yet (no `trait X[T: ...]`), so there
+    # is no way to constrain a separate `T` parameter to equal
+    # `Compare.ItemType`; deriving the item type from Compare directly avoids
+    # the mismatch instead of trying to enforce it.
+    var _items: List[Self.Compare.ItemType]
 
     @always_inline
     fn __init__(out self):
-        self._items = List[Self.T]()
+        self._items = List[Self.Compare.ItemType]()
 
     fn __moveinit__(out self, deinit take: Self):
         self._items = take._items^
@@ -22,20 +35,20 @@ struct OrderedMultiSet[T: Copyable & ImplicitlyCopyable, Compare: AnyType](Movab
         self._items.clear()
 
     @always_inline
-    fn __getitem__(self, index: Int) raises -> Self.T:
+    fn __getitem__(self, index: Int) raises -> Self.Compare.ItemType:
         return self._items[index]
 
     @always_inline
-    fn _less(self, read a: Self.T, read b: Self.T) -> Bool:
-        return Compare.less(a, b)
+    fn _less(self, read a: Self.Compare.ItemType, read b: Self.Compare.ItemType) -> Bool:
+        return Self.Compare.less(a, b)
 
     @always_inline
-    fn _equivalent(self, read a: Self.T, read b: Self.T) -> Bool:
+    fn _equivalent(self, read a: Self.Compare.ItemType, read b: Self.Compare.ItemType) -> Bool:
         return (not self._less(a, b)) and (not self._less(b, a))
 
     # Returns the first position where `value` can be inserted without
     # violating sorted order.
-    fn lower_bound(self, read value: Self.T) -> Int:
+    fn lower_bound(self, read value: Self.Compare.ItemType) -> Int:
         var i: Int = 0
         var n = self._items.__len__()
         while i < n:
@@ -45,13 +58,13 @@ struct OrderedMultiSet[T: Copyable & ImplicitlyCopyable, Compare: AnyType](Movab
         return n
 
     # Returns one matching index or -1 if no equivalent element exists.
-    fn find(self, read value: Self.T) -> Int:
+    fn find(self, read value: Self.Compare.ItemType) -> Int:
         var i = self.lower_bound(value)
         if i < self._items.__len__() and self._equivalent(self._items[i], value):
             return i
         return -1
 
-    fn insert(mut self, value: Self.T):
+    fn insert(mut self, value: Self.Compare.ItemType):
         # Append and shift left to keep ordering by comparator.
         self._items.append(value)
         var i = self._items.__len__() - 1
@@ -70,7 +83,7 @@ struct OrderedMultiSet[T: Copyable & ImplicitlyCopyable, Compare: AnyType](Movab
             pass
         return True
 
-    fn erase_one(mut self, read value: Self.T) -> Bool:
+    fn erase_one(mut self, read value: Self.Compare.ItemType) -> Bool:
         var index = self.find(value)
         if index == -1:
             return False

@@ -94,7 +94,7 @@ struct Event(Defaultable, Movable, Typeable):
             length=reg.__len__(), fill=det_blank
         )
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         for i in range(self._products.__len__()):
             self._dets[i](self._products[i])
 

@@ -18,6 +18,8 @@ alias cudaSuccess: cudaError_t = 0
 alias cudaErrorMemoryAllocation: cudaError_t = 2
 alias cudaErrorNotReady: cudaError_t = 600
 alias cudaEventDisableTiming: UInt32 = 2
+alias cudaHostAllocDefault: UInt32 = 0x00
+alias cudaHostAllocWriteCombined: UInt32 = 0x04
 
 
 trait Typeable:

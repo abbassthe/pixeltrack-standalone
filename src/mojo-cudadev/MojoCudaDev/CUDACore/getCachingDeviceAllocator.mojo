@@ -58,7 +58,7 @@ struct _CachingAllocatorState(Movable):
         self._allocator_initialized = take._allocator_initialized
         self._allocator_ptr = take._allocator_ptr
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         if self._allocator_initialized and self._allocator_ptr != UnsafePointer[CachingDeviceAllocator, MutAnyOrigin]():
             self._allocator_ptr.destroy_pointee()
             self._allocator_ptr.free()

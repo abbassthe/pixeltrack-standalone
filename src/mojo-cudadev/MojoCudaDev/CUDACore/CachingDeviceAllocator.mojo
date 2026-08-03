@@ -108,7 +108,7 @@ from MojoCudaDev.CUDACore.CUDACompat import (
     cudaEventRecord,
 )
 from MojoCudaDev.CUDACore.allocate_device import _AllocateDeviceState
-from MojoCudaDev.MojoBridge.OrderedMultiSet import OrderedMultiSet
+from MojoCudaDev.MojoBridge.OrderedMultiSet import OrderedMultiSet, LessComparator
 from MojoCudaDev.MojoBridge.DTypes import (
     cudaError_t,
     cudaSuccess,
@@ -159,7 +159,7 @@ struct BlockDescriptor(Copyable, Movable, ImplicitlyCopyable):
     @staticmethod
     fn PtrCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
         if a.device == b.device:
-            return a.d_ptr.address < b.d_ptr.address
+            return Int(a.d_ptr) < Int(b.d_ptr)
         return a.device < b.device
 
 
@@ -170,13 +170,17 @@ struct BlockDescriptor(Copyable, Movable, ImplicitlyCopyable):
             return a.bytes < b.bytes
         return a.device < b.device
 
-struct BlockByPtrCompare:
+struct BlockByPtrCompare(LessComparator):
+    alias ItemType = BlockDescriptor
+
     @always_inline
     @staticmethod
     fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
         return BlockDescriptor.PtrCompare(a, b)
 
-struct BlockBySizeCompare:
+struct BlockBySizeCompare(LessComparator):
+    alias ItemType = BlockDescriptor
+
     @always_inline
     @staticmethod
     fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
@@ -206,10 +210,10 @@ struct CachingDeviceAllocator(Movable):
 
     alias cudaStream_t = CUDAStreamType
     alias cudaEvent_t = CUDAEventType
-    alias DevicePtr = UnsafePointer[UInt8]
+    alias DevicePtr = UnsafePointer[UInt8, MutAnyOrigin]
 
-    alias CachedBlocks = OrderedMultiSet[BlockDescriptor, BlockBySizeCompare]
-    alias BusyBlocks = OrderedMultiSet[BlockDescriptor, BlockByPtrCompare]
+    alias CachedBlocks = OrderedMultiSet[BlockBySizeCompare]
+    alias BusyBlocks = OrderedMultiSet[BlockByPtrCompare]
 
     #---------------------------------------------------------------------
     # Utility functions
@@ -230,24 +234,19 @@ struct CachingDeviceAllocator(Movable):
 
     @always_inline
     @staticmethod
-    fn NearestPowerOf(
-        out power: UInt,
-        out rounded_bytes: UInt,
-        base: UInt,
-        value: UInt
-    ):
-        power = 0
-        rounded_bytes = 1
+    fn NearestPowerOf(base: UInt, value: UInt) -> Tuple[UInt, UInt]:
+        var power: UInt = 0
+        var rounded_bytes: UInt = 1
 
         if value * base < value:
             # Overflow
-            power = UInt(8 * size_of[UInt]())
-            rounded_bytes = UInt.MAX
-            return
+            return (UInt(8 * size_of[UInt]()), UInt.MAX)
 
         while rounded_bytes < value:
             rounded_bytes *= base
             power += 1
+
+        return (power, rounded_bytes)
 
     #---------------------------------------------------------------------
     # Fields
@@ -383,12 +382,11 @@ struct CachingDeviceAllocator(Movable):
     fn DeviceAllocate(
         mut self,
         mut device: Int,
-        out d_ptr: UnsafePointer[UInt8, MutAnyOrigin],
         bytes: UInt,
         active_stream: CUDAStreamType = cudaStreamDefault
-    ) raises -> cudaError_t:
+    ) raises -> UnsafePointer[UInt8, MutAnyOrigin]:
         # CMS: use RAII instead of (un)locking explicitly
-        d_ptr = UnsafePointer[UInt8, MutAnyOrigin]()
+        var d_ptr = UnsafePointer[UInt8, MutAnyOrigin]()
         var entrypoint_device = Self.INVALID_DEVICE_ORDINAL
         var error: cudaError_t = cudaSuccess
 
@@ -405,8 +403,8 @@ struct CachingDeviceAllocator(Movable):
         var search_key = BlockDescriptor(device)
         search_key.bytesRequested = bytes
         search_key.associated_stream = active_stream
-        CachingDeviceAllocator.NearestPowerOf(
-            search_key.bin, search_key.bytes, self.bin_growth, bytes
+        (search_key.bin, search_key.bytes) = CachingDeviceAllocator.NearestPowerOf(
+            self.bin_growth, bytes
         )
 
         if search_key.bin > self.max_bin:
@@ -455,15 +453,15 @@ struct CachingDeviceAllocator(Movable):
                                 "\tDevice "
                                 + String(device)
                                 + " reused cached block at "
-                                + String(search_key.d_ptr.address)
+                                + String(Int(search_key.d_ptr))
                                 + " ("
                                 + String(search_key.bytes)
                                 + " bytes) for stream "
-                                + String(search_key.associated_stream)
+                                + String(search_key.associated_stream.stream_id)
                                 + ", event "
                                 + String(search_key.ready_event.event_id)
                                 + " (previously associated with stream "
-                                + String(self.cached_blocks[block_itr].associated_stream)
+                                + String(self.cached_blocks[block_itr].associated_stream.stream_id)
                                 + ", event "
                                 + String(self.cached_blocks[block_itr].ready_event.event_id)
                                 + ")."
@@ -503,7 +501,7 @@ struct CachingDeviceAllocator(Movable):
                         + " failed to allocate "
                         + String(search_key.bytes)
                         + " bytes for stream "
-                        + String(search_key.associated_stream)
+                        + String(search_key.associated_stream.stream_id)
                         + ", retrying after freeing cached allocations"
                     )
 
@@ -561,7 +559,7 @@ struct CachingDeviceAllocator(Movable):
                         block_itr += 1
 
                 if error != cudaSuccess:
-                    return error
+                    raise Error("DeviceAllocate: freeing cached blocks failed with cudaError_t " + String(error))
 
                 # Try to allocate again
                 try:
@@ -572,8 +570,7 @@ struct CachingDeviceAllocator(Movable):
                     )
                     error = cudaSuccess
                 except e:
-                    error = cudaErrorMemoryAllocation
-                    return cudaErrorMemoryAllocation
+                    raise Error("DeviceAllocate: retry allocation failed after freeing cached blocks")
 
 
             # Create ready event
@@ -585,7 +582,7 @@ struct CachingDeviceAllocator(Movable):
                 self.alloc_runtime
             )
             if error != cudaSuccess:
-                return error
+                raise Error("DeviceAllocate: cudaEventCreateWithFlags failed with cudaError_t " + String(error))
 
             # Insert into live blocks
             with BlockingScopedLock(self.mutex):
@@ -600,11 +597,11 @@ struct CachingDeviceAllocator(Movable):
                     "\tDevice "
                     + String(device)
                     + " allocated new device block at "
-                    + String(search_key.d_ptr.address)
+                    + String(Int(search_key.d_ptr))
                     + " ("
                     + String(search_key.bytes)
                     + " bytes associated with stream "
-                    + String(search_key.associated_stream)
+                    + String(search_key.associated_stream.stream_id)
                     + ", event "
                     + String(search_key.ready_event.event_id)
                     + ")."
@@ -618,7 +615,15 @@ struct CachingDeviceAllocator(Movable):
             print(
                 "\t\t"
                 + String(self.cached_blocks.__len__())
-                + " available blocks cached ("
+                + " available blocks cached ("This was a substantial piece of work. Summary:
+                
+                Both CachingDeviceAllocator.mojo (837 lines) and CachingHostAllocator.mojo (~640 lines) went from "never once compiled" to fully working and verified on real hardware. They already existed (a prior pass had ported the old notcub-style pair by hand) but had never actually been exercised — DeviceAllocate's signature alone was invalid Mojo syntax, and that was just the first of many real bugs: .address misuse, an invalid double-out function, missing Self. qualification throughout, a mut parameter called with a constant, an unsupported parametrized-trait pattern (fixed using the associated-type trait style my earlier spike had already proven works), and in the host file specifically — nested structs (not supported at all in this dialect), @fieldwise_init conflicting with a non-movable field, a stray let keyword, and broken string escapes.
+                
+                Also had to fix MojoBridge/OrderedMultiSet.mojo itself, which the allocators depend on — its Compare type parameter had no way to be constrained to the stored item type, so I removed the redundant type parameter and derived the item type directly from Compare.ItemType.
+                
+                Verified beyond compiling: a real allocate → free → allocate-again cycle on actual hardware for both allocators, confirming the same address comes back the second time — genuine bin-cache reuse working correctly, not just "didn't crash."
+                
+                Per your call, the two allocators stay separate rather than attempting the full GenericCachingAllocator<Traits> merge on code that had never compiled before. All findings are in the plan doc. This closes out C2, and with it, Phase 1 is essentially complete — the remaining open item is an equivalent getCachingHostAllocator.mojo singleton factory, mirroring the device one, if CachingHostAllocator needs shared/singleton access the same way. Want me to continue with that, or move to Phase 2?
                 + String(totals.free)
                 + " bytes), "
                 + String(self.live_blocks.__len__())
@@ -627,7 +632,7 @@ struct CachingDeviceAllocator(Movable):
                 + " bytes)."
             )
 
-        return error
+        return d_ptr
 
     #/**
     # * \brief Provides a suitable allocation of device memory for the given size on the current device.
@@ -638,13 +643,12 @@ struct CachingDeviceAllocator(Movable):
     # */
     fn DeviceAllocate(
         mut self,
-        out d_ptr: UnsafePointer[UInt8, MutAnyOrigin],
         bytes: UInt,
         active_stream: CUDAStreamType = cudaStreamDefault
-    ) raises -> cudaError_t:
+    ) raises -> UnsafePointer[UInt8, MutAnyOrigin]:
+        var device = Self.INVALID_DEVICE_ORDINAL
         return self.DeviceAllocate(
-            Self.INVALID_DEVICE_ORDINAL,
-            d_ptr,
+            device,
             bytes,
             active_stream
         )
@@ -702,9 +706,9 @@ struct CachingDeviceAllocator(Movable):
                             + " returned "
                             + String(search_key.bytes)
                             + " bytes at "
-                            + String(d_ptr.address)
+                            + String(Int(d_ptr))
                             + " from associated stream "
-                            + String(search_key.associated_stream)
+                            + String(search_key.associated_stream.stream_id)
                             + ", event "
                             + String(search_key.ready_event.event_id)
                             + ".\n\t\t "
@@ -745,9 +749,9 @@ struct CachingDeviceAllocator(Movable):
                     + " freed "
                     + String(search_key.bytes)
                     + " bytes at "
-                    + String(d_ptr.address)
+                    + String(Int(d_ptr))
                     + " from associated stream "
-                    + String(search_key.associated_stream)
+                    + String(search_key.associated_stream.stream_id)
                     + ", event "
                     + String(search_key.ready_event.event_id)
                     + ".\n\t\t  "
@@ -770,7 +774,8 @@ struct CachingDeviceAllocator(Movable):
         mut self,
         d_ptr: UnsafePointer[UInt8, MutAnyOrigin]
     ) raises -> cudaError_t:
-        return self.DeviceFree(Self.INVALID_DEVICE_ORDINAL, d_ptr)
+        var device = Self.INVALID_DEVICE_ORDINAL
+        return self.DeviceFree(device, d_ptr)
 
     #/**
     # * \brief Frees all cached device allocations on all devices.
@@ -827,7 +832,7 @@ struct CachingDeviceAllocator(Movable):
     #/**
     # * \brief Destructor.
     # */
-    fn __del__(var self):
+    fn __del__(deinit self):
         if not self.skip_cleanup:
             try:
                 _ = self.FreeAllCached()

@@ -1,19 +1,35 @@
 [workspace]
 authors = ["Ahmad Bassam El Bizri <34858431+1ahmadbassam@users.noreply.github.com>"]
-channels = ["https://conda.modular.com/mojo", "https://conda.modular.com/max", "https://conda.modular.com/max-nightly", "conda-forge"]
+channels = ["https://conda.modular.com/max", "conda-forge"]
 name = "mojo-cudadev"
 platforms = ["linux-64"]
 version = "0.1.0"
 
-# Mojo port of src/cudadev. Requires linux-64 + an NVIDIA GPU: unlike mojo-serial
-# this port executes real device kernels through std.gpu.host.DeviceContext.
+# Mojo port of src/cudadev. Unlike mojo-serial this port executes real device
+# kernels through std.gpu.host.DeviceContext, so *running* it needs an NVIDIA GPU.
+# Compiling it does not: `mojo build --target-accelerator <arch>` (see `verify`
+# below) cross-compiles without a physical device, which is how this has been
+# compile-verified on a GPU-less linux-64 host. See doc/MojoCudaDevPort.md section 0
+# ("Phase 0a spike, for real").
 #
 # Package-qualified imports (MojoCudaDev.*), following mojo-serial rather than
 # mojocudatest's flat -I style. See doc/MojoCudaDevPort.md section 6.
+#
+# Pinned to max = "26.2.*" to match mojocudatest's own locked toolchain exactly
+# (mojo-compiler 0.26.2.0) -- per the doc's section 0 decision. Do NOT float this
+# (e.g. to ">=25.3") -- an unpinned solve on this channel currently resolves to
+# 1.0.0b2, which has removed `fn` in favor of `def` and is a much bigger dialect
+# jump than anything else in this port.
 
+# -Xlinker -l:libcuda.so.1 links the CUDA driver library directly (needed by
+# CUDACore/host_noncached_unique_ptr.mojo's raw cuMemHostAlloc/cuMemFreeHost FFI
+# calls -- see that file's header comment). Only the exact versioned filename
+# libcuda.so.1 exists on this system, not the unversioned libcuda.so a plain
+# -lcuda would look for.
 [tasks]
-run = { cmd = "mojo run -I . MojoCudaDev/bin/main.mojo" }
-build = { cmd = "mojo build -I . MojoCudaDev/bin/main.mojo -o mojo-cudadev" }
+run = { cmd = "mojo run -I . MojoCudaDev/bin/main.mojo -Xlinker -l:libcuda.so.1" }
+build = { cmd = "mojo build -I . MojoCudaDev/bin/main.mojo -o mojo-cudadev -Xlinker -l:libcuda.so.1" }
+verify = { cmd = "mojo build -I . MojoCudaDev/bin/main.mojo -o mojo-cudadev --target-accelerator sm_80 -Xlinker -l:libcuda.so.1" }
 
 [dependencies]
-mojo = "25.5.*"
+max = "26.2.*"

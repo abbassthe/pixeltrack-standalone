@@ -63,7 +63,7 @@ struct EventSetup(Defaultable, Movable, Typeable):
         self._typeToProduct = take._typeToProduct^
         self._dets = take._dets^
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         var keys = List[String]()
         for k in self._typeToProduct.keys():
             keys.append(k)

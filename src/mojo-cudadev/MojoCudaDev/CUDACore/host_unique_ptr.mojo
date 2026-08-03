@@ -30,7 +30,13 @@ struct _HostAllocation[T: AnyType](Movable, Defaultable):
         take.ptr = UnsafePointer[Self.T, MutAnyOrigin]()
         take.state = UnsafePointer[_AllocateHostState, MutAnyOrigin]()
 
-    fn __del__(var self):
+    fn __del__(deinit self):
+        # Hangs acquiring the allocator's lock if this is reached with no
+        # other DeviceContext alive anywhere in the process (never the case
+        # in the real port -- CUDAAppContext keeps one live for the whole
+        # event loop). Calling free_host_raw() on the named _AllocateHostState
+        # variable directly doesn't hang; only this pointer-indirected call
+        # does -- root cause not fully understood, treat as a real bug.
         if self.ptr != UnsafePointer[Self.T, MutAnyOrigin]() and self.state != UnsafePointer[_AllocateHostState, MutAnyOrigin]():
             self.state[].free_host_raw(self.ptr.bitcast[UInt8]())
 

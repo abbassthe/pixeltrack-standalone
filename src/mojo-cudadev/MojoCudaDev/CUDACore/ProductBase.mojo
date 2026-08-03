@@ -55,7 +55,7 @@ struct ProductBase(Movable):
         self.mayReuseStream_ = Atomic[DType.uint8](take.mayReuseStream_.load())
         self.device_ = take.device_
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         # Make sure that the production of the product in the GPU is
         # complete before destructing the product. This is to make sure
         # that the EDM stream does not move to the next event before all

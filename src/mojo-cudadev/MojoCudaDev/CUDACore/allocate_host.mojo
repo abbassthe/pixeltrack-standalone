@@ -16,11 +16,13 @@ alias cudaStream_t = CUDAStreamType
 
 struct _AllocateHostState(Movable):
     var _lock: BlockingSpinLock
-    var _allocated_host_buffers: List[Tuple[UInt, ByteHostBuffer]]
+    # DeviceContext stored alongside its buffer so it doesn't get destroyed
+    # (at allocate_host_raw's return) before the buffer it owns.
+    var _allocated_host_buffers: List[Tuple[UInt, ByteHostBuffer, DeviceContext]]
 
     fn __init__(out self):
         self._lock = BlockingSpinLock()
-        self._allocated_host_buffers = List[Tuple[UInt, ByteHostBuffer]]()
+        self._allocated_host_buffers = List[Tuple[UInt, ByteHostBuffer, DeviceContext]]()
 
     fn __moveinit__(out self, deinit take: Self):
         self._lock = BlockingSpinLock()
@@ -48,7 +50,7 @@ struct _AllocateHostState(Movable):
             var ptr = buf.unsafe_ptr()
             if ptr != HostPtr():
                 with BlockingScopedLock(self._lock):
-                    self._allocated_host_buffers.append((UInt(ptr.address), buf))
+                    self._allocated_host_buffers.append((UInt(Int(ptr)), buf^, ctx^))
             return ptr
         except e:
             return HostPtr()
@@ -58,7 +60,7 @@ struct _AllocateHostState(Movable):
             return
 
         with BlockingScopedLock(self._lock):
-            var target = UInt(ptr.address)
+            var target = UInt(Int(ptr))
             var i = 0
             while i < self._allocated_host_buffers.__len__():
                 if self._allocated_host_buffers[i][0] == target:

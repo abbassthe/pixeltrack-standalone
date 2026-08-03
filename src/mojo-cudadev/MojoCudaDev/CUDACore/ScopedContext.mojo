@@ -209,7 +209,7 @@ struct ScopedContextTask(Movable):
         self.holderHelper_ = take.holderHelper_^
         self.contextState_ = take.contextState_
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         self.holderHelper_.enqueueCallback(self.device(), self.stream(), self.base.ctx_)
 
     fn device(self) -> Int:
@@ -286,7 +286,7 @@ struct ScopedContextAcquire(Movable):
         self.contextState_ = take.contextState_
         self.hasContextState_ = take.hasContextState_
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         self.holderHelper_.enqueueCallback(self.device(), self.stream(), self.getter.base.ctx_)
         if self.hasContextState_:
             try:
@@ -354,7 +354,7 @@ struct ScopedContextProduce(Movable):
         self.getter = take.getter^
         self.event_ = take.event_^
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         _ = cudaEventRecord(self.event_[].event, self.stream())
 
     fn device(self) -> Int:
