@@ -1263,3 +1263,114 @@ fix, not a change to `HostAllocator.mojo` itself. Final run: `size: 5`, `sum of 
 (0+10+20+30+40, confirming per-element set/get through the pinned buffer), non-null `data()`.
 
 This closes out Phase 1 ("GPU primitives — blocks everything") entirely.
+
+### Found and fixed — real file corruption in `CachingDeviceAllocator.mojo` (2026-08-04)
+
+While building a `gpuAlgo1`-style validation test (see below), `mojo build` failed with a wall
+of "unexpected character"/"unterminated string" errors inside `CachingDeviceAllocator.mojo`,
+at lines nothing in this session had touched recently. Reading the file (both via the editor
+tool and via `sed`) showed several paragraphs of prose sitting inside a broken string literal —
+text that reads almost verbatim like a chat summary of the C2 allocator work reported earlier
+in this session ("Both CachingDeviceAllocator.mojo (837 lines) and CachingHostAllocator.mojo
+(~640 lines) went from 'never once compiled' to fully working...").
+
+First reaction was to suspect tool-output tampering / prompt injection, since `git diff HEAD`
+and `md5sum` both showed the working-tree file was byte-identical to what was already
+committed — which felt like it ruled out real corruption. That reasoning was wrong: "identical
+to HEAD" only proves the working tree matches the last commit, not that the commit itself is
+clean. Checking against the true base (`git show 69bdf03a:...`, the commit before any of this
+session's changes) settled it — the base version has correct code at that exact location, and
+`grep -a -b` against both the raw file and the git blob confirmed the same corrupted bytes at
+the same offset in both, with matching file sizes. So this was a real, self-inflicted bug: at
+some point during the earlier (summarized) C2 work, a tool call ended up writing chat-summary
+prose into the file in place of the tail of one debug-print string literal, and it was
+committed without being caught (the standalone compile check done at the time evidently ran
+before this happened, and nothing re-touched this exact file afterward to catch it).
+
+Scanned the rest of `src/mojo-cudadev` for the same pattern (`grep` for a few distinctive
+phrases, plus a blanket search for any `.mojo` line over 300 characters) — isolated to this one
+spot in this one file. Fixed by restoring the string literal to match the identical pattern used
+elsewhere in the same file (`"available blocks cached (" + String(totals.free) + ...`). Verified
+clean: standalone compile, zero remaining matches for the leaked text.
+
+Lesson for future verification: "working tree matches HEAD" is not evidence of correctness by
+itself — always check against a known-good point (base commit, or an actual compile/run) before
+concluding a file is fine, and before escalating to "this might be external tampering."
+
+### Done — Phase 1 realistic validation: `gpuAlgo1` workload through `CachingDeviceAllocator` (2026-08-04)
+
+Closes the one item from Phase 1's own definition that hadn't been done yet: "Validate by
+re-running the `mojocudatest` `gpuAlgo1` path on the new allocator." `gpuAlgo1.mojo`
+(`src/mojocudatest/plugin-Test1/gpuAlgo1.mojo`) is test/demo-only content with no `cudadev`
+counterpart, so this wasn't ported into the permanent tree — it's a scratchpad validation
+exercise that re-runs the same workload shape (multiple differently-sized buffers: two 1000-float
+vectors, a 1000-float result vector, a 1,000,000-float matrix; init/vectorAdd/vectorProd/
+matrixMulVector kernels) through `CachingDeviceAllocator.DeviceAllocate`/`DeviceFree` instead of
+the plain `device_unique_ptr`/`_AllocateDeviceState` path `gpuAlgo1` originally used, run twice
+back to back.
+
+Result on real hardware: both passes produced numerically identical output
+(`997501700000000.0`, `1.9930078e+17`), and all four buffers landed at the exact same address on
+the second pass — genuine bin-cache reuse holding up under a realistic multi-size, multi-buffer,
+multi-kernel pattern, not just the single-buffer alloc/free/alloc-again smoke test done earlier.
+This is the strongest evidence yet that C2 is solid.
+
+## Phase 2 (C1) — `OneToManyAssoc` / `HistoContainer` inversion, started (2026-08-04)
+
+Scoped before writing anything. Read `OneToManyAssoc.h` (282 lines), `HistoContainer.h` (174
+lines), `FlexiStorage.h` (49 lines), and the existing `mojo-serial/.../HistoContainer.mojo` (361
+lines, pre-inversion shape where `OneToManyAssoc` is just an alias for `HistoContainer`) as
+reference. Two problems have no direct Mojo equivalent:
+
+1. **No inheritance** — `HistoContainer : public OneToManyAssoc<I, NHISTS*NBINS+1, SIZE>` in
+   C++. Decided: composition (`HistoContainer` holds a `OneToManyAssoc` field), with the base's
+   ~15 public methods forwarded explicitly on `HistoContainer` to preserve C++'s call-site
+   ergonomics (`histo.finalize()`, not `histo.base.finalize()`), since downstream consumers
+   (`TrackSoAHeterogeneousT`, CA kernels, clusterizer) use both freely today.
+
+2. **`FlexiStorage<I,S>` switches between a fixed inline array and runtime pointer+capacity
+   storage via C++ template specialization on `S == -1`.** Checked first whether
+   `mojo-serial`'s approach (skip `FlexiStorage` entirely, inline a plain `InlineArray` field
+   into `HistoContainer` directly) would work here — it doesn't, because `OneToManyAssoc` is
+   used **standalone**, not only through `HistoContainer`: `TrackSoAHeterogeneousT.h:19`
+   (`HitContainer`) and `CAConstants.h:76-78` (`TuplesContainer`, `HitToTuple` — which uses
+   `ONES = -1`, genuinely runtime-sized) both instantiate it directly. So a real, independently
+   usable `FlexiStorage` is required.
+
+   Spiked whether Mojo can express the C++ specialization as a single `FlexiStorage[I, S]` type
+   (matching C++'s 2-parameter shape) rather than two separate types unified by a trait: declare
+   *both* possible field sets (`InlineArray[I, max(S,1)]` and `UnsafePointer[I]` + capacity)
+   unconditionally, and have every method pick which one to use via `@parameter if S >= 0`.
+   Confirmed on real instantiation, both modes: fixed (`S=5`) gave capacity `5`, sum `100`;
+   dynamic (`S=-1`, backed by a `List`'s buffer via `.init(ptr, 8)`) gave capacity `8`, sum
+   `2800`. This works and keeps every downstream alias site at the same 3-parameter shape as
+   C++ (`OneToManyAssoc<I, ONES, SIZE>`), at the cost of a small always-present dummy field in
+   whichever mode isn't active (a 1-element placeholder array in dynamic mode, an unused
+   pointer+int in fixed mode).
+
+### Done — `CUDACore/FlexiStorage.mojo`
+
+Written from the validated spike shape. `capacity()`, `__getitem__`, `__setitem__`, `data()`
+all `@parameter if Self.S >= 0`-branch between the two storage modes; `init(ptr, capacity)`
+exists unconditionally (a no-op to call in fixed mode, since `_fixed` is already valid storage
+without it — C++ only defines `init` on the `S == -1` specialization at all). Verified:
+standalone compile, plus a real run against the actual file (not just the spike) — same
+results as the spike, fixed capacity `5`/sum `100`, dynamic capacity `8`/sum `2800`, non-null
+`data()`.
+
+Not done yet: `OneToManyAssoc.mojo` (needs real atomics for `atomicIncrement`/`atomicDecrement`/
+`add`, per §C7's "re-atomicise, don't copy" — `mojo-serial` did these as plain non-atomic
+`+=`/`-=`) and `HistoContainer.mojo` (composition wrapper forwarding the base's methods).
+
+### Done — `CUDACore/PrefixScan.mojo`, blocking `OneToManyAssoc.finalize()` (2026-08-04)
+
+Full write-up in [MojoCudaDevAtomics.md](MojoCudaDevAtomics.md) (where this was already tracked
+as part of §C7's re-atomicising work). Short version: verified `CUDAAtomics.mojo`'s atomics for
+real on hardware (found and fixed a real `mut=True` syntax bug there too, never-before-compiled),
+then built `blockPrefixScan` on `std.gpu.primitives.warp`/`gpu.sync`/shared memory — none used
+anywhere in this port before. Hit and root-caused a genuine Mojo/MAX deadlock along the way:
+divergent warp-shuffle (a subset of a warp calling `vote()`/masked `shuffle_up` while the rest
+have branched away, standard and well-defined in raw CUDA) hangs in this dialect; fixed by having
+every lane always participate in the shuffle uniformly, gating only the read/write of results.
+Verified correct across 12 boundary cases, both device and host code paths. This was the
+long pole for `OneToManyAssoc.finalize()` — C1 can now continue with `OneToManyAssoc.mojo` itself.
