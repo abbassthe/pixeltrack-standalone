@@ -615,15 +615,7 @@ struct CachingDeviceAllocator(Movable):
             print(
                 "\t\t"
                 + String(self.cached_blocks.__len__())
-                + " available blocks cached ("This was a substantial piece of work. Summary:
-                
-                Both CachingDeviceAllocator.mojo (837 lines) and CachingHostAllocator.mojo (~640 lines) went from "never once compiled" to fully working and verified on real hardware. They already existed (a prior pass had ported the old notcub-style pair by hand) but had never actually been exercised — DeviceAllocate's signature alone was invalid Mojo syntax, and that was just the first of many real bugs: .address misuse, an invalid double-out function, missing Self. qualification throughout, a mut parameter called with a constant, an unsupported parametrized-trait pattern (fixed using the associated-type trait style my earlier spike had already proven works), and in the host file specifically — nested structs (not supported at all in this dialect), @fieldwise_init conflicting with a non-movable field, a stray let keyword, and broken string escapes.
-                
-                Also had to fix MojoBridge/OrderedMultiSet.mojo itself, which the allocators depend on — its Compare type parameter had no way to be constrained to the stored item type, so I removed the redundant type parameter and derived the item type directly from Compare.ItemType.
-                
-                Verified beyond compiling: a real allocate → free → allocate-again cycle on actual hardware for both allocators, confirming the same address comes back the second time — genuine bin-cache reuse working correctly, not just "didn't crash."
-                
-                Per your call, the two allocators stay separate rather than attempting the full GenericCachingAllocator<Traits> merge on code that had never compiled before. All findings are in the plan doc. This closes out C2, and with it, Phase 1 is essentially complete — the remaining open item is an equivalent getCachingHostAllocator.mojo singleton factory, mirroring the device one, if CachingHostAllocator needs shared/singleton access the same way. Want me to continue with that, or move to Phase 2?
+                + " available blocks cached ("
                 + String(totals.free)
                 + " bytes), "
                 + String(self.live_blocks.__len__())
