@@ -1,25 +1,25 @@
 from memory import bitcast
 
-alias CUresult = Int32
+comptime CUresult = Int32
 
-alias CUDA_SUCCESS: CUresult = 0
+comptime CUDA_SUCCESS: CUresult = 0
 
-alias cudaError_t = Int32
+comptime cudaError_t = Int32
 
-# Basic data aliases used by framework and dataformat modules.
-alias SizeType = UInt32  # size_t
-alias Short = Int16
-alias Float = Float32
-alias Double = Float64
-alias Char = Int8
-alias UChar = UInt8
+# Basic data comptimees used by framework and dataformat modules.
+comptime SizeType = UInt32  # size_t
+comptime Short = Int16
+comptime Float = Float32
+comptime Double = Float64
+comptime Char = Int8
+comptime UChar = UInt8
 
-alias cudaSuccess: cudaError_t = 0
-alias cudaErrorMemoryAllocation: cudaError_t = 2
-alias cudaErrorNotReady: cudaError_t = 600
-alias cudaEventDisableTiming: UInt32 = 2
-alias cudaHostAllocDefault: UInt32 = 0x00
-alias cudaHostAllocWriteCombined: UInt32 = 0x04
+comptime cudaSuccess: cudaError_t = 0
+comptime cudaErrorMemoryAllocation: cudaError_t = 2
+comptime cudaErrorNotReady: cudaError_t = 600
+comptime cudaEventDisableTiming: UInt32 = 2
+comptime cudaHostAllocDefault: UInt32 = 0x00
+comptime cudaHostAllocWriteCombined: UInt32 = 0x04
 
 
 trait Typeable:

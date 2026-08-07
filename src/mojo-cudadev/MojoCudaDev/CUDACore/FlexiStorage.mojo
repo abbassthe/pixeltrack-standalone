@@ -1,7 +1,8 @@
 # Mojo port of CUDACore/FlexiStorage.h. C++ picks fixed-array vs
 # pointer+runtime-size storage via template specialization on S == -1; Mojo
 # can't switch a struct's fields based on a parameter value, so both field
-# sets are always present here and every method picks one via `@parameter if`.
+# sets are always present here and every method picks one via `@parameter if`
+# on `Self.S`.
 fn _storage_size(s: Int) -> Int:
     if s < 0:
         return 1

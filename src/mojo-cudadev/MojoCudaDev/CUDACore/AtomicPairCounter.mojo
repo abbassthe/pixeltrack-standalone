@@ -5,12 +5,11 @@ from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct Counters(Copyable, Defaultable, Movable, Typeable):
+struct Counters(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var c: SIMD[DType.uint32, 2]
-    # alias n: UInt32 = c[0] # in a "One to Many" association is the number of "One"
-    # alias m: UInt32 = c[1] # in a "One to Many" association is the total number of associations
-    # alias ac: UInt64 = bitcast[DType.uint64, 1](c)
+    # comptime n: UInt32 = c[0] # in a "One to Many" association is the number of "One"
+    # comptime m: UInt32 = c[1] # in a "One to Many" association is the total number of associations
+    # comptime ac: UInt64 = bitcast[DType.uint64, 1](c)
 
     @always_inline
     fn __init__(out self):
@@ -43,11 +42,10 @@ struct Counters(Copyable, Defaultable, Movable, Typeable):
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct AtomicPairCounter(Copyable, Defaultable, Movable, Typeable):
+struct AtomicPairCounter(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var counter: Counters
-    alias CounterType = UInt64
-    alias incr: Self.CounterType = 1 << 32
+    comptime CounterType = UInt64
+    comptime incr: Self.CounterType = 1 << 32
 
     @always_inline
     fn __init__(out self):
