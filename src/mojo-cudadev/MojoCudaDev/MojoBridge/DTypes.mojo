@@ -82,3 +82,22 @@ struct TypeableUInt(Copyable, Movable, Typeable, TrivialRegisterPassable):
 # it is added here rather than reverting the file (see plan section 6).
 fn hex_to_float[fld: Int32]() -> Float:
     return bitcast[src_dtype = DType.int32, src_width=1, DType.float32](fld)
+
+
+# Also carried over from mojo-serial: HistoContainer.mojo's bin() needs
+# std::make_unsigned<T>::type for a logical (non-sign-extending) right shift.
+fn signed_to_unsigned[T: DType]() -> DType:
+    @parameter
+    if T == DType.int8 or T == DType.uint8:
+        return DType.uint8
+    elif T == DType.int16 or T == DType.uint16:
+        return DType.uint16
+    elif T == DType.int32 or T == DType.uint32:
+        return DType.uint32
+    elif T == DType.int64 or T == DType.uint64:
+        return DType.uint64
+    elif T == DType.int128 or T == DType.uint128:
+        return DType.uint128
+    elif T == DType.int256 or T == DType.uint256:
+        return DType.uint256
+    return DType.invalid

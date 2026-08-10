@@ -4,20 +4,39 @@
 # `launchFinalize`, `finalizeBulk`) are not ported -- same generic-kernel-
 # launch problem as launch.mojo.
 #
-# View mirrors C++ 1:1: `using Counter = typename Assoc::Counter;` and
-# `using index_type = typename Assoc::index_type;` become real projections
-# (`Self.Assoc.Counter`/`Self.Assoc.index_type`), and offStorage/
-# contentStorage are typed through them directly, not opaque pointers.
+# View is generic over Assoc bound to a trait declaring Counter/index_type,
+# matching C++'s `using Counter = typename Assoc::Counter` shape -- but
+# never actually *projects* through it (no `Self.Assoc.Counter`/`.index_type`
+# anywhere): offStorage stays hardcoded UnsafePointer[UInt32, ...] (Counter
+# never varies), and contentStorage stays an untyped pointer, bitcast to the
+# real element type only where it's actually used, inside OneToManyAssoc's
+# own initStorage (where Self.index_type is a plain leaf parameter, not a
+# projection through Assoc). Actually projecting through Self.Assoc.X on a
+# self-referential Assoc=Self crashes this compiler with infinite recursion
+# -- confirmed still true even after Bug A's FlexiStorage fix (see
+# selfref_view_from_assoc.mojo); merely having the trait bound present,
+# unused, does not crash (see selfref_view_trait_unused.mojo).
 #
-# KNOWN COMPILER CRASH: this shape segfaults the compiler once it's actually
-# wired up (Assoc=Self via the self-referential `View` alias below, and
-# initStorage actually using the projected fields) -- confirmed multiple
-# times this session (selfref_view_from_assoc.mojo, and this exact file
-# before it was worked around). Kept here anyway, on request, as the
-# closest-to-C++ shape for comparison -- see the commands below to reproduce
-# the crash yourself. The working, previously-verified design used an opaque
-# `UnsafePointer[NoneType, ...]` for contentStorage instead, bitcast to
-# Self.index_type only where it's actually used inside initStorage.
+# Tried (and reverted) an alternative: making initStorage independently
+# generic over its own Assoc parameter (never writing "Self" in its own
+# signature/body) with contentStorage properly typed as Assoc.index_type.
+# That compiles fine standalone (no calls) but crashes identically to Bug B
+# once actually *called* from anywhere else -- standalone compilation of a
+# generic method's definition doesn't fully monomorphize it, a real call
+# site is needed to trigger the crash. Also tried removing FlexiStorage's
+# `@parameter if` (Bug A's fix) as a possible additional factor for this
+# specific crash -- confirmed it isn't; the call-site crash persists either
+# way, so this is purely Bug B, unrelated to Bug A.
+#
+# setContentStorage() below gets real type-checking back on the write side
+# despite contentStorage being opaque: it's a method on View itself (not on
+# the self-referential OneToManyAssoc), so requiring exactly
+# Self.Assoc.index_type as its parameter type doesn't trigger Bug B -- View
+# isn't the self-referential struct, only OneToManyAssoc is, and this method
+# never gets called from inside OneToManyAssoc's own elaboration. Confirmed
+# via a real call site, not just a standalone definition (see
+# selfref_view_typed_setter.mojo). Without this, a caller could bitcast any
+# type at all into contentStorage with no static check whatsoever.
 #
 # atomicIncrement/atomicDecrement take a pointer instead of a `Counter&`:
 # FlexiStorage's __getitem__ returns a value, not a reference, so there's no
@@ -38,15 +57,15 @@ trait OneToManyAssocLike:
 
 struct OneToManyAssocView[Assoc: OneToManyAssocLike](Movable):
     var assoc: UnsafePointer[Self.Assoc, MutAnyOrigin]
-    var offStorage: UnsafePointer[Self.Assoc.Counter, MutAnyOrigin]
-    var contentStorage: UnsafePointer[Self.Assoc.index_type, MutAnyOrigin]
+    var offStorage: UnsafePointer[UInt32, MutAnyOrigin]
+    var contentStorage: UnsafePointer[NoneType, MutAnyOrigin]
     var offSize: Int32
     var contentSize: Int32
 
     fn __init__(out self):
         self.assoc = UnsafePointer[Self.Assoc, MutAnyOrigin]()
-        self.offStorage = UnsafePointer[Self.Assoc.Counter, MutAnyOrigin]()
-        self.contentStorage = UnsafePointer[Self.Assoc.index_type, MutAnyOrigin]()
+        self.offStorage = UnsafePointer[UInt32, MutAnyOrigin]()
+        self.contentStorage = UnsafePointer[NoneType, MutAnyOrigin]()
         self.offSize = -1
         self.contentSize = -1
 
@@ -56,6 +75,12 @@ struct OneToManyAssocView[Assoc: OneToManyAssocLike](Movable):
         self.contentStorage = take.contentStorage
         self.offSize = take.offSize
         self.contentSize = take.contentSize
+
+    # Type-checked write into the otherwise-opaque contentStorage: callers
+    # must supply exactly Self.Assoc.index_type, enforced by the compiler at
+    # the call site (this is safe here because View isn't self-referential).
+    fn setContentStorage(mut self, ptr: UnsafePointer[Self.Assoc.index_type, MutAnyOrigin]):
+        self.contentStorage = ptr.bitcast[NoneType]()
 
 
 struct OneToManyAssoc[
@@ -113,11 +138,11 @@ struct OneToManyAssoc[
         )
         if Self.ctCapacity() < 0:
             debug_assert(
-                view.contentStorage != UnsafePointer[Self.index_type, MutAnyOrigin](),
+                view.contentStorage != UnsafePointer[NoneType, MutAnyOrigin](),
                 "OneToManyAssoc.initStorage: contentStorage is null",
             )
             debug_assert(view.contentSize > 0, "OneToManyAssoc.initStorage: contentSize must be > 0")
-            self.content.init(view.contentStorage, Int(view.contentSize))
+            self.content.init(view.contentStorage.bitcast[Self.index_type](), Int(view.contentSize))
         if Self.ctNOnes() < 0:
             debug_assert(
                 view.offStorage != UnsafePointer[Self.Counter, MutAnyOrigin](),

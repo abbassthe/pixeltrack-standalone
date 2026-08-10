@@ -176,6 +176,37 @@ across 12 cases spanning every relevant boundary (`size` below/at/above a warp,
 below/at/above `block_size`, multi-round) on both the device and host
 (`is_gpu()`-false) paths — no hangs, all numerically correct.
 
+Initially collapsed C++'s two `warpPrefixScan` overloads (`(ci,co,i,mask)` and the
+in-place `(c,i,mask)`) into one value-in/value-out helper — flagged as an
+unnecessary shape change from C++ with no real justification, unlike the loop
+restructuring above (which *was* necessary for the divergence fix). Restructured
+back to two array-indexed overloads matching C++ exactly, replacing the now-unusable
+`mask` parameter with a `bound` (the `i < bound` check moves inside the function,
+since padding replaces masking as the safety mechanism). Required parametrizing
+over `AddressSpace` too, since `warpPrefixScan(ws, ...)` needs to accept the
+`stack_allocation`-produced shared-memory pointer, not just generic-address-space
+ones. Re-verified: same 12/12 passing.
+
+Also ported the 4 C++ `assert`s: `0 == blockDim.x % 32` became a compile-time
+`constrained[block_size % 32 == 0, ...]()` (stronger than C++'s runtime check,
+since `block_size` is compile-time here); `size <= 1024` and `warpId < 32` became
+`debug_assert`s. `assert(ws)` wasn't ported — C++'s `ws` is a caller-supplied
+pointer that could be null by mistake; this port's `ws` is allocated internally
+via `stack_allocation` right before use, so it can never be null by construction.
+
+Pushed back on the block-uniform round-count loop (`for round in range(num_rounds)`)
+above — asked whether C++'s condition-based loop shape (`while i < size`) could be
+kept without the deadlock. It can, with one change: check each *warp's* base index
+(`first - laneId`, uniform across all 32 lanes of a warp) instead of each thread's
+own `i`. All 32 lanes of a warp then always enter/exit their loop together — no
+within-warp divergence — while different warps can still stop after different
+numbers of rounds, since warp-to-warp divergence is completely fine (shuffle only
+operates within a single warp). This is strictly better than the round-count
+version: closer to C++'s actual shape, and warps with zero relevant elements skip
+the loop entirely instead of doing a wasted padding round. Re-verified across the
+same boundary cases plus a many-empty-warps case (`size=17`, `block_size=256`, 7 of
+8 warps entirely irrelevant) — correct, no hang.
+
 ## Bug found in `mojo-serial` while porting
 
 `mojo-serial/CUDACore/SimpleVector.mojo:54` — `extend()` decrements by `1` on the

@@ -1374,3 +1374,392 @@ have branched away, standard and well-defined in raw CUDA) hangs in this dialect
 every lane always participate in the shuffle uniformly, gating only the read/write of results.
 Verified correct across 12 boundary cases, both device and host code paths. This was the
 long pole for `OneToManyAssoc.finalize()` — C1 can now continue with `OneToManyAssoc.mojo` itself.
+
+`PrefixScan.mojo` was refined twice more after this, both from direct feedback rather than bugs
+found independently: `ws` was put back as a caller-supplied parameter (matching C++ exactly,
+including re-adding `assert(ws)` — it can be null again now that it's not internally allocated),
+and the block-uniform round-count loop was replaced with a per-*warp*-uniform condition
+(`warpBase = first - laneId`, identical across all 32 lanes of a warp) — closer to C++'s actual
+`while i < size` shape, and strictly better than the round-count version since entirely-irrelevant
+warps now skip their loop altogether instead of doing one wasted padding round. Both re-verified
+across the full boundary matrix (including a many-empty-warps case, `size=17`/`block_size=256`)
+plus the caller-supplied-`ws` shape — still 15/15, no hangs.
+
+### Done — `CUDACore/OneToManyAssoc.mojo` (2026-08-05)
+
+Ported with real atomics (`CUDAAtomics.mojo`) and `blockPrefixScan` (`PrefixScan.mojo`), now that
+both are verified. Composition, not inheritance, per the earlier C1 scoping. `OneToManyAssocView`
+is ported too (just a plain generic struct, no `launch()`-style problem) — see below for its final
+shape, which changed from the original associated-type-trait design once that turned out to crash
+the compiler. `index_type` (not the raw `I` parameter) is used everywhere C++ itself uses
+`index_type` rather than `I` directly (`content` field, `fill`, `begin`/`end`), matching the C++
+source's own naming choice rather than my first draft's shortcut.
+
+**`OneToManyAssoc.initStorage` — initially deferred, then resolved (2026-08-07).** Two
+*independent* compiler crashes were found here, not one, and both are now understood and fixed:
+
+- **Bug A**: `FlexiStorage`'s `capacity()`/`__getitem__`/`__setitem__`/`data()` used
+  `@parameter if Self.S >= 0: ... else: ...` to pick fixed-array vs. pointer+runtime-size storage.
+  Merely having an `@parameter if` present in the *type of a field* of a self-referential struct
+  crashed the compiler at the time — even in a method that's never called, regardless of which
+  branch the comptime condition would take. Originally fixed by replacing all four with plain
+  runtime `if`. **Update (2026-08-07): re-tested against the final `View[Assoc]` design below and
+  it no longer crashes** — `@parameter if` is restored in `FlexiStorage.mojo`, confirmed via a
+  standalone compile of `OneToManyAssoc.mojo`, a full project-wide cross-compile, and a hardware
+  re-run, all clean. So Bug A's trigger wasn't "any `@parameter if` in a field's type" in
+  isolation after all — it depended on some interaction with the *old* `View` shape (the
+  trait/associated-type projection, or the two-parameter `[Assoc, I]` intermediate) that no longer
+  exists. Left unresolved exactly which part of the old shape was necessary; not worth
+  re-bisecting now that the design that needed the workaround is gone.
+- **Bug B**: separately, *using* a value of a type projected through a trait's associated type on
+  a self-referential parameter (`Self.Assoc.Counter`/`Self.Assoc.index_type` where `Assoc = Self`)
+  — as opposed to merely storing/passing it — also crashes the compiler. This is what actually
+  blocked `initStorage`'s body (`self.content.init(view.contentStorage, ...)`), independent of
+  Bug A and of alias declaration order (both explored first; neither was the real cause). Isolated
+  to a two-line minimal repro: field access/discard is fine, but type-checking the value against
+  anything (a call argument, `==`, `print()`) triggers it.
+
+Fixed without dropping the associated-type shape entirely — the crash is specifically about
+*projecting through* `Self.Assoc.X` (using a value of that type), not about the trait bound
+merely existing. Final design: `OneToManyAssocLike` is back (`Counter`/`index_type` associated
+types, matching C++'s `using Counter = typename Assoc::Counter` textually), and
+`OneToManyAssocView[Assoc: OneToManyAssocLike]` is bound to it — but no field is ever *typed* via
+`Self.Assoc.Counter`/`.index_type`. `offStorage` is hardcoded `UnsafePointer[UInt32, ...]`
+(`Counter` never varies). `contentStorage` is `UnsafePointer[NoneType, ...]` (untyped/opaque),
+`.bitcast[Self.index_type]()` right where it's actually used, inside `OneToManyAssoc.initStorage`
+itself — where `index_type` is a plain leaf comptime value on `Self`, not a projection through
+`Assoc`. `OneToManyAssoc.View` is `OneToManyAssocView[Self]`. Verified empirically, not assumed,
+across three spikes: reviving the *original* Bug-B design (`Self.Assoc.index_type` actually typing
+a field, then used inside `initStorage`) still segfaults identically even after Bug A's fix
+(`selfref_view_from_assoc.mojo`) — so Bug B is independent of Bug A, not a side effect of it.
+Binding the trait but never projecting through it compiles clean
+(`selfref_view_trait_unused.mojo`). Two earlier intermediate shapes were tried and abandoned along
+the way: threading `I` through as a second explicit parameter alongside `Assoc` (crash-free, but
+redundant once the opaque-pointer approach was found), and dropping the trait bound entirely in
+favor of `Assoc: Movable` (also crash-free, but further from the C++ shape than the trait-bound,
+projection-free version above). Confirmed in isolation before touching the real file each time
+(`selfref_view_no_I_param.mojo`, `selfref_view_from_assoc.mojo`, `selfref_view_trait_unused.mojo`),
+then applied and re-verified via standalone compile.
+
+A third intermediate shape was tried and reverted, worth recording since it produced a real
+process lesson, not just a design dead end: making `initStorage` *independently* generic over its
+own `Assoc` parameter (never writing `Self`/`Self.View` anywhere in `initStorage`'s own
+signature or body — `Assoc` inferred from the argument at each call site instead), with
+`contentStorage` properly typed as `Assoc.index_type` rather than opaque `NoneType`. This compiled
+clean standalone (`selfref_view_indep_bitcast.mojo`, both with an explicit `[Assoc]` type argument
+and with it inferred) — genuinely no crash, because the elaborator never has to resolve `Self`
+inside `Self`'s own body at all. But wired into the real file and exercised from an actual call
+site (`onetomany_content_dyn_test.mojo`, which calls `initStorage` for real), it crashed with the
+identical Bug-B signature. **Standalone compilation of a file containing only a generic method's
+*definition* does not fully monomorphize it — a real call site is required to trigger this class of
+crash.** The three-spike trail above happened to dodge this because each spike's `main()` also
+*called* the method — this fourth one didn't get caught until wiring into the test suite, which is
+why the hardware tests (not just standalone/project compiles) are load-bearing verification here,
+not a formality. Also tried, before reverting: removing `FlexiStorage`'s `@parameter if` (Bug A's
+fix) again, on the chance it was an additional contributing factor for this specific crash — it
+isn't; the call-site crash persists identically either way, confirming this is purely Bug B, with
+no interaction with Bug A. Reverted back to the trait-bound + opaque-pointer + `Self.View` design
+above (both `OneToManyAssoc.mojo` and `FlexiStorage.mojo`), re-confirmed via all three hardware
+call sites (`onetomany_off_fill_test.mojo`, `onetomany_content_dyn_test.mojo`,
+`onetomany_fixed_test.mojo`) plus a full project cross-compile — this remains the final, working
+design.
+
+**`setContentStorage()` closes the resulting type-safety gap on the write side.** Since
+`contentStorage` is opaque `UnsafePointer[NoneType, ...]`, a caller doing
+`view.contentStorage = anything.bitcast[NoneType]()` had zero static type checking — any type
+could be bitcast in with nothing catching a mismatch before it silently produced UB inside
+`initStorage`'s own `.bitcast[Self.index_type]()` on the read side. Fixed by adding
+`fn setContentStorage(mut self, ptr: UnsafePointer[Self.Assoc.index_type, MutAnyOrigin])` as a
+method *on `OneToManyAssocView` itself* (not on the self-referential `OneToManyAssoc`), doing the
+bitcast internally. This is safe from Bug B: `View` isn't the self-referential struct (only
+`OneToManyAssoc` is), and this method is never invoked from inside `OneToManyAssoc`'s own
+elaboration, only from ordinary caller code once `Assoc` is already a concrete type. Confirmed via
+a real call site, not just a bare definition (`selfref_view_typed_setter.mojo`), then applied and
+re-verified: standalone compile, the dynamic-content hardware test (now using
+`view.setContentStorage(content_storage)` instead of the raw bitcast, same correct output), and a
+negative test confirming a mismatched pointer type (`Float32` against an `Int32`-keyed `Assoc`) is
+rejected with a precise compile error, not a crash or silent UB.
+
+**TODO, not yet addressed:** `setContentStorage()` is a convention, not an enforced boundary --
+confirmed by directly testing `view.contentStorage = wrong.bitcast[NoneType]()`, which compiles
+with zero errors, bypassing the setter entirely. Mojo has no field-privacy mechanism in this
+dialect (`private var x: Int32` doesn't even parse -- tested directly), so `contentStorage` and
+every other field on `OneToManyAssocView` are always public and directly writable from any caller.
+Not a regression versus C++ (its `View` is an equally public plain aggregate, no setter there
+either), but worth a cheap mitigation later: renaming to `_contentStorage` to match
+`FlexiStorage`'s own `_fixed`/`_ptr`/`_capacity` underscore convention, signaling "internal, go
+through `setContentStorage()`" even though it can't be truly enforced. Deferred, not blocking.
+
+`initStorage` itself is now ported (`OneToManyAssoc.mojo:97-115`), matching the C++ body 1:1
+(guarded by plain `if Self.ctCapacity() < 0` / `if Self.ctNOnes() < 0` — these were written plain
+from the start, not converted; left as-is since `@parameter if` was only restored in
+`FlexiStorage.mojo`). Verified on real hardware with `ONES=-1, SIZE=10` (dynamic off-storage, exercising
+`off.init()`): `initStorage` → `zero()` → `count()` → `finalize()` → `fill()`, each step's result
+read back from the external device buffer and checked against the expected counting-sort values —
+all exact. (First verification attempt read results back by copying the whole `Assoc` struct to
+host and calling `.size()`/`.size(b)` on it — that segfaulted, but it was a test-harness bug, not
+a port bug: `off._ptr` in dynamic mode holds a raw device address, and dereferencing a device
+pointer from host code segfaults in Mojo exactly as it would in C++. Fixed by reading the external
+off-storage buffer directly instead.)
+
+Other real, previously-unexercised bugs found and fixed along the way (this file's own imports
+pulled in code that had never been compiled in this exact form before):
+- `AtomicPairCounter.mojo`: `@register_passable("trivial")` is removed in this dialect version —
+  needs `TrivialRegisterPassable` in the conformance list instead (matches the pattern already
+  used by `DTypes.mojo`'s `TypeableInt`/`TypeableUInt` etc.).
+- `InlineArray[UInt32, 5](0x2, 0xC, ...)` (the direct-variadic-args constructor, used successfully
+  in `mojo-serial`'s own `HistoContainer.ilog2`) doesn't parse in this exact toolchain — that
+  constructor overload requires an internal `__list_literal__` marker meant to back Mojo's `[...]`
+  list-literal syntax specifically, not direct invocation. Fixed via
+  `alias b: InlineArray[UInt32, 5] = [0x2, 0xC, 0xF0, 0xFF00, 0xFFFF0000]` instead.
+- In the verification test (not the port itself): comparing two `UnsafePointer`s directly with
+  `!=` triggered a parser failure that cascaded into bogus "excess indentation" errors several
+  lines later — the same "one real problem, garbled errors downstream" pattern as the injected-text
+  incident earlier, just a different root cause this time. Fixed by comparing `Int(ptr)` values
+  instead, matching the address-comparison idiom already used elsewhere in this port.
+
+Verified end-to-end on real hardware with a full counting-sort cycle: 10 items distributed into 3
+bins (2/3/5), `zero()` → `count()` (atomic increments) → `finalize[block_size=64](ws)` (real
+`blockPrefixScan`, converting counts to offsets) → `fill()` (atomic decrements placing items) →
+read back via `size()`/`size(b)`/`begin(b)`/`end(b)`. Every value matched exactly: `size()=10`,
+`size(0..2)=2,3,5`, and iterating `begin(b)..end(b)` for bins 0 and 2 produced exactly 2 and 5
+elements. This is the first time in this port that a real GPU-computed prefix scan has been used
+to drive an actual data structure's reuse/placement logic, not just tested in isolation. Re-run
+unchanged after both `View` redesigns above — still 4/4.
+
+`initStorage`'s dynamic-storage path is separately verified in both directions: `ONES=-1, SIZE=10`
+(dynamic `off`, exercising `off.init()`) with the same counting-sort cycle read back from the
+external off-buffer directly (`off = [0, 2, 5, 10]` after `finalize`+`fill`, exact); and
+`ONES=4, SIZE=-1` (dynamic `content`, exercising `content.init()` and the `.bitcast[index_type]()`
+call specifically) with the external content-buffer read back and each item found in the correct
+bin's slice (bin 0 → indices 0-1, bin 1 → 2-4, bin 2 → 5-9, order within a bin unconstrained since
+`fill` places via atomic decrement). Both re-run and re-confirmed after the final single-parameter
+`View[Assoc]` redesign, plus a full project-wide cross-compile of `main.mojo` to catch collateral
+breakage — none found.
+
+### Done — `CUDACore/cudastdAlgorithm.mojo` and `CUDACore/HistoContainer.mojo` (2026-08-07)
+
+`cudastdAlgorithm.mojo`: only `upper_bound` ported (the only one `HistoContainer`'s kernels
+actually call; no custom `Compare` parameter, matching what's used). One real bug caught before
+it shipped: `Int(ptr)` subtraction is byte-scaled, not element-scaled (confirmed directly —
+`Int(p+5) - Int(p)` on a `UInt32` array gives `20`, not `5`), so the element count needs
+`// size_of[Scalar[T]]()`; the first draft omitted that division. Verified with a real
+`upper_bound` call over `[0,2,2,5,5,5]`, checking 4 boundary cases, not just a bare compile.
+
+`HistoContainer.mojo`: composition (`var base: OneToManyAssoc[I, NHISTS*NBINS+1, SIZE]`), per the
+C1 scoping decision. Forwards ~15 of `OneToManyAssoc`'s public methods under the same names
+(`zero`, `add`, `initStorage`, `bulkFill`/`bulkFinalize`/`bulkFinalizeFill`, `finalize`,
+`size`/`size(b)`, `begin`/`end`/`begin(b)`/`end(b)`) — except `count(b: Int)`/`fill(b, j)`, which
+C++ itself doesn't expose through `HistoContainer` either: declaring `count(T)`/`fill(T,
+index_type)` in the derived class hides all base overloads of those names from plain
+`histo.count(...)` call sites (ordinary C++ name-hiding; no `using Base::count;` in the header),
+so only the T-keyed overloads are reachable on a real `HistoContainer` — matched by simply not
+forwarding the Int-keyed ones under the same names. `T` (the value being binned) is `T: DType`
+with `Scalar[T]` values, not `OneToManyAssoc.I`'s `Copyable & Movable & ...` bound — `bin()` needs
+real bit-shift/mask ops, which needs an actual `DType`. `NBINS`/`SIZE`/`S`/`NHISTS` are plain
+`Int` comptime params (this port's own convention — `FlexiStorage.S`, `PrefixScan.block_size` —
+not `mojo-serial`'s `UInt32`), with defaults matching C++'s (`S = size_of[Scalar[T]]()*8`,
+`I = UInt32`, `NHISTS = 1`) — the first time this port has used comptime parameter defaults,
+including one default expression referencing an earlier parameter (`S`'s default references `T`);
+confirmed this works with no special handling needed. `bin()` needed `signed_to_unsigned[T]()`
+(matching C++'s `std::make_unsigned<T>::type`, for a logical, non-sign-extending shift) — added to
+`MojoBridge/DTypes.mojo`, carried over verbatim from `mojo-serial`'s own copy, extending the
+existing "carried over, not present in mojocudatest" precedent already in that file.
+`count(t)`/`fill(t,j)` call `Base.atomicIncrement`/`atomicDecrement` directly on
+`self.base.off.data() + b`, not `self.base.count(b)`/`self.base.fill(b,j)` — matching C++ exactly
+(`Base::atomicIncrement(this->off[b])`, not `Base::count(b)`), since `Base::count`'s own bound
+check (`b < nOnes()`) is looser than what `HistoContainer` wants to assert here (`b < nbins()`).
+Verified on real hardware: 10 `uint8` values distributed into `NBINS=4` bins via `bin()`'s
+bit-shift hash, `zero()` → `count()` → `finalize()` → `fill()`, sizes and iteration both exact
+(`size()=10`, per-bin `2/3/0/5`, matching a hand-computed top-2-bits-of-value split).
+
+`forEachInBins`/`forEachInWindow` also ported (plain iteration helpers, no kernel launch
+involved). One real, newly-discovered compiler limitation: passing a `capturing` closure as a
+*runtime argument* doesn't work in this Mojo version ("TODO: capturing closures cannot be
+materialized as runtime values" — a real compiler-emitted message, not inferred). Fixed by making
+`func` a *comptime parameter* instead (confirmed working via `capturing_closure_check.mojo`) —
+different from `mojo-serial`'s own signature shape (`func: fn (...) capturing -> None` as a
+runtime arg), a toolchain-version difference, not a design choice. A related dialect quirk: this
+version doesn't parse an inference-only `//` parameter marker followed by more explicit params in
+the same bracket list (unlike `CUDAAtomics.mojo`'s `[dt: DType, //]`, which has nothing after
+`//`) — so `func` can't be marked "explicit, after the inferred params" that way; calling
+`forEachInBins[my_closure](...)` positionally matches `my_closure` to the *first* parameter
+(`ValueT`) instead, which is wrong. Fixed by dropping `//` entirely and calling with `func=`
+specified by keyword (`forEachInBins[func=my_closure](hist, ...)`), which correctly leaves
+`ValueT..NHISTS` to ordinary inference from the `hist` argument. Verified on host (no GPU
+dependency in either function) across 4 cases — single-bin, multi-bin via `n`, and two
+`forEachInWindow` spans — all exact against hand-computed expected counts.
+
+**Not ported: `countFromVector`, `fillFromVector`, `fillManyFromVector`, `launchZero`,
+`launchFinalize`.** Explored and deliberately deferred, not blocked by what `launch.mojo`
+documents. Re-examining that blocker precisely: it's specifically about forwarding an
+already-bound kernel *value* through an opaque parameter (a fully generic `launch(any kernel,
+...)` wrapper, matching C++'s `cms::cuda::launch`). That's different from what this group needs —
+calling a *specific, named* generic kernel by name with type arguments, from inside another
+generic function. Confirmed that pattern works fine, both via a trait-dispatch spike
+(`kernel_trait_spike.mojo` — a generic function calling `ctx.compile_function` on a trait-required
+static method, real hardware, correct output) and, more relevantly, via a plain generic kernel
+called directly by name from another generic function with no trait at all
+(`generic_kernel_from_generic_fn.mojo` — also real hardware, correct output). Neither
+`countFromVector`/`fillFromVector` nor `launchZero`/`launchFinalize` need a caller-*pluggable*
+kernel (they always call the same fixed kernels), so the simpler direct-call pattern is what
+would actually apply here, not the trait one.
+
+What actually blocks this group: `launchFinalize`'s device path needs `multiBlockPrefixScan`
+(`totbins` can exceed 1024, so the existing single-block `blockPrefixScan` isn't enough), which
+doesn't exist yet in this port — a separate, not-yet-scoped task. `countFromVector`/`fillFromVector`
+are otherwise ready — `index_type` narrowed to `Scalar[IdxDType]` for a generic `IdxDType: DType`
+lets the loop index convert to it via `Scalar[dt](i)` (confirmed working,
+`scalar_dtype_construct_check.mojo`; a generic `Copyable & Movable & ...`-bound `I`, as
+`OneToManyAssoc`/`HistoContainer` themselves use, has no such general from-`Int` construction —
+tried a custom `FromInt`-style trait first, confirmed `UInt32`/`Int32` don't structurally satisfy
+a self-defined trait without explicit conformance) — but they only make sense ported together
+with the rest of this pipeline, not standalone. Deferred as one group, same as `OneToManyAssoc`'s
+own launchers, pending `multiBlockPrefixScan`.
+
+C1 (`OneToManyAssoc`/`HistoContainer` inversion) is otherwise complete: `FlexiStorage.mojo`,
+`OneToManyAssoc.mojo`, `cudastdAlgorithm.mojo`, and `HistoContainer.mojo`'s core (composition,
+forwarded methods, `bin`/`count`/`fill`, `forEachInBins`/`forEachInWindow`) are all written and
+verified on real hardware. Remaining before C1 can be called fully done: `multiBlockPrefixScan` +
+the five deferred launch functions above.
+
+## Phase 2 (C3) — Track SoA restructure, started (2026-08-10)
+
+Scoped before writing anything: `TrackSoAHeterogeneousT.h` (72 lines) and `TrajectoryStateSoAT.h`
+(59 lines) both depend on `eigenSoA.h` (55 lines, `ScalarSoA`/`MatrixSoA` — Eigen-backed
+struct-of-arrays storage) and `HeterogeneousSoA.h` (189 lines, the C4 target — a tagged
+device/host/CPU unique-pointer wrapper). `mojo-serial` already has working ports of all four
+(`EigenSoA.mojo`, `HeterogeneousSoA.mojo` -- though C4-incomplete, see its own section below --
+`TrajectoryStateSoA.mojo`, `PixelTrackHeterogeneous.mojo`), so this is scoped as transcription +
+dialect adaptation, same shape as `cudastdAlgorithm.mojo`, not new design -- except
+`HeterogeneousSoA.mojo`, which needs real device-alloc work per C4.
+
+Design question resolved before writing: `mojo-serial`'s `EigenSoA.mojo` uses `layout.LayoutTensor`
+for matrix views, not `MojoCudaDev.MojoBridge.Matrix` (this port's own, independently-built Eigen
+replacement, already used elsewhere). Confirmed these are meant to coexist rather than one
+replacing the other: `Matrix.mojo` already has a `to_layout_tensor()` bridge function with a
+comment explicitly documenting them as "two independently-ported Eigen equivalents" with different
+memory layouts (row-major vs `Layout`'s col-major). So `eigenSoA.mojo` uses `LayoutTensor`,
+matching `mojo-serial`, not a rewrite onto `Matrix`.
+
+### Done — `CUDACore/eigenSoA.mojo`
+
+Transcribed from `mojo-serial/CUDACore/EigenSoA.mojo`. First draft dropped two of three
+`__init__` overloads on both `ScalarSoA` and `MatrixSoA` (the `InlineArray`-literal constructor
+and the raw-pointer move/copy constructor) without any justification -- caught in review, not a
+deliberate simplification, restored to match `mojo-serial` exactly.
+
+Real dialect gaps found once actually compiled (this file's constructs hadn't been exercised
+anywhere else in this port yet):
+- Struct parameters (`T`, `S`, `R`, `C`) need explicit `Self.` qualification everywhere in this
+  dialect, including in `comptime`/field declarations at the struct body level, not just inside
+  method bodies -- `mojo-serial`'s `alias Scalar = Scalar[T]` needs `Scalar[Self.T]` here.
+- `T.sizeof()` (a `DType` method in `mojo-serial`'s toolchain) doesn't exist in this one -- fixed
+  via `size_of[Self.Scalar]()` (`from std.sys.info import size_of`), matching the convention
+  `HistoContainer.mojo` already established for the same need.
+- `__copyinit__`'s source parameter must be named `copy` in this dialect, not `other` — a plain
+  compiler-enforced naming requirement, not seen before since no earlier file in this port needed
+  `Copyable`.
+- `layout`'s `IntTuple` needs importing explicitly (`mojo-serial` used it without importing it by
+  name, presumably relying on a wildcard or older re-export that doesn't apply here).
+- The origin-polymorphic `ref [origin]self -> UnsafePointer[X, mut=origin.mut, origin=origin]`
+  pattern (used successfully elsewhere in this port, e.g. `VecArray.mojo`'s `begin()`/`end()`)
+  fails with "inferred parameter passed out of order: 'mut'" specifically when the pointee type is
+  `Scalar[dt]` rather than a plain opaque type parameter -- confirmed via three isolated spikes,
+  narrowing it down precisely: reproduces even with every type fully concrete
+  (`UnsafePointer[Scalar[DType.float32], mut=origin.mut, origin=origin]` inside a
+  non-generic struct fails identically), so it's specifically about `Scalar[...]`, not genericity.
+  A related origin-mismatch error (`UnsafePointer[Float32, origin_of(origin._data)]` vs
+  `UnsafePointer[Float32, origin]`) appears if `mut=` is dropped instead. Not chased further to a
+  root cause -- fixed pragmatically by dropping origin-polymorphism entirely on `ScalarSoA.data()`
+  and `MatrixSoA.__getitem__`, using this port's own established simpler pattern instead
+  (`mut self` + hardcoded `MutAnyOrigin`, as `OneToManyAssoc.mojo`/`FlexiStorage.mojo` already do)
+  rather than `mojo-serial`'s more elaborate origin-polymorphic version. Since every real call site
+  in this port so far only ever needs mutable access, this loses nothing in practice.
+
+Verified via a real functional test (not just compile), matching this session's standing practice:
+`ScalarSoA[DType.float32, 32]` — 32 sequential writes and reads, all exact, plus confirming
+`.data()`'s pointer aliases `self[0]`. `MatrixSoA[DType.float32, 5, 1, 32]` — wrote and read back a
+5-element column through the stride-based `[i]` indexing at two different indices, confirming they
+don't alias each other (`index 0 unaffected by index 1 write`) and values match exactly at both.
+Also a full project-wide cross-compile of `main.mojo` — clean.
+
+### Done — `CUDADataFormats/HeterogeneousSoA.mojo` (C4, 2026-08-10)
+
+Real device-side work, not transcription — `mojo-serial`'s version is `alias HeterogeneousSoA =
+TypeableOwnedPointer`, a CPU-only stand-in with none of the device/host allocation machinery this
+needs. C++ holds three mutually-exclusive `unique_ptr`s (`dm_ptr`/`hm_ptr`/`std_ptr`) and picks
+whichever is non-null at each call — Mojo has no tagged-union type either, so this is the same
+shape directly: three fields, `get()` checks them in order.
+
+Scoped first: grepped all of `cudadev` for real construction call sites. `dm_ptr` (device) and
+`hm_ptr` (host) both have genuine ones — the host path is constructed directly by the `*FromCUDA`
+producers (e.g. `PixelTrackSoAFromCUDA.cc`), and the device path is asserted-and-read by
+`toHostAsync()`, called on a device-side instance produced by not-yet-ported GPU kernel driver
+code (Phase 4). `std_ptr` (plain CPU, no CUDA) has zero call sites anywhere in `cudadev` — kept
+anyway for fidelity to the real class, at the user's request, modeled as a raw owning
+`UnsafePointer` (manual alloc/destroy/free) rather than requiring `T: Defaultable`.
+
+Two real gaps found once actually compiled and tested (this file's own dependencies hadn't been
+exercised together before):
+- `HostUniquePtr[T]` (`host_unique_ptr.unique_ptr[T]`, aliased to `OwnedPointer[_HostAllocation[T]]`)
+  has no default constructor in this dialect, unlike C++'s `unique_ptr` — `OwnedPointer` always
+  needs a value to wrap. Fixed via a small helper (`_null_host_ptr[T]()`) that wraps an explicitly
+  default-constructed (internally null) `_HostAllocation[T]` instead of trying to default-construct
+  the `OwnedPointer` itself.
+- `UnsafePointer[T].alloc(1)` (the method-call form, used throughout `mojo-serial`, and referenced
+  in an existing `CUDAAppContext.mojo` comment) doesn't exist in this dialect at all. The actual
+  primitive is a free function, `alloc[T](count)` — confirmed via `ESProduct.mojo`'s own existing
+  usage (`alloc[Item[Self.T]](1)`), not previously needed by anything std_ptr-shaped until now.
+
+`toHostAsync()` takes an explicit `mut state: _AllocateHostState` parameter that C++'s doesn't need
+(C++ reaches a global allocator implicitly) — matches the explicit-state pattern
+`make_host_unique`/`make_device_unique` already established in this port, not a new deviation.
+Its actual device→host copy reuses `copyAsync.mojo`'s existing single-element device-to-host
+overload directly rather than reimplementing the memcpy.
+
+Verified on real hardware, all four paths in one test: default construction (`get()` is null);
+device path (a real kernel fills a device buffer, wrapped, `get()` non-null and correct);
+`toHostAsync` (copies the device-filled buffer to a fresh host allocation, values match exactly --
+111/222); host path (direct construction from `make_host_unique`, `get()` and `__getitem__` both
+correct); std/raw path (manual `alloc[T]`-based ownership transfer, `get()` correct). Also a full
+project-wide cross-compile of `main.mojo` — clean.
+
+### Done — `CUDADataFormats/TrajectoryStateSoA.mojo` (2026-08-10)
+
+Transcribed from `mojo-serial/CUDADataFormats/TrajectoryStateSoA.mojo`, matching `eigenSoA.mojo`'s
+established fixes (`Self.` qualification, plain `Int` for `S` not `Int32`) plus several new
+`LayoutTensor`-specific dialect gaps found here:
+
+- Every `LayoutTensor[dt, layout]` type (comptime aliases, parameter types) needs an explicit third
+  `origin` slot in this dialect — `_` to unbind it, matching `eigenSoA.mojo`'s general
+  `Self.`-qualification finding but for a different parameter.
+- `MatrixSoA` isn't `ImplicitlyCopyable` — `__copyinit__`'s field assignments need an explicit
+  `.copy()` call (`self.state = copy.state.copy()`), not bare assignment.
+- `copyToDense`'s C++ signature is `const`, but calling it needs `MatrixSoA.__getitem__`, which
+  only has a `mut self` overload in this port (a real simplification from `eigenSoA.mojo`'s own
+  origin-polymorphism dialect friction) — fixed by making `copyToDense`'s `self` `mut` too, a minor
+  deviation from C++'s const-correctness that costs nothing here.
+- `mojo-serial`'s `copyToDense` takes `v: LayoutTensor` fully unbound (no dtype/layout/origin at
+  all) for its first parameter, unlike `cov`, which is dtype-bound. Initially over-specified `v`'s
+  type by analogy with `cov` — wrong instinct, confirmed by testing: matching `mojo-serial`'s
+  actual unbound form was necessary, not incidental. Even then, this dialect requires explicit
+  proof the unbound tensor is mutable before allowing `__setitem__` on it (`v.origin.mut` "lacking
+  evidence"), which `mojo-serial`'s compiler didn't need — resolved via `LayoutTensor[mut=True,
+  ...]`, discovering along the way that this dialect's `...` (unbind-everything-remaining) syntax
+  exists and works, `_` per-parameter doesn't scale past 2-3 unbound slots, and `mut=` as a keyword
+  parameter must be textually first in the bracket list before any positional/unbound ones.
+- Assigning a `.cast[CT]()`'d value from one `MatrixSoA`-sourced `LayoutTensor` into a differently
+  laid-out one (`cov[j,j] = self.covariance[i][ind, 0].cast[CT]()`) fails to convert -- the cast
+  result carries its *source* `LayoutTensor`'s `element_size` as part of its nominal type, not a
+  clean `Scalar[CT]`, even though the underlying value is a plain scalar either way. Fixed with the
+  same `rebind[Scalar[CT]](...)` pattern already needed for `v`'s assignment.
+
+Verified via two real functional tests, not just compile: `copyFromDense`/`copyToDense` round-trip
+(a 5-vector and a 5x5 symmetric matrix through the packed 15-element covariance storage) — every
+element exact on read-back; `copyFromCircle` (the circle-fit parameterization, `state = [cp,
+b*cp[2], lp]`, `cov` built from `ccov`/`lcov` with the `b`/`b²` scaling) — checked against
+hand-computed expected values (`state = [1,2,6,4,5]`, `cov[0,0..2]=10,11,24`, `cov[2,2]=60`, etc.)
+— all exact. Also a full project-wide cross-compile of `main.mojo` — clean.
+
+Not done yet: `TrackSoAHeterogeneousT.mojo`/`PixelTrackHeterogeneous.mojo` — the last piece of C3.
