@@ -11,15 +11,20 @@ from MojoCudaDev.CUDACore.host_unique_ptr import (
 )
 from MojoCudaDev.CUDACore.allocate_host import _AllocateHostState
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType
-from MojoCudaDev.CUDACore.copyAsync import copyAsync, _CopyElement
+from MojoCudaDev.CUDACore.copyAsync import copyAsync
+
+# copyAsync's own bound (AnyType) is looser than what this struct needs:
+# __del__ must be able to destroy_pointee() on std_ptr, which needs real
+# destructibility, not just AnyType.
+comptime _HeterogeneousElement = Movable & ImplicitlyDestructible
 
 
 # OwnedPointer has no default constructor -- wrap a default (null) _HostAllocation instead.
-fn _null_host_ptr[T: _CopyElement]() -> HostUniquePtr[T]:
+fn _null_host_ptr[T: _HeterogeneousElement]() -> HostUniquePtr[T]:
     return HostUniquePtr[T](_HostAllocation[T]())
 
 
-struct HeterogeneousSoA[T: _CopyElement](Movable):
+struct HeterogeneousSoA[T: _HeterogeneousElement](Movable):
     comptime Product = Self.T
 
     var dm_ptr: DeviceUniquePtr[Self.T]
@@ -65,7 +70,7 @@ struct HeterogeneousSoA[T: _CopyElement](Movable):
             return self.hm_ptr[].get()
         return self.std_ptr
 
-    fn __getitem__(self) -> Self.T:
+    fn __getitem__(self) -> ref [self] Self.T:
         return self.get()[]
 
     # C++: cms::cuda::host::unique_ptr<T> toHostAsync(cudaStream_t) const --

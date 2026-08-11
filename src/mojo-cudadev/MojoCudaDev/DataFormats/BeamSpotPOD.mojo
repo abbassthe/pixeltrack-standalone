@@ -2,8 +2,7 @@ from MojoCudaDev.MojoBridge.DTypes import Float, Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct BeamSpotPOD(Copyable, Defaultable, Movable, Typeable):
+struct BeamSpotPOD(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var x: Float  # position
     var y: Float
     var z: Float

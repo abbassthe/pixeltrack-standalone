@@ -1762,4 +1762,164 @@ b*cp[2], lp]`, `cov` built from `ccov`/`lcov` with the `b`/`b²` scaling) — ch
 hand-computed expected values (`state = [1,2,6,4,5]`, `cov[0,0..2]=10,11,24`, `cov[2,2]=60`, etc.)
 — all exact. Also a full project-wide cross-compile of `main.mojo` — clean.
 
-Not done yet: `TrackSoAHeterogeneousT.mojo`/`PixelTrackHeterogeneous.mojo` — the last piece of C3.
+### Done — `CUDADataFormats/TrackSoAHeterogeneousT.mojo` (2026-08-11)
+
+Transcribed from `mojo-serial/CUDADataFormats/PixelTrackHeterogeneous.mojo` (which bundles
+`TrackSoAT`/`PixelTrack`/the `PixelTrackHeterogeneous` alias into one file), but split back into
+the two files C++ uses (`TrackSoAHeterogeneousT.h` and `PixelTrackHeterogeneous.h` are separate),
+and corrected against the real C++ header rather than copied as-is:
+
+- `hindex_type` is `uint32_t` in C++; `mojo-serial` had ported it as `uint16` — a real delta the
+  port plan flagged up front, fixed here to `UInt32`.
+- `GPU_SMALL_EVENTS` is a build-time `#ifdef` C++ never defines by default (`pixelTrack::maxNumber()`
+  takes the `#else` branch, `32 * 1024`) — modeled as `comptime GPU_SMALL_EVENTS = False` plus a
+  plain `if`/`else` in `maxNumber()`, the same idiom `is_gpu()` already uses elsewhere in this port
+  for `#ifdef __CUDA_ARCH__`. First draft dropped this conditional entirely — caught in review.
+- C++'s `pixelTrack::Quality` is a scoped enum (`enum class Quality : uint8_t`); `mojo-serial`
+  flattened it to a bare `TrackQuality` struct with no connection to `PixelTrack`. First draft here
+  copied that flattening onto `pixelTrack.bad`/`pixelTrack.dup`/etc. directly — caught in review
+  ("quality should be pixeltrack quality"), restructured into a standalone `Quality` struct
+  referenced as `pixelTrack.Quality = Quality`, giving proper `pixelTrack.Quality.bad`-style
+  addressing that matches how C++ code actually spells it (`pixelTrack::Quality::bad`).
+  `TrackSoAHeterogeneousT.Quality` is the storage type alias (`pixelTrack.Quality.T`, i.e. `UInt8`),
+  kept separate from the `Quality` struct itself.
+
+Two more dialect gaps, both matching patterns already established in `eigenSoA.mojo`/
+`TrajectoryStateSoA.mojo`:
+- `quality()`'s ref-return needs `ref [self.quality_._data]`, not `ref [self.quality_]` — must name
+  `ScalarSoA`'s actual internal storage field, matching `ScalarSoA.__getitem__`'s own annotation.
+- `charge()`/`phi()`/`tip()`/`zip()` all needed `rebind[Scalar[DType.float32]](...)` around the
+  `.cast[DType.float32]()` reads from `stateAtBS.state`, the same `LayoutTensor`
+  cross-element-size-type issue `TrajectoryStateSoA.mojo` already found.
+
+One new, size-specific gap: `ScalarSoA[DType.uint8, S]`'s 128-byte alignment `constrained[]` needs
+`S` itself to be a multiple of 128, not merely satisfying the `float32` fields (which only need a
+multiple of 32) — surfaced as a real "function instantiation failed" error testing at `S=32`, fixed
+by testing at `S=128` instead. `pixelTrack.TrackSoA` itself (`S = 32*1024`) is unaffected either way.
+
+Verified via a real functional test at `S=128`: `stride()`; `quality(3)` reference-assignment
+round-trip (`Quality.loose`, read back exact); `qualityData()` non-null; `phi`/`tip`/`zip`/`charge`
+computed correctly off a real `copyFromDense` call into `stateAtBS` (expected `1.0/2.0/-5.0/1.0`,
+all exact); `nHits(0) == 0` before any fills. Separately confirmed `pixelTrack.TrackSoA` itself
+(`S=32768`, several MB) heap-allocates cleanly via `alloc[pixelTrack.TrackSoA](1)` with no crash.
+
+### Found and fixed — `copyAsync.mojo` required `ImplicitlyCopyable`, but C++ never did (2026-08-11)
+
+Finishing C3 meant checking that `HeterogeneousSoA[pixelTrack.TrackSoA]` (i.e.
+`PixelTrackHeterogeneous`) actually satisfies `HeterogeneousSoA`'s type bound — it didn't compile.
+Traced to `copyAsync.mojo` (Phase 1, written and verified before `HeterogeneousSoA.mojo` or
+`TrackSoAHeterogeneousT.mojo` existed): its `_copy_kernel` did a typed, per-element `dst[i] =
+src[i]` assignment, which silently requires `T: ImplicitlyCopyable`. C++'s
+`HeterogeneousSoA::toHostAsync`/`copyAsync` never had that requirement — it's a raw
+`cudaMemcpyAsync(dst, src, sizeof(T)*n, ...)`, a byte-level memcpy that works for any `T`, including
+device-resident structs with non-copyable fields. `pixelTrack.TrackSoA` is exactly such a type — it
+owns `OneToManyAssoc` fields (`hitIndices`/`detIndices`), which are `Movable` but not
+`ImplicitlyCopyable`. This was a real, pre-existing semantic bug in the Phase 1 port, only surfaced
+now because nothing had exercised `copyAsync` with a non-copyable-shaped `T` until this point.
+
+Given the choice to defer (leave `PixelTrackHeterogeneous.mojo` unwritten until Phase 4 needs it
+for real) or fix now, chose to fix now, at the user's explicit direction. Rewrote `_copy_kernel`/
+`_launch_copy` to `bitcast[UInt8]()` both pointers and copy raw bytes, one thread per byte, with
+grid size computed from `nelements * size_of[T]()` rather than `nelements` directly; relaxed
+`_CopyElement` from `ImplicitlyCopyable & Movable & ImplicitlyDestructible` down to plain `AnyType`
+(matching what `device_unique_ptr`/`host_unique_ptr` themselves require). All four `copyAsync[T]`
+overloads keep their existing signatures.
+
+Verified on real hardware: a plain `Int32` round-trip (regression check — still works after
+switching to byte-copy); a 3-field `Multi` struct (`Movable`-only, deliberately shaped like a
+non-copyable type) round-tripped byte-for-byte correctly; a 5-element `Int32` array multi-copy, all
+exact. Confirmed via `git stash push -- copyAsync.mojo` / rebuild / `git stash pop` that a separate,
+pre-existing hang in a *minimal* single-call test harness (fresh state, one `copyAsync` call)
+reproduces identically on the original, unmodified file — not a regression from this fix, not
+chased further. A fuller test that exercises `copyAsync` multiple times in sequence (matching this
+fix's own verification, and later `HeterogeneousSoA`/`PixelTrackHeterogeneous` testing) works
+correctly for all data, with only a late, unrelated segfault at final `DeviceContext` teardown
+(inside `cuStreamIsCapturing`/`AsyncRT_DeviceContext_release`), after all useful work completes.
+
+Relaxing `_CopyElement` broke `HeterogeneousSoA.mojo` in turn: its `__del__` calls
+`self.std_ptr.destroy_pointee()`, which needs real destructibility that plain `AnyType` no longer
+guarantees. Fixed by giving `HeterogeneousSoA.mojo` its own local bound,
+`comptime _HeterogeneousElement = Movable & ImplicitlyDestructible`, instead of reusing
+`copyAsync`'s now-looser one. Recompiling under the new bound also caught a second, independent bug
+in `HeterogeneousSoA.__getitem__`: it returned `Self.T` by value (`return self.get()[]` with a
+by-value return type), which silently required `ImplicitlyCopyable` too — a real design mismatch
+with C++'s `operator*()`/`operator->()`, which both return references, never copies. Fixed to `fn
+__getitem__(self) -> ref [self] Self.T`. Re-ran `HeterogeneousSoA.mojo`'s existing four-path
+hardware test after both fixes — no regressions, all values still exact.
+
+### Done — `CUDADataFormats/PixelTrackHeterogeneous.mojo` (2026-08-11) — C3 closed out
+
+The simple part, once the above two fixes landed: `comptime PixelTrackHeterogeneous =
+HeterogeneousSoA[pixelTrack.TrackSoA]`, matching C++'s one-line `using` alias exactly.
+
+Verified on real hardware at full production scale (`pixelTrack.TrackSoA`, `S = 32*1024`, several
+MB): device-allocated via `make_device_unique`, filled by a real kernel (`quality_[100] =
+Quality.tight`, `chi2[100] = 3.5`), wrapped in `PixelTrackHeterogeneous`, copied back via
+`toHostAsync` (exercising the new byte-copy kernel at real scale, not just on small test structs),
+read back on the host — both values exact, no hang, no crash. Also ran a full project-wide
+cross-compile of `main.mojo` (`--target-accelerator sm_80`) after all of this segment's changes —
+clean, no errors.
+
+C3 (Track SoA restructure) is now fully done: `eigenSoA.mojo`, `HeterogeneousSoA.mojo` (C4),
+`TrajectoryStateSoA.mojo`, `TrackSoAHeterogeneousT.mojo`, `PixelTrackHeterogeneous.mojo` — all
+ported, all verified on real hardware beyond just compiling.
+
+## Phase 3 (D2/D3) — data formats and conditions, started (2026-08-11)
+
+### Done — `CUDADataFormats/BeamSpotCUDA.mojo` (D2, 2026-08-11)
+
+Small, direct port — C++'s `BeamSpotCUDA` is a 30-line wrapper around a single
+`device::unique_ptr<BeamSpotPOD>`. `make_device_unique` here takes an explicit
+`_AllocateDeviceState` param that C++'s constructor doesn't need (same deviation already used by
+`HeterogeneousSoA.toHostAsync`/`BeamSpotCUDA`'s device_unique_ptr.mojo itself). `ptr()` needed a
+reference-returning accessor (`ref [self.data_d_] DeviceUniquePtr[BeamSpotPOD]`), matching C++'s
+`unique_ptr<T>& ptr()` — same shape as the `__getitem__` fix found earlier in `HeterogeneousSoA.mojo`.
+
+Found, unrelated to this file itself: compiling it (which pulls in `DataFormats/BeamSpotPOD.mojo`,
+a Bucket A file mechanically copied from `mojo-serial` early in the port but never actually
+compiled, since nothing reachable from `main.mojo` used it yet) failed with `decorator
+@register_passable("trivial") is removed, conform to TrivialRegisterPassable trait instead`. Fixed
+by dropping the decorator and adding `TrivialRegisterPassable` to the trait list, matching the
+convention already established elsewhere in this port (e.g. `DataFormats/DetId.mojo`). Four other
+Bucket A files still carry the same removed decorator and are still unreached from `main.mojo`, so
+still latently broken: `DataFormats/FEDTrailer.mojo`, `DataFormats/FEDHeader.mojo`,
+`MojoBridge/Vector.mojo`, `DataFormats/SOARotation.mojo` — same one-line fix each, not yet applied
+since nothing in this port calls them yet (per this port's standing rule: don't fix what's still
+unreachable, but flag it for whoever reaches it first).
+
+Verified on real hardware: default construction (`data()` null); the stream-allocating constructor
+(`data()` non-null); a real kernel fill (`x/y/z/sigmaZ = 1.5/2.5/3.5/4.5`); read-back through
+`ptr()` + `copyAsync` (mirroring `BeamSpotToCUDA.cc`'s own device→host pattern) — all four values
+exact. Also a full project-wide cross-compile of `main.mojo` — clean.
+
+### Done — `CUDADataFormats/SiPixelDigisCUDA.mojo` (D2, 2026-08-11)
+
+Same shape as `BeamSpotCUDA.mojo` but larger: 7 device arrays (`xx_d`/`yy_d`/`adc_d`/`moduleInd_d`/
+`clus_d`/`pdigi_d`/`rawIdArr_d`, all multi-element `device_unique_ptr`s sized by `maxFedWords`) plus
+a `DeviceConstView` — a small struct of 5 raw device pointers, built host-side via
+`make_host_unique`, filled in by direct field writes through the returned pointer, then pushed to
+device with a single `copyAsync[DeviceConstView]` call. The constructor needed both an explicit
+`_AllocateDeviceState` *and* `_AllocateHostState` param (not just one, like `BeamSpotCUDA.mojo`),
+since staging `DeviceConstView` on the host before copying it to device needs both allocators live
+at once — same deviation as before, just with twice the state.
+
+One deliberate deviation from C++, confirmed correct rather than assumed: `mojo-serial`'s CPU-only
+version rebuilds `view_d`'s internal pointers on every move (`__moveinit__`), because it held real
+`List[T]` buffers whose backing storage could in principle move. This port's `view_d` instead wraps
+a real device-resident buffer via `device_unique_ptr` — moving the Mojo-side struct only moves the
+pointer *value*, never the GPU memory it points to, so the already-copied on-device `DeviceConstView`
+stays valid without any rebuild. `__moveinit__` here is a plain field-by-field move, nothing special.
+
+`@always_inline` was applied narrowly, not blanket-copied from `mojo-serial`'s style (which decorates
+every method): only `DeviceConstView`'s 5 accessors (`xx`/`yy`/`adc`/`moduleInd`/`clus`) carry it,
+matching that these are exactly the methods C++ itself marks `__forceinline__`
+(`SiPixelDigisCUDA.h:53-58`) — `SiPixelDigisCUDA`'s own accessors have no such C++ annotation and
+stay undecorated, consistent with `TrackSoAHeterogeneousT.mojo`/`BeamSpotCUDA.mojo`'s existing
+no-blanket-decorator convention.
+
+Verified on real hardware: `setNModulesDigis`/`nModules`/`nDigis` round-trip; `view()` non-null; a
+real kernel wrote through `xx()`/`adc()`'s raw device pointers *and* read back through
+`DeviceConstView.xx(i)`'s own device-side accessor (confirming the host-staged, `copyAsync`-copied
+view genuinely points at the live device buffers, not stale/host addresses) — flagged the result
+into `adc[4]`, read back via `adcToHostAsync`, exact (`adc[3]=30`, `adc[4]=99`). Also a full
+project-wide cross-compile of `main.mojo` — clean.

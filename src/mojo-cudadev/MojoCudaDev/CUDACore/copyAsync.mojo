@@ -6,13 +6,20 @@
 # on the context's own implicit stream (confirmed empirically -- every
 # overload of every copy-capable type in std.gpu.host rejects a `stream=`
 # keyword; there is no lower-level API elsewhere either). So this is a tiny
-# elementwise copy kernel launched via the same compile_function +
+# byte-copy kernel launched via the same compile_function +
 # stream.enqueue_function idiom as launch.mojo, which -- unlike copy/memset --
 # does support an explicit stream. Host and device pointers are both plain
 # UnsafePointer[T, MutAnyOrigin] in this Mojo GPU API (no distinct address
 # space marker), so the same kernel body works for both directions; verified
 # to compile with one pointer from enqueue_create_buffer and one from
 # enqueue_create_host_buffer passed to the same kernel launch.
+#
+# The kernel copies raw bytes (one thread per byte), matching C++'s
+# `cudaMemcpyAsync(dst, src, sizeof(T)*n, ...)` -- not a per-element
+# `dst[i] = src[i]`, which would require T: ImplicitlyCopyable and silently
+# break for any T that owns non-copyable fields (e.g. OneToManyAssoc, used
+# by TrackSoAHeterogeneousT via HitContainer). _CopyElement therefore only
+# needs T: AnyType, matching what device_unique_ptr/host_unique_ptr require.
 #
 # Only the four overloads using device::unique_ptr / host::unique_ptr are
 # ported (single- and multi-element, both directions). Not ported, since none
@@ -25,6 +32,7 @@
 #     is not written (C5, still pending).
 from std.gpu.host import DeviceContext
 from std.gpu.host.dim import Dim
+from std.sys.info import size_of
 
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType
 from MojoCudaDev.CUDACore.currentDevice import currentDevice
@@ -33,19 +41,21 @@ from MojoCudaDev.CUDACore.host_unique_ptr import unique_ptr as HostUniquePtr
 
 
 alias _threadsPerBlock = 256
-alias _CopyElement = ImplicitlyCopyable & Movable & ImplicitlyDestructible
+alias _CopyElement = AnyType
 
 
 fn _copy_kernel[T: _CopyElement](
     dst: UnsafePointer[T, MutAnyOrigin],
     src: UnsafePointer[T, MutAnyOrigin],
-    n: Int32,
+    total_bytes: Int64,
 ):
     from std.gpu import block_dim, block_idx, thread_idx
 
+    var dst_bytes = dst.bitcast[UInt8]()
+    var src_bytes = src.bitcast[UInt8]()
     var i = Int(thread_idx.x + block_idx.x * block_dim.x)
-    if i < Int(n):
-        dst[i] = src[i]
+    if i < Int(total_bytes):
+        dst_bytes[i] = src_bytes[i]
 
 
 fn _launch_copy[T: _CopyElement](
@@ -57,12 +67,13 @@ fn _launch_copy[T: _CopyElement](
     var ctx = DeviceContext(api="cuda", device_id=currentDevice())
     var device_stream = stream.get()
     var compiled = ctx.compile_function[_copy_kernel[T], _copy_kernel[T]]()
-    var blocks = (nelements + _threadsPerBlock - 1) // _threadsPerBlock
+    var total_bytes = nelements * size_of[T]()
+    var blocks = (total_bytes + _threadsPerBlock - 1) // _threadsPerBlock
     device_stream.enqueue_function(
         compiled,
         dst,
         src,
-        Int32(nelements),
+        Int64(total_bytes),
         grid_dim=Dim(blocks),
         block_dim=Dim(_threadsPerBlock),
     )
