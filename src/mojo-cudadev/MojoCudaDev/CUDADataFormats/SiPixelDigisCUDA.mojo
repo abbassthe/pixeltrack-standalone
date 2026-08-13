@@ -13,7 +13,7 @@ from MojoCudaDev.CUDACore.host_unique_ptr import (
 )
 from MojoCudaDev.CUDACore.allocate_device import _AllocateDeviceState
 from MojoCudaDev.CUDACore.allocate_host import _AllocateHostState
-from MojoCudaDev.CUDACore.copyAsync import copyAsync
+from MojoCudaDev.CUDACore.copyAsync import copyAsync, copyAsyncOwned
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
 
 
@@ -106,7 +106,7 @@ struct SiPixelDigisCUDA(Movable):
         view[].get()[0].moduleInd_ = self.moduleInd_d.get()
         view[].get()[0].clus_ = self.clus_d.get()
 
-        copyAsync[DeviceConstView](self.view_d, view^, stream)
+        copyAsyncOwned[DeviceConstView](self.view_d, view^, stream)
 
     fn __moveinit__(out self, deinit take: Self):
         self.xx_d = take.xx_d^

@@ -10,7 +10,7 @@ from MojoCudaDev.CUDACore.device_unique_ptr import (
 from MojoCudaDev.CUDACore.host_unique_ptr import make_host_unique
 from MojoCudaDev.CUDACore.allocate_device import _AllocateDeviceState
 from MojoCudaDev.CUDACore.allocate_host import _AllocateHostState
-from MojoCudaDev.CUDACore.copyAsync import copyAsync
+from MojoCudaDev.CUDACore.copyAsync import copyAsync, copyAsyncOwned
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
 
 
@@ -85,11 +85,7 @@ struct SiPixelClustersCUDA(Movable):
         view[].get()[0].clusModuleStart_ = self.clusModuleStart_d.get()
 
         self.view_d = make_device_unique[DeviceConstView](dev_state, stream)
-        copyAsync[DeviceConstView](self.view_d, view, stream)
-        # C++'s caching host allocator defers the free until the stream catches
-        # up; this port's frees on the spot, so the staging buffer would go away
-        # under the copy without this.
-        stream.synchronize()
+        copyAsyncOwned[DeviceConstView](self.view_d, view^, stream)
 
     fn __moveinit__(out self, deinit take: Self):
         self.moduleStart_d = take.moduleStart_d^

@@ -1940,15 +1940,20 @@ is unavoidable: `.cc:11` stages the view through `make_host_unique`, which store
 `UnsafePointer(to=state)` inside the allocation (`host_unique_ptr.mojo:71`), so a constructor-local
 state would dangle.
 
-One deliberate divergence from `SiPixelDigisCUDA.mojo`: a `stream.synchronize()` after the staging
-`copyAsync`. C++'s caching host allocator defers the free until the stream catches up; this port's
-`free_host_raw` (`allocate_host.mojo:58`) frees on the spot, so nothing orders the enqueued copy
-against the staging buffer's release at end of constructor. Removing it did **not** reproduce a
-failure in 3 runs (the copy is 32 bytes, and `allocate_host_raw` already forces a `ctx.synchronize()`
-of its own), so it guards an unguaranteed ordering rather than an observed corruption — kept on
-those grounds. **`SiPixelDigisCUDA.mojo:109` has the same unguarded ordering and no such call**;
-not fixed here, since it is still unreachable from `main.mojo` (flag-don't-fix, per the
-`BeamSpotCUDA` entry above), but it should get the same line when someone reaches it.
+A `stream.synchronize()` follows the staging `copyAsync`, which C++ has no equivalent of. The
+argument for it is visible in `SiPixelDigiErrorsCUDA.cc`: there the host staging buffer `error_h`
+is a **member** (`.cc:12`), so it deliberately outlives the `copyAsync` at `.cc:20`.
+`SiPixelClustersCUDA.cc:11` instead stages into a local `auto view`, which is only safe because
+C++'s caching host allocator defers the free until the stream catches up. This port's
+`free_host_raw` (`allocate_host.mojo:58`) frees on the spot, so the local form needs the copy to
+land first.
+
+Note the exact spelling, because the obvious one is a no-op: Mojo frees at **last use**, so writing
+`copyAsync(..., view^, stream)` and then synchronizing releases the buffer *before* the sync runs.
+The sync only means anything if `view` is passed without `^` and pinned past it with a trailing
+`_ = view^`. **`SiPixelDigisCUDA.mojo:109` has the `view^` form** and so has the same unguarded
+ordering; not changed here (flag-don't-fix, it is still unreachable from `main.mojo`), but it wants
+the same three lines.
 
 `DeviceConstView` is hoisted to module level (Mojo has no nested structs). `SiPixelDigisCUDA.mojo`
 now also defines a module-level `DeviceConstView`, so two distinct types share the bare name in
@@ -1973,3 +1978,132 @@ exercised; `setNClusters`/`nClusters`; and `__moveinit__` preserving all five po
 `nClusters`. Also a standalone `--emit object` build (this file is not yet reachable from
 `main.mojo`, so a full-tree build alone would not type-check its bodies) and a full project-wide
 cross-compile of `main.mojo` — both clean.
+
+### Found and fixed — the staging-buffer race, split into `copyAsync`/`copyAsyncOwned` (2026-08-12)
+
+The unguarded-ordering issue the `SiPixelClustersCUDA.mojo` entry above flags (and which
+`SiPixelDigisCUDA.mojo` shared, unguarded) is real: `free_host_raw` (`allocate_host.mojo:58-72`)
+unconditionally drops the underlying `HostBuffer` the instant it's called, with no event-based or
+stream-ordered deferral — confirmed by reading it directly, not inferred. C++'s real
+`cms::cuda::allocator` defers the free until the stream catches up; this port's doesn't, so a
+host-staged buffer used only as a `copyAsync` source and dropped right after (both `SiPixelDigisCUDA`
+and `SiPixelClustersCUDA`'s constructors do exactly this) can, in principle, be freed while the
+enqueued copy is still reading it.
+
+Two alternatives were considered and rejected outright:
+- **Keep the staging buffer alive as a struct field** instead of a constructor-local — only moves
+  *when* the free happens (to the whole object's `__del__`, much later in practice), it doesn't make
+  the ordering guaranteed, so it's a smaller window, not a fix.
+- **Build `DeviceConstView` directly on-device with a tiny kernel** instead of staging it on the host
+  at all — genuinely eliminates the race (no host buffer involved, and same-stream operations are
+  already ordered, so no synchronize needed either). Confirmed via `CUDADataFormats/HeterogeneousSoA.h`
+  and `CUDACore/cudaCompat.h` that C++ doesn't do this only because its constructors are templated
+  over `GPUTraits`/`HostTraits`/`CPUTraits` (`cudaCompat.h:18-22` redefines `__global__` to a plain
+  inlined host function under `CPUTraits`, and `make_device_unique` there is literally
+  `std::make_unique`) — one shared constructor body has to work with no real device address space at
+  all under CPU/Host builds, so plain host-side field assignment is the only implementation valid
+  under all three. This port has no such CPU/Host-Traits abstraction yet, so that constraint doesn't
+  apply here — this is a real, better option for this port specifically, just deferred for now
+  (revisit before adding more `DeviceConstView`-shaped D2 files).
+
+**First attempt (revised, see below):** made `copyAsync`'s host→device overloads take
+`var src: HostUniquePtr[T]` unconditionally and `stream.synchronize()` internally, on the theory
+that no caller needs its host source back afterward. That broke on the very next file:
+`SiPixelDigiErrorsCUDA`'s constructor needs to keep using `error_h` (a *persistent field*, not an
+ephemeral local) after copying it to `error_d` — C++'s own `copyAsync(error_d, error_h, stream)`
+just borrows it, exactly like every other reference-taking C++ call in this port. Forcing
+`error_h` through a consuming API meant either fighting Mojo's ownership rules (move it out, then
+reconstruct an identical replacement — extra allocation and complexity C++ never has) or weakening
+the API for the one case that actually needed the guarantee. Neither was right: the ephemeral-buffer
+race and `SiPixelDigiErrorsCUDA`'s persistent-buffer reuse are two different situations that don't
+share one correct answer.
+
+**What was actually done**: `copyAsync.mojo` now has *two* host→device overloads per arity (single-
+and multi-element), not one:
+- `copyAsync[T](mut dst, src: HostUniquePtr[T], stream)` — **borrows** `src`, exactly matching C++'s
+  pass-by-reference. Zero overhead, no forced synchronize. Use this when the caller keeps using its
+  host source afterward (`SiPixelDigiErrorsCUDA.mojo`'s `error_h`) — nothing frees it early, so
+  nothing needs guarding. Verified this really doesn't need a synchronize for three independent
+  reasons, not just "it's a field so it's probably fine": (1) `error_h` isn't freed after the call,
+  so no premature-free risk; (2) `error_h`'s content is written by `make_SimpleVector` as plain
+  synchronous CPU code that completes *before* `copyAsync` is even called, so reading
+  `error_h.capacity()`/`.size()` right after construction (exactly what `dataErrorToHostAsync` does)
+  was never dependent on the async device-copy finishing; (3) any later same-stream GPU access to
+  `error_h` (e.g. `copyErrorToHostAsync`'s device→host copy) is ordered after the constructor's copy
+  by CUDA's own same-stream guarantee, the same thing C++ relies on.
+- `copyAsyncOwned[T](mut dst, var src: HostUniquePtr[T], stream)` — **owns** `src`, synchronizes
+  once internally, then lets `src` be destroyed automatically at return (already safe, since the
+  synchronize already happened). Use this for an ephemeral staging buffer that's discarded right
+  after the call (`SiPixelDigisCUDA.mojo`/`SiPixelClustersCUDA.mojo`'s `DeviceConstView` staging).
+  Safe by construction — the type signature itself forces the caller to give up `src`, so there's no
+  caller-side synchronize or lifetime-extension trick to forget.
+
+Device→host overloads are unchanged (borrow only, as before) — the risk is specific to a short-lived
+*host* source being read by an in-flight kernel, which doesn't occur in the device→host direction
+anywhere in this port. `SiPixelDigisCUDA.mojo:109` and `SiPixelClustersCUDA.mojo:88` both call
+`copyAsyncOwned(..., view^, stream)` directly now — no manual `stream.synchronize()` or `_ = view^`
+lifetime-extension trick needed at the call site (an earlier intermediate version needed the latter,
+since Mojo destroys values at their *last use*, not lexically at scope end — a plain
+`stream.synchronize()` after a borrowing `copyAsync` call would not have been guaranteed to run
+before `view`'s destruction if `view` weren't referenced again afterward; `copyAsyncOwned` sidesteps
+that subtlety entirely by taking ownership itself).
+
+Re-verified `SiPixelDigisCUDA`/`SiPixelClustersCUDA`'s existing hardware tests after the change —
+identical results, no regressions (`SiPixelDigisCUDA`: `adc[3]=30`, `adc[4]=99`; `SiPixelClustersCUDA`:
+view roundtrip flag `1`).
+
+### Done — `CUDADataFormats/SiPixelDigiErrorsCUDA.mojo` (D2, 2026-08-12)
+
+`SimpleVector`-backed: `data_d` (device array), `error_d`/`error_h` (device/host `SimpleVector` view
+structs over `data_d`), `formatterErrors_h`. `error()`, `copyErrorToHostAsync()`,
+`dataErrorToHostAsync()` transcribed directly against `.cc:6-33`. `dataErrorToHostAsync` returns a
+`Tuple[SiPixelErrorCompactVector, HostUniquePtr[SiPixelErrorCompact]]`, standing in for C++'s
+`std::pair`-based `HostDataError` — Mojo's `Tuple` literal syntax (`(err^, data^)`) already used
+elsewhere in this port (`allocate_host.mojo`) covers it.
+
+`SimpleVector[T, DT: StaticString]`'s `DT` needing an actual `StaticString`, not a `String`, ruled
+out `make_SimpleVector`'s `T: Typeable` convenience overload (`SimpleVector[T, T.dtype()]` — binds a
+`String`-returning call to a `StaticString`-typed parameter) as the source of this file's
+`SiPixelErrorCompactVector` alias; used an explicit string literal instead
+(`SimpleVector[SiPixelErrorCompact, "SiPixelErrorCompact"]`), sidestepping the question of whether
+that overload even compiles rather than guessing.
+
+**Found and fixed — `CUDACore/SimpleVector.mojo` and `MojoBridge`-adjacent `DataFormats/
+SiPixelRawDataError.mojo` had never actually been compiled as whole files.** Both are part of §C7
+("re-atomicised primitives") or its immediate dependencies, marked Done and verified earlier in this
+port — but that verification was a textual diff against `mojo-serial`/`cudadev`, never an actual
+build. Nothing reachable from `main.mojo` used either file until this one did, so real, basic dialect
+gaps sat latent:
+- `SimpleVector.mojo`: every struct-parameter reference (`T`, `DT`) inside the struct body needed
+  `Self.` qualification (matching `eigenSoA.mojo`'s original finding, just never applied here);
+  every bare `UnsafePointer[T]` needed an explicit origin (`UnsafePointer[Self.T, MutAnyOrigin]`,
+  matching the general "bare `UnsafePointer[T]` fails to infer origin" gap seen throughout this
+  port); `push_back`/`push_back_unsafe`/`__setitem__` all assign a borrowed `T` into raw pointer
+  storage, which needs an explicit `.copy()` (`SimpleVector`'s `T: Movable & Copyable` bound, like
+  `MatrixSoA`, is not `ImplicitlyCopyable`) *and* `init_pointee_move` rather than plain `[i] = ...`
+  assignment (the latter implies destroying whatever was previously at that slot, which the compiler
+  can't synthesize for a generic, non-trivially-destructible `T`); `make_SimpleVector`'s first
+  overload needed `return ret^` (an implicit copy-out isn't legal for the same reason). The
+  `Typeable`-based convenience overload (`SimpleVector[T, T.dtype()]`) was dropped rather than
+  fixed — not used anywhere in this port yet, and its `String`-vs-`StaticString` mismatch wasn't
+  chased down since nothing needs it (re-add if a real caller does).
+- `SiPixelRawDataError.mojo`: `__moveinit__`'s and `__copyinit__`'s source parameters were named
+  `existing`, not the dialect-mandated `take`/`copy` — the same naming-convention rule found early
+  in this port (`eigenSoA.mojo`), just never hit here since nothing had compiled this file either.
+- `CUDACore/VecArray.mojo` has the **same class of bugs** as `SimpleVector.mojo` (confirmed by
+  compiling it standalone — same `Self.`-qualification and origin errors, plus an `InlineArray`
+  keyword argument, `run_destructors`, that doesn't exist in this dialect at all). Not fixed here —
+  still unreached from `main.mojo`, flagged for whoever reaches it next, per this port's standing
+  flag-don't-fix rule for unreachable code (see the `BeamSpotCUDA.mojo` entry above for the same
+  situation with `FEDTrailer.mojo` etc.).
+
+Verified on real hardware: constructed with `maxFedWords=16`; `error()` non-null; a real kernel
+called `SimpleVector.push_back` (exercising the just-fixed atomic path, `.copy()`, and
+`init_pointee_move`) to insert one `SiPixelErrorCompact{rawId=111, word=222, errorType=5, fedId=7}`;
+`copyErrorToHostAsync` synced `error_h` from device (`size` correctly became `1`); `dataErrorToHostAsync`
+returned the exact element back (`capacity=16`, all four fields exact). All print output was correct;
+the process then crashed during final teardown (`malloc_consolidate`, stack trace through
+`cuStreamIsCapturing`/`AsyncRT_DeviceContext_release`) — confirmed as the same pre-existing,
+already-documented teardown issue found earlier with `copyasync_test.mojo`, not a new bug: it occurs
+strictly after every computed value has already been verified correct, and matches that same stack
+signature exactly. Also a full project-wide cross-compile of `main.mojo` — clean.

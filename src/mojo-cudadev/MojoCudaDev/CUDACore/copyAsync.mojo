@@ -79,14 +79,26 @@ fn _launch_copy[T: _CopyElement](
     )
 
 
-# Single element, host -> device. Takes src by ownership, not borrow: this
-# port's host allocator frees synchronously and immediately (no stream-ordered
-# deferral like C++'s real allocator), so a caller that stages an ephemeral
-# host buffer purely to seed this copy and drops it right after would
-# otherwise free it while the enqueued copy is still in flight. Owning src
-# lets us synchronize once here, centrally, before it's destroyed at return --
-# no caller has to remember to do this themselves.
+# Single element, host -> device. src is borrowed, matching C++'s
+# pass-by-reference -- use this when the caller keeps using its host source
+# afterward (e.g. SiPixelDigiErrorsCUDA.mojo's error_h, a persistent field:
+# nothing frees it early, so no synchronize is needed here). For an ephemeral
+# host buffer that gets dropped right after this call, use copyAsyncOwned
+# below instead: this port's host allocator frees synchronously and
+# immediately (no stream-ordered deferral like C++'s real allocator), so a
+# borrowed src that's freed right after this call could still be in flight.
 fn copyAsync[T: _CopyElement](
+    mut dst: DeviceUniquePtr[T], src: HostUniquePtr[T], stream: CUDAStreamType
+) raises:
+    _launch_copy[T](dst.get(), src[].get(), 1, stream)
+
+
+# Single element, host -> device, owning src. Synchronizes internally before
+# returning, then src is destroyed automatically -- safe by construction for
+# an ephemeral staging buffer (see SiPixelDigisCUDA.mojo/
+# SiPixelClustersCUDA.mojo's DeviceConstView staging), with no caller-side
+# synchronize or lifetime-extension trick needed.
+fn copyAsyncOwned[T: _CopyElement](
     mut dst: DeviceUniquePtr[T], var src: HostUniquePtr[T], stream: CUDAStreamType
 ) raises:
     _launch_copy[T](dst.get(), src[].get(), 1, stream)
@@ -100,9 +112,19 @@ fn copyAsync[T: _CopyElement](
     _launch_copy[T](dst[].get(), src.get(), 1, stream)
 
 
-# Multiple elements, host -> device. Owning src for the same reason as the
-# single-element overload above.
+# Multiple elements, host -> device. See the single-element overload above
+# for the borrowed-vs-owned distinction.
 fn copyAsync[T: _CopyElement](
+    mut dst: DeviceUniquePtr[T],
+    src: HostUniquePtr[T],
+    nelements: UInt,
+    stream: CUDAStreamType,
+) raises:
+    _launch_copy[T](dst.get(), src[].get(), Int(nelements), stream)
+
+
+# Multiple elements, host -> device, owning src. See copyAsyncOwned above.
+fn copyAsyncOwned[T: _CopyElement](
     mut dst: DeviceUniquePtr[T],
     var src: HostUniquePtr[T],
     nelements: UInt,
