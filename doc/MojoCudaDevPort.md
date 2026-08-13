@@ -1923,3 +1923,53 @@ real kernel wrote through `xx()`/`adc()`'s raw device pointers *and* read back t
 view genuinely points at the live device buffers, not stale/host addresses) — flagged the result
 into `adc[4]`, read back via `adcToHostAsync`, exact (`adc[3]=30`, `adc[4]=99`). Also a full
 project-wide cross-compile of `main.mojo` — clean.
+
+### Done — `CUDADataFormats/SiPixelClustersCUDA.mojo` (D2, 2026-08-12)
+
+Four device arrays (`moduleStart_d`/`clusModuleStart_d` at `maxModules + 1`, `clusInModule_d`/
+`moduleId_d` at `maxModules`) plus a `DeviceConstView` of them, staged on the host and copied to
+the device — `SiPixelClustersCUDA.cc:6-19` transcribed directly. `mojo-serial`'s
+`SiPixelClustersSoA.mojo` supplied naming only; its storage is `OwnedPointer[List[UInt32]]`, so
+none of the allocation logic carried over.
+
+Ported without having seen `SiPixelDigisCUDA.mojo` (written in a parallel session the day before),
+and independently arrived at the same two conventions it records — the constructor taking **both**
+`_AllocateDeviceState` and `_AllocateHostState`, and `@always_inline` applied only where C++ marks
+`__forceinline__`. Treat that as corroboration of both, not as a second discovery. The host state
+is unavoidable: `.cc:11` stages the view through `make_host_unique`, which stores
+`UnsafePointer(to=state)` inside the allocation (`host_unique_ptr.mojo:71`), so a constructor-local
+state would dangle.
+
+One deliberate divergence from `SiPixelDigisCUDA.mojo`: a `stream.synchronize()` after the staging
+`copyAsync`. C++'s caching host allocator defers the free until the stream catches up; this port's
+`free_host_raw` (`allocate_host.mojo:58`) frees on the spot, so nothing orders the enqueued copy
+against the staging buffer's release at end of constructor. Removing it did **not** reproduce a
+failure in 3 runs (the copy is 32 bytes, and `allocate_host_raw` already forces a `ctx.synchronize()`
+of its own), so it guards an unguaranteed ordering rather than an observed corruption — kept on
+those grounds. **`SiPixelDigisCUDA.mojo:109` has the same unguarded ordering and no such call**;
+not fixed here, since it is still unreachable from `main.mojo` (flag-don't-fix, per the
+`BeamSpotCUDA` entry above), but it should get the same line when someone reaches it.
+
+`DeviceConstView` is hoisted to module level (Mojo has no nested structs). `SiPixelDigisCUDA.mojo`
+now also defines a module-level `DeviceConstView`, so two distinct types share the bare name in
+`CUDADataFormats/` — fine as long as importers stay module-qualified, but they are not one shared
+type and must not be conflated. Its trait list is a bare `(Movable)` with a default `__init__`,
+matching the sibling; `mojo-serial`'s `@register_passable("trivial")` is not carried over and
+`TrivialRegisterPassable` turned out not to be needed either.
+
+`__ldg` is dropped (load hint, no correctness effect). C++'s four `const` accessor overloads
+(`.h:30-33`, which `mojo-serial` modeled as `c_moduleStart()` etc.) are not ported — mut-only, this
+port's established simplification. Add them back if a D5 producer needs a const handle.
+
+**No new dialect gaps** — unlike `eigenSoA.mojo`/`TrajectoryStateSoA.mojo`, this compiled first try.
+
+Verified on real hardware, not just compiled: default construction (all five pointers null,
+`nClusters` 0); the allocating constructor (all non-null, and the four arrays are distinct
+allocations); a kernel fill through the raw accessors followed by read-back through **only** the
+device-resident view's `moduleStart(i)`/`clusInModule(i)`/`moduleId(i)`/`clusModuleStart(i)` —
+all 34 values exact, with a distinct value range per array so a mis-staged pointer would surface as
+wrong values rather than wrong indices, and `maxModules = 8` so the `+1` size asymmetry is actually
+exercised; `setNClusters`/`nClusters`; and `__moveinit__` preserving all five pointers plus
+`nClusters`. Also a standalone `--emit object` build (this file is not yet reachable from
+`main.mojo`, so a full-tree build alone would not type-check its bodies) and a full project-wide
+cross-compile of `main.mojo` — both clean.

@@ -79,11 +79,18 @@ fn _launch_copy[T: _CopyElement](
     )
 
 
-# Single element, host -> device.
+# Single element, host -> device. Takes src by ownership, not borrow: this
+# port's host allocator frees synchronously and immediately (no stream-ordered
+# deferral like C++'s real allocator), so a caller that stages an ephemeral
+# host buffer purely to seed this copy and drops it right after would
+# otherwise free it while the enqueued copy is still in flight. Owning src
+# lets us synchronize once here, centrally, before it's destroyed at return --
+# no caller has to remember to do this themselves.
 fn copyAsync[T: _CopyElement](
-    mut dst: DeviceUniquePtr[T], src: HostUniquePtr[T], stream: CUDAStreamType
+    mut dst: DeviceUniquePtr[T], var src: HostUniquePtr[T], stream: CUDAStreamType
 ) raises:
     _launch_copy[T](dst.get(), src[].get(), 1, stream)
+    stream.synchronize()
 
 
 # Single element, device -> host.
@@ -93,14 +100,16 @@ fn copyAsync[T: _CopyElement](
     _launch_copy[T](dst[].get(), src.get(), 1, stream)
 
 
-# Multiple elements, host -> device.
+# Multiple elements, host -> device. Owning src for the same reason as the
+# single-element overload above.
 fn copyAsync[T: _CopyElement](
     mut dst: DeviceUniquePtr[T],
-    src: HostUniquePtr[T],
+    var src: HostUniquePtr[T],
     nelements: UInt,
     stream: CUDAStreamType,
 ) raises:
     _launch_copy[T](dst.get(), src[].get(), Int(nelements), stream)
+    stream.synchronize()
 
 
 # Multiple elements, device -> host.

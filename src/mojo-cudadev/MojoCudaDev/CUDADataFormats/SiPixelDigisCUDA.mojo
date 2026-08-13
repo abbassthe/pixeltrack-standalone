@@ -106,7 +106,7 @@ struct SiPixelDigisCUDA(Movable):
         view[].get()[0].moduleInd_ = self.moduleInd_d.get()
         view[].get()[0].clus_ = self.clus_d.get()
 
-        copyAsync[DeviceConstView](self.view_d, view, stream)
+        copyAsync[DeviceConstView](self.view_d, view^, stream)
 
     fn __moveinit__(out self, deinit take: Self):
         self.xx_d = take.xx_d^
