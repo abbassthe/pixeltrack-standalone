@@ -1,7 +1,6 @@
 from MojoCudaDev.MojoBridge.DTypes import Float, Typeable
 
 
-@nonmaterializable(NoneType)
 struct Phase1PixelTopology:
     alias numRowsInRoc: UInt16 = 80
     alias numColsInRoc: UInt16 = 52

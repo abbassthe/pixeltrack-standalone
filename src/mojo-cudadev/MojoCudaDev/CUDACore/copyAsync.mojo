@@ -142,3 +142,16 @@ fn copyAsync[T: _CopyElement](
     stream: CUDAStreamType,
 ) raises:
     _launch_copy[T](dst[].get(), src.get(), Int(nelements), stream)
+
+
+# Multiple elements, device -> host, from a raw (forwarded, not owned) device
+# pointer rather than a DeviceUniquePtr -- e.g. a pointer received from
+# another object (TrackingRecHit2DHeterogeneous.mojo's m_hitsModuleStart) or
+# an offset into one's own buffer (self.m_store32.get() + n).
+fn copyAsync[T: _CopyElement](
+    mut dst: HostUniquePtr[T],
+    src: UnsafePointer[T, MutAnyOrigin],
+    nelements: UInt,
+    stream: CUDAStreamType,
+) raises:
+    _launch_copy[T](dst[].get(), src, Int(nelements), stream)

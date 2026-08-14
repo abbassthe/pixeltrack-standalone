@@ -97,7 +97,7 @@ struct ESProduct[T: Defaultable & Movable](Movable):
     fn dataForCurrentDeviceAsync(
         mut self,
         stream: CUDAStreamType,
-        transferAsync: fn (mut Self.T, CUDAStreamType) raises -> None,
+        transferAsync: fn (mut Self.T, CUDAStreamType) raises escaping -> None,
     ) raises -> UnsafePointer[Self.T, MutAnyOrigin]:
         var device = currentDevice()
         var slot = self.gpu_data_per_device[device]
