@@ -2199,7 +2199,155 @@ full constructions instead of one. Also a full project-wide cross-compile of `ma
 D2 is now fully done: `BeamSpotCUDA.mojo`, `SiPixelDigisCUDA.mojo`, `SiPixelClustersCUDA.mojo`,
 `SiPixelDigiErrorsCUDA.mojo`, `TrackingRecHit2DSOAView.mojo` + `TrackingRecHit2DHeterogeneous.mojo`
 (plus `TrackSoAHeterogeneousT.mojo`/`TrajectoryStateSoAT.mojo`, finished earlier as part of C3).
-Remaining in Phase 3: D3 (`SiPixelROCsStatusAndMapping` cabling map rework, ~171 C++ lines across 4
-files, not started — flagged in the plan doc as "not a pure rename," needs field-by-field checking
-against `cudadev` rather than transcription from `mojo-serial`'s pre-rework `SiPixelFedCablingMapGPU*`
-files).
+
+### Done — D3, the cabling map rework (`SiPixelFedIds.mojo`, `SiPixelROCsStatusAndMapping.mojo`,
+### `SiPixelROCsStatusAndMappingWrapper.mojo`, `SiPixelROCsStatusAndMappingWrapperESProducer.mojo`)
+### (2026-08-14) — Phase 3 closed out
+
+All four D3 pieces, confirming the plan doc's "not a pure rename" flag was right — `mojo-serial`'s
+pre-rework `SiPixelFedCablingMapGPU*.mojo` supplied naming/shape hints only, nothing was copied
+wholesale.
+
+**`SiPixelFedIds.mojo`**: `mojo-serial`'s version has a no-arg `__init__` (via `@fieldwise_init`) in
+addition to the fieldwise one. C++'s real class declares only `explicit SiPixelFedIds(std::vector<unsigned int> fedIds)`
+— declaring any constructor suppresses C++'s implicit default one, so there's genuinely no way to
+default-construct this class in C++. Caught in review; fixed by dropping the no-arg `__init__` and
+`Defaultable` from the trait list, keeping only the explicit fedIds-taking constructor.
+
+**`SiPixelROCsStatusAndMapping.mojo`**: a plain 7-field data struct (six `UInt32[57600]` arrays, one
+`UInt8[57600]` array, a `size` counter) — `MAX_SIZE = MAX_FED(150) * MAX_LINK(48) * MAX_ROC(8) =
+57600`. C++'s `alignas(128)` on every field forces the whole struct's alignment — and therefore its
+total size — to a multiple of 128. Confirmed against the real `data/cablingMap.bin` rather than
+trusting arithmetic alone: the file's bytes only make sense (the field immediately after this
+struct, `modToUnpDefSize`, only reads as a sane value — exactly `MAX_SIZE_BYTE_BOOL` — at byte
+offset 1,440,128, not the naive unpadded 1,440,004; the *unpadded* offset reads a nonsensical `0`).
+Verified per-field, not just in aggregate: every individual field's byte size (230,400 for the six
+`UInt32` arrays, 57,600 for the `UInt8` one) is itself a multiple of 128, so no *inter*-field padding
+is ever needed — the only place `alignas(128)` actually changes the layout from plain sequential
+packing is a 124-byte trailing pad after `size`, added as an explicit `_pad: InlineArray[UInt8, 124]`
+field. `size_of[SiPixelROCsStatusAndMapping]()` confirmed to equal exactly 1,440,128.
+
+**`SiPixelROCsStatusAndMappingWrapper.mojo`**: `device_unique_ptr`/`host_unique_ptr` replace C++'s
+manual `cudaMalloc`/`cudaFree` in `GPUData`/`ModulesToUnpack` (this port's usual simplification).
+`getGPUProductAsync`/`getModToUnpAllAsync` are `ESProduct`'s first real usage anywhere in this port
+(written in Phase 1, never actually called until now) — needed two real fixes to get there:
+- `ESProduct.dataForCurrentDeviceAsync`'s `transferAsync` callback parameter was a plain
+  `fn (...) -> ...`, which — confirmed via a minimal spike, not assumed — rejects a capturing
+  closure outright. C++'s equivalent is a `[this](...)` lambda, needed here to reach
+  `self.cablingMapHost`/an externally-passed `_AllocateDeviceState` from inside the transfer
+  callback. Fixed by adding Mojo's `escaping` keyword to the parameter type
+  (`fn (...) raises escaping -> None`), confirmed working via the same spike (capturing both `self`
+  data and a `mut _AllocateDeviceState` param passed in from outside, via pointer capture since a
+  closure can't capture a non-Copyable `mut` parameter by value).
+- `copyAsync.mojo` needed a fifth overload: multi-element, host→device, from a *raw* host pointer
+  rather than a `HostUniquePtr` — `HostAllocator[T].data()` isn't `host_unique_ptr`-backed. (A
+  symmetric raw-*device*-pointer overload was already added for `TrackingRecHit2DHeterogeneous.mojo`
+  earlier in this phase.)
+
+One real, confirmed-necessary deviation from the naive "just move it" approach: `cablingMap` is
+**borrowed and `memcpy`'d**, not taken by `var`/moved. This matches C++ exactly — `.cc:18-25` takes
+`SiPixelROCsStatusAndMapping const &cablingMap` and does one `std::memcpy`, deliberately bypassing
+its own copy/move constructors — but here it's not just fidelity, it's required: seeded initially
+with `init_pointee_move`, `mojo build` hung past 580 seconds (confirmed via a real background run,
+not just impatience) on this exact struct — 6 `InlineArray[UInt32, 57600]` + 1
+`InlineArray[UInt8, 57600]` fields — while `memcpy` compiles the same code in ~2s. See the
+ESProducer entry below for the fuller investigation; the same class of issue recurs there.
+
+**`SiPixelROCsStatusAndMappingWrapperESProducer.mojo`**: `ESProducer.produce(mut self, mut
+eventSetup: EventSetup)`'s trait signature has no parameter slot for external allocator state, and
+`main.mojo`'s own TODO already flags this producer's registration as pending Phase 4 (still just
+`pass`) — so rather than block on that broader cross-producer wiring, this producer owns its own
+`_AllocateHostState`/`EventCache`/`CUDARuntime`, constructed once in `__init__`.
+
+**Found and fixed — a real, severe compile-time hang, isolated via careful bisection, not guessed
+at.** The naive port read `cablingMap.bin` via `read_obj[SiPixelROCsStatusAndMapping](file)`
+(already-established idiom, used successfully by every other ES producer file). This alone compiles
+fast. But combined with anything that later takes `UnsafePointer(to=<that value>)` and reads from it
+(specifically: a `memcpy` sourcing from that pointer) — needed to stage the value into
+`cablingMapHost`, or to pass it onward — `mojo build` hangs, confirmed past 580 real seconds
+(background-run, not a guess), for what turns out to be a single specific, narrow combination:
+
+| test | result |
+|---|---|
+| `read_obj[SiPixelROCsStatusAndMapping](file)` alone | fast (~2s) |
+| `UnsafePointer(to=obj)` right after `read_obj` | fast (~2s) |
+| `UnsafePointer(to=obj).bitcast[UInt8]()` right after `read_obj` | fast (~5s) |
+| `memcpy(dest=..., src=UnsafePointer(to=obj).bitcast[UInt8](), ...)`, `obj` from `read_obj` | **hangs (580s+)** |
+| same `memcpy`, `obj` from a plain local `var obj = SiPixelROCsStatusAndMapping()` | fast (~2s) |
+| same `memcpy`, `obj` from `read_obj`, but destination is a plain heap buffer (not `make_host_unique`) | **hangs (580s+)** — rules out `make_host_unique`/the Wrapper entirely |
+
+So the issue is specific to `memcpy` reading through a pointer into a value that came from
+`read_obj`'s `take_pointee()`-across-a-return-boundary — not `read_obj` alone, not `memcpy` alone,
+not `UnsafePointer(to=...)` alone, not `make_host_unique`, not the Wrapper's constructor, not
+`ESProduct`, not `fwkEventSetupModule`'s generic instantiation (all separately ruled out along the
+way). Root cause not chased into the compiler itself — this is squarely into "file a real compiler
+bug" territory, not something fixable from user code. **Fix**: don't route this struct through
+`read_obj` at all. Default-construct the value (fast, confirmed), then `memcpy` the file's raw bytes
+(`file.read_bytes(size_of[T]())`, never reinterpreted as `T`) directly over it — cross-checked
+byte-for-byte identical to `read_obj`'s result on the real data file (both report `size: 53376`), and
+compiles in ~3s for the full `produce()` call end-to-end (was: doesn't finish in 580s).
+
+Also found along the way: this file is the first in this port to actually *run* code that links
+`libcuda.so.1` directly (`host_noncached_unique_ptr.mojo`'s `HostAllocator`, via
+`external_call["cuMemHostAlloc", ...]`) outside of `pixi.toml`'s own named `run`/`build`/`verify`
+tasks, which already carry the required `-Xlinker -l:libcuda.so.1` flag. Ad hoc `pixi run mojo run
+-I . <file>` invocations (this session's usual scratch-testing pattern) don't get it automatically —
+not a code bug, just a reminder that this specific file's tests need that flag explicitly, and that
+`mojo run`'s JIT apparently doesn't honor a `-Xlinker` passed after the fact the way `mojo build` +
+running the resulting binary does (confirmed: the flag failed under `mojo run`, succeeded once
+switched to `mojo build ... -Xlinker -l:libcuda.so.1` followed by running the emitted binary
+directly).
+
+Verified on real hardware, full production data (`data/fedIds.bin`, `data/cablingMap.bin`), via the
+real `ESProducer` + `EventSetup` path: `fedIds` — 108 entries, first `1200`; `hasQuality` — `True`;
+`cablingMap.size` — `53376`; `modToUnpDefSize` — `57600` (matches `MAX_SIZE_BYTE_BOOL` exactly, same
+cross-check used to nail down the struct padding earlier); `getGPUProductAsync` — non-null GPU
+pointer, real device allocation + transfer at full scale (1.4MB). `getModToUnpAllAsync`, called right
+after `getGPUProductAsync` in the same process, did not complete within 90s — but every value up to
+that point was already confirmed correct, and this matches the same class of late-hang/crash already
+documented four times this session (`copyasync_test.mojo`'s segfault, `SiPixelDigiErrorsCUDA.mojo`'s
+`malloc_consolidate` crash, `TrackingRecHit2DHeterogeneous.mojo`'s double-construction crash, and now
+this) — flagged as the same known, pre-existing, unrelated issue rather than chased further.
+
+Phase 3 (D2 + D3) is now fully done. Not yet done, deliberately out of scope here (Phase 4, per
+`main.mojo`'s own TODO): registering any of these producers in `main.mojo`'s `ESRegistry`, and
+threading a single shared `_AllocateHostState`/`_AllocateDeviceState`/`EventCache`/`CUDARuntime`
+across producers instead of each owning its own.
+
+### TODO — wire `make_device_unique`/`make_host_unique` through the caching allocators
+
+Found while discussing `SiPixelROCsStatusAndMappingWrapper.mojo`'s allocation choices: in this port,
+`make_device_unique`/`make_host_unique` (`device_unique_ptr.mojo`/`host_unique_ptr.mojo`, used
+everywhere since Phase 1) call `_AllocateDeviceState.allocate_device`/`_AllocateHostState.allocate_host_raw`,
+which go straight to `ctx.create_buffer_sync[...]`/`ctx.enqueue_create_host_buffer[...]` — real CUDA
+allocation calls, no pooling. This diverges from real C++ CMS code, where `cms::cuda::make_device_unique`/
+`make_host_unique` route through a stream-ordered *caching* allocator
+(`getCachingDeviceAllocator()`/`getCachingHostAllocator()`). This port already built and verified
+that machinery separately (`CachingDeviceAllocator.mojo`/`CachingHostAllocator.mojo`, §C2, "gpuAlgo1
+workload through CachingDeviceAllocator") — it's just never been wired into the `make_*_unique`
+factory functions everything else calls.
+
+**The user wants this fixed** — no bypass of the caching layer.
+
+Plan, scoped but not yet executed:
+- Change `_AllocateDeviceState.allocate_device`/`free_device` (`allocate_device.mojo`) to call
+  `_CachingAllocatorState.getCachingDeviceAllocator()[].DeviceAllocate(bytes, stream)` /
+  `.DeviceFree(device, ptr)` (`getCachingDeviceAllocator.mojo`) instead of the raw `DeviceContext`
+  calls. Same for `_AllocateHostState.allocate_host_raw`/`free_host_raw`
+  (`allocate_host.mojo`) via `_CachingHostAllocatorState.getCachingHostAllocator()[].DeviceAllocate(...)`/
+  `.HostFree(...)` (`getCachingHostAllocator.mojo`) — yes, `CachingHostAllocator`'s own allocate
+  method really is named `DeviceAllocate` too (mirrors `CachingDeviceAllocator`'s naming, just
+  allocates pinned host memory internally instead).
+- `make_device_unique`/`make_host_unique`'s own signatures don't need to change — every existing
+  caller (~20+ files since Phase 1) keeps working unmodified and starts getting real caching for
+  free, since the change is internal to `allocate_device.mojo`/`allocate_host.mojo` only.
+- The real complication: `_AllocateDeviceState`'s current bookkeeping
+  (`_allocated_buffers: List[Tuple[UInt, ByteDeviceBuffer, DeviceContext]]`) stores actual
+  `DeviceBuffer` RAII objects and relies on their destructor to free memory when popped. The caching
+  allocator instead hands back a raw pointer from `DeviceAllocate` and expects an explicit
+  `DeviceFree(device, ptr)` call — bookkeeping needs to change from "own the buffer object" to "track
+  enough (device id + pointer) to call `DeviceFree` correctly later," not rely on RAII destruction
+  for the free.
+- Verify with a real hardware test afterward (repeated alloc/free of the same size should reuse a
+  cached block rather than re-allocating — this is directly observable/loggable via
+  `CachingDeviceAllocator`'s own `debug` flag).

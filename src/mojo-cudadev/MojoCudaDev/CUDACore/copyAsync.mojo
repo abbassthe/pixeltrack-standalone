@@ -155,3 +155,15 @@ fn copyAsync[T: _CopyElement](
     stream: CUDAStreamType,
 ) raises:
     _launch_copy[T](dst[].get(), src, Int(nelements), stream)
+
+
+# Multiple elements, host -> device, from a raw host pointer rather than a
+# HostUniquePtr -- e.g. HostAllocator[T].data() (SiPixelROCsStatusAndMappingWrapper.mojo's
+# modToUnpDefault), which isn't host_unique_ptr-backed.
+fn copyAsync[T: _CopyElement](
+    mut dst: DeviceUniquePtr[T],
+    src: UnsafePointer[T, MutAnyOrigin],
+    nelements: UInt,
+    stream: CUDAStreamType,
+) raises:
+    _launch_copy[T](dst.get(), src, Int(nelements), stream)
