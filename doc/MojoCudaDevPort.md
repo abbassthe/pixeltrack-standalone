@@ -2327,27 +2327,105 @@ that machinery separately (`CachingDeviceAllocator.mojo`/`CachingHostAllocator.m
 workload through CachingDeviceAllocator") — it's just never been wired into the `make_*_unique`
 factory functions everything else calls.
 
-**The user wants this fixed** — no bypass of the caching layer.
+**The user wants this fixed** — no bypass of the caching layer. Explicitly deferred for now (picking
+Phase 4 back up instead) — not abandoned.
 
-Plan, scoped but not yet executed:
-- Change `_AllocateDeviceState.allocate_device`/`free_device` (`allocate_device.mojo`) to call
-  `_CachingAllocatorState.getCachingDeviceAllocator()[].DeviceAllocate(bytes, stream)` /
-  `.DeviceFree(device, ptr)` (`getCachingDeviceAllocator.mojo`) instead of the raw `DeviceContext`
-  calls. Same for `_AllocateHostState.allocate_host_raw`/`free_host_raw`
-  (`allocate_host.mojo`) via `_CachingHostAllocatorState.getCachingHostAllocator()[].DeviceAllocate(...)`/
-  `.HostFree(...)` (`getCachingHostAllocator.mojo`) — yes, `CachingHostAllocator`'s own allocate
-  method really is named `DeviceAllocate` too (mirrors `CachingDeviceAllocator`'s naming, just
-  allocates pinned host memory internally instead).
-- `make_device_unique`/`make_host_unique`'s own signatures don't need to change — every existing
-  caller (~20+ files since Phase 1) keeps working unmodified and starts getting real caching for
-  free, since the change is internal to `allocate_device.mojo`/`allocate_host.mojo` only.
-- The real complication: `_AllocateDeviceState`'s current bookkeeping
-  (`_allocated_buffers: List[Tuple[UInt, ByteDeviceBuffer, DeviceContext]]`) stores actual
-  `DeviceBuffer` RAII objects and relies on their destructor to free memory when popped. The caching
-  allocator instead hands back a raw pointer from `DeviceAllocate` and expects an explicit
-  `DeviceFree(device, ptr)` call — bookkeeping needs to change from "own the buffer object" to "track
-  enough (device id + pointer) to call `DeviceFree` correctly later," not rely on RAII destruction
-  for the free.
-- Verify with a real hardware test afterward (repeated alloc/free of the same size should reuse a
-  cached block rather than re-allocating — this is directly observable/loggable via
-  `CachingDeviceAllocator`'s own `debug` flag).
+**Correction to the original plan above (the "internal, zero call-site changes" idea doesn't work):**
+`CachingDeviceAllocator.mojo`/`CachingHostAllocator.mojo` already call `_AllocateDeviceState.allocate_device`/
+`_AllocateHostState.allocate_host_raw` *internally* (`self.alloc_state.allocate_device(...)`,
+`self.host_alloc_state.allocate_host_raw(...)`) — that's how each caching allocator gets fresh memory
+from the OS/CUDA runtime when its own cache has no suitable block to reuse. `_AllocateDeviceState`/
+`_AllocateHostState` are the caching allocators' own raw backing allocator. Redirecting
+`_AllocateDeviceState.allocate_device` to call `CachingDeviceAllocator.DeviceAllocate` would be
+circular: the caching allocator would call itself through its own backing allocator.
+
+So the real fix has to live in `make_device_unique`/`make_host_unique` themselves — they need to call
+`CachingDeviceAllocator.DeviceAllocate`/`CachingHostAllocator.DeviceAllocate` (via a
+`_CachingAllocatorState`/`_CachingHostAllocatorState`, from `getCachingDeviceAllocator.mojo`/
+`getCachingHostAllocator.mojo`) directly, in place of `_AllocateDeviceState`/`_AllocateHostState`.
+`_AllocateDeviceState`/`_AllocateHostState` themselves stay untouched — still the caching layer's own
+backing allocator, nothing else changes about them.
+
+This means `make_device_unique`/`make_host_unique`'s `state: _AllocateDeviceState`/`_AllocateHostState`
+parameter has to become a caching-allocator-state instead — a real signature change touching every
+call site across the ~20+ files that construct one of these states and thread it through (every D2/D3
+file so far), not the zero-call-site-change internal fix originally described here. Scope this
+properly (probably a dedicated pass touching every affected file, not a quick edit) before starting.
+
+## Phase 4 (SiPixelClusterizer) — scoping and started, 2026-08-18
+
+Scoped via real `diff -u` between `src/cuda/plugin-SiPixelClusterizer/*`/`src/cuda/CondFormats/*` and
+their `src/cudadev` counterparts, not by guessing from file size or plan-doc labels. Classified as pure
+rename sweeps (0–30 diff lines, identifier renames matching centralized-constant refactors, no logic
+changes): `ErrorChecker.h/.cc`, `gpuCalibPixel.h`, `SiPixelGainCalibrationForHLTGPU.h/.cc`,
+`SiPixelGainForHLTonGPU.h`. Classified as real rewrites, needing dedicated design work later, not part
+of this sweep: `gpuClustering.h` (454 diff / 312 total lines), `gpuClusterChargeCut.h` (191/132),
+`SiPixelRawToClusterGPUKernel.h` (94/183), `SiPixelRawToClusterGPUKernel.cu` (190/659),
+`SiPixelRawToClusterCUDA.cc`.
+
+### Done — `CUDADataFormats/SiPixelClusterThresholds.mojo` (2026-08-18)
+
+New in cudadev, no `cuda`/`mojo-serial` equivalent (`mojo-serial` hardcodes a moduleId-based charge cut
+instead of this layer-based lookup). Trivial two-field struct + a `comptime` default instance. Verified
+via a direct functional test: `layer1=2000`, `otherLayers=4000`,
+`getThresholdForLayerOnCondition(True/False)` both exact.
+
+### Done — `CondFormats/SiPixelGainForHLTonGPU.mojo` (2026-08-18)
+
+Pure rename sweep, confirmed via diff: `v_pedestals`/`rangeAndCols`/`pedPrecision`/`gainPrecision` all
+gained a trailing underscore, and the hardcoded array size `2000` became `gpuClustering::maxNumModules`.
+Ported with C++'s exact trailing-underscore field names, not `mojo-serial`'s leading-underscore
+convention (a `mojo-serial`-specific stylistic deviation, not a C++ish choice worth preserving here).
+
+### Done — `CondFormats/SiPixelGainCalibrationForHLTGPU.mojo` (2026-08-18)
+
+`mojo-serial`'s port is CPU-only (`getCPUProduct()`, no `ESProduct`/GPU machinery at all) despite the
+tiny cuda-vs-cudadev diff, so the device side was added fresh, following the
+`SiPixelROCsStatusAndMappingWrapper.mojo` pattern (`ESProduct` + `escaping` closure). `gain` is taken by
+borrow and `memcpy`'d, not moved, for the same reason established there.
+
+C++ copies the whole host struct to device first (every field right except `v_pedestals_`, which lands
+with a stale host-side value), then does a **second, separate** copy that patches just that field with
+the device address of a second buffer (`gainDataOnGPU`) — an address only known after that buffer is
+itself allocated inside the same transfer callback, so it can't be folded into the first copy's source
+struct. Ported by computing the field's address via `UnsafePointer(to=ptr[0].field)` (see the docs-search
+note below) and adding a sixth `copyAsync` overload, "both raw pointers, host → device"
+(`copyAsync.mojo`), for the patch itself.
+
+**Field-address approach**: the initial plan was to bitcast the struct's base device pointer and assume
+`v_pedestals_` sits at offset 0 — rejected as too fragile (breaks silently if field order ever changes).
+Searched Mojo's docs for the address-of-a-field idiom; the manual confirms `UnsafePointer(to=value)` as
+the standard address-of syntax but doesn't explicitly confirm or deny taking the address of a field
+reached through a dereferenced pointer. Verified empirically instead, via two escalating spikes: a plain
+host-resident struct (`UnsafePointer(to=host_struct[0].field)` computed the correct non-zero offset and
+round-tripped a write/read correctly), then the same pattern on a `make_device_unique`-allocated struct
+(computed the correct offset with no crash). Both confirmed the pattern is sound for address computation
+alone.
+
+**Found and fixed — a real runtime crash (`CUDA_ERROR_ILLEGAL_ADDRESS`), not the known late-hang issue.**
+Wiring the full copy-then-patch sequence together crashed on real hardware, reproducibly, *before* any
+GPU-side print ran — i.e. during setup, not at teardown, so this was **not** the same class of
+pre-existing late-hang/crash logged at the end of the D3 section above. Isolated with a minimal
+`Pair`-struct spike (ruling out `SiPixelGainForHLTonGPU`'s size/complexity as the cause) and granular
+per-step prints. Root cause: `copyAsync`'s raw-pointer overloads compile down to a GPU kernel
+(`_copy_kernel` in `copyAsync.mojo`) that dereferences *both* `src` and `dst` from device code — so any
+host-side source must be GPU-visible (pinned) memory, never a plain `List[T].unsafe_ptr()` or the address
+of an ordinary host-stack local. Both of those were present in the original code: `gainData_` was a plain
+`List[UInt8]`, and the `v_pedestals_` patch value was staged in a local variable.
+
+Fixed by switching `gainData_` to `HostAllocator[UInt8]` (already-established pinned-buffer type, per
+`HostAllocator.mojo`'s own doc comment) and staging the patch value in a single-element
+`HostAllocator[...]` instead of a local. The patch staging buffer is ephemeral (freed when the `transfer`
+closure returns), and `ESProduct.dataForCurrentDeviceAsync` does not synchronize after calling `transfer`
+— so an explicit `stream.synchronize()` was added right after the patch `copyAsync` call, before the
+staging buffer drops, mirroring `copyAsyncOwned`'s existing synchronize-before-free idiom (no new
+`copyAsync` overload added for this, since the need is a single call site, not a general shape).
+
+**This is a port-wide constraint worth remembering**: any file that stages a `List` or other
+non-pinned host buffer as a `copyAsync` source will hit the same crash. Every other current call site
+already used `HostUniquePtr`/`HostAllocator`-backed sources; this file was the first to use a plain
+`List`.
+
+Verified end-to-end on real hardware via a GPU kernel readback: `v_pedestals_[3].gain=111`,
+`v_pedestals_[3].ped=222`, `minPed_*1000=1500`, `numberOfRowsAveragedOver_=80` — all exact, plus the
+earlier CPU-side checks (`cpuProduct` non-null, `minPed_=1.5`).
