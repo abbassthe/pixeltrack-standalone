@@ -4,8 +4,7 @@ from MojoCudaDev.MojoBridge.DTypes import Typeable, UChar
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct FedhStruct(Copyable, Defaultable, Movable, Typeable):
+struct FedhStruct(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var sourceid: UInt32
     var eventid: UInt32
 
@@ -95,17 +94,16 @@ fn FED_MORE_HEADERS_EXTRACT(a: Int) -> Int:
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct FEDHeader(Copyable, Defaultable, Movable, Typeable):
+struct FEDHeader(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     alias length: UInt32 = sizeof[FedhType]()
-    var theHeader: UnsafePointer[FedhType]
+    var theHeader: UnsafePointer[FedhType, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
-        self.theHeader = UnsafePointer[FedhType]()
+        self.theHeader = UnsafePointer[FedhType, MutAnyOrigin]()
 
     @always_inline
-    fn __init__(out self, header: UnsafePointer[UChar]):
+    fn __init__(out self, header: UnsafePointer[UChar, MutAnyOrigin]):
         self.theHeader = header.bitcast[FedhType]()
 
     @always_inline
@@ -141,7 +139,7 @@ struct FEDHeader(Copyable, Defaultable, Movable, Typeable):
 
     @staticmethod
     fn set(
-        header: UnsafePointer[UChar, mut=True],
+        header: UnsafePointer[UChar, MutAnyOrigin],
         triggerType: UInt8,
         lvl1ID: UInt32,
         bxID: UInt16,

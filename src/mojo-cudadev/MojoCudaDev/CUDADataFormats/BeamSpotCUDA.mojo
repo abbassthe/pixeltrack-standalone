@@ -6,9 +6,10 @@ from MojoCudaDev.CUDACore.device_unique_ptr import unique_ptr as DeviceUniquePtr
 from MojoCudaDev.CUDACore.allocate_device import _AllocateDeviceState
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
 from MojoCudaDev.DataFormats.BeamSpotPOD import BeamSpotPOD
+from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 
-struct BeamSpotCUDA(Movable):
+struct BeamSpotCUDA(Defaultable, Movable, Typeable):
     var data_d_: DeviceUniquePtr[BeamSpotPOD]
 
     fn __init__(out self):
@@ -29,3 +30,7 @@ struct BeamSpotCUDA(Movable):
 
     fn ptr(ref self) -> ref [self.data_d_] DeviceUniquePtr[BeamSpotPOD]:
         return self.data_d_
+
+    @staticmethod
+    fn dtype() -> String:
+        return "BeamSpotCUDA"

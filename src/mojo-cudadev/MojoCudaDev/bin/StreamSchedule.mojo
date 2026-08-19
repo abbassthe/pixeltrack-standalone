@@ -32,6 +32,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
         source: UnsafePointer[Source, MutAnyOrigin],
         eventSetup: UnsafePointer[EventSetup, MutAnyOrigin],
         edreg: UnsafePointer[Framework.PluginFactory.Registry, MutAnyOrigin],
+        cuda_ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
         streamId: Int32 = 0,
     ):
         try:
@@ -39,8 +40,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             self._source = source
             self._eventSetup = eventSetup
             self._streamId = streamId
-            self._cuda_ctx = alloc[CUDAAppContext](1)
-            __get_address_as_uninit_lvalue(self._cuda_ctx.address) = CUDAAppContext()
+            self._cuda_ctx = cuda_ctx
 
             var nModules = PluginFactory.size(edreg[])
             debug_assert(nModules > 0)
@@ -92,16 +92,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
                 self._path.append((data + index).take_pointee())
         except e:
             print("Error occurred in Bin/StreamSchedule.mojo,", e)
-            if self._cuda_ctx != UnsafePointer[CUDAAppContext, MutAnyOrigin]():
-                self._cuda_ctx.destroy_pointee()
-                self._cuda_ctx.free()
-                self._cuda_ctx = UnsafePointer[CUDAAppContext, MutAnyOrigin]()
             return Self()
-
-    fn __del__(deinit self):
-        if self._cuda_ctx != UnsafePointer[CUDAAppContext, MutAnyOrigin]():
-            self._cuda_ctx.destroy_pointee()
-            self._cuda_ctx.free()
 
     @always_inline
     fn __moveinit__(out self, deinit take: Self):
@@ -116,7 +107,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
         var ptr = self._source[].produce(self._streamId, self._registry[])
         while ptr != UnsafePointer[Event, MutAnyOrigin]():
             for i in range(self._path.__len__()):
-                self._path[i].produce(ptr[], self._eventSetup[])
+                self._path[i].produce(ptr[], self._eventSetup[], self._cuda_ctx)
             if self._source[].maxEvents() >= 0 and self._source[].processedEvents() >= self._source[].maxEvents():
                 return
             ptr = self._source[].produce(self._streamId, self._registry[])
