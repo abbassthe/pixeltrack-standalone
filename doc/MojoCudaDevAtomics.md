@@ -172,6 +172,17 @@ true) — all 2000 correct with the fix, none would have been guaranteed correct
 
 `CUDACore/CUDASync.mojo` — new file (block-sync primitives are their own category, not atomics).
 
+### `atomic_fetch_inc_wrap` — added for `gpuClustering.mojo`'s `countModules`, verified on hardware (2026-08-19)
+
+`countModules`'s `atomicInc(moduleStart, maxNumModules)` is CUDA's wrap-around increment:
+`old = *addr; *addr = (old >= bound) ? 0 : old + 1; return old`. (`findClus`'s own `atomicInc(&foundClusters,
+0xffffffff)` doesn't need this — that bound is never reachable in practice, so it's just
+`atomic_fetch_add` with extra steps and reuses the existing primitive directly.) Same CAS-loop
+construction as `atomic_fetch_min`. Verified two ways: 1000 concurrent threads incrementing with a bound
+of 2000 (never wraps) land on exactly 1000; 13 concurrent threads with a bound of 5 land on exactly `13
+mod 6 = 1` — an exact invariant regardless of thread interleaving, since the value-to-next-value mapping
+is a fixed function independent of which thread performs which step.
+
 ## Status
 
 | file | state |
