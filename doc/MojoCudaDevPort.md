@@ -2351,3 +2351,153 @@ Plan, scoped but not yet executed:
 - Verify with a real hardware test afterward (repeated alloc/free of the same size should reuse a
   cached block rather than re-allocating — this is directly observable/loggable via
   `CachingDeviceAllocator`'s own `debug` flag).
+
+## Phase 4 — started (2026-08-21), and a toolchain/coverage correction
+
+### The toolchain runs on macOS arm64 — no Linux box required to compile
+
+Every entry above was written on the linux-64 host. This session ran on `Darwin arm64` with no
+NVIDIA GPU and no `mojo` on `PATH`, which §0 treated as "textual work only". That is wrong:
+`max 26.2.0` has an `osx-arm64` build, and `pixi exec --spec "max==26.2.*"` provides it in a
+throwaway environment with **no change to `pixi.toml` or `pixi.lock`** (no `osx-arm64` added to
+`platforms`). Verified identical to the committed lock, package by package: `max 26.2.0-3.14release`,
+`max-core 26.2.0-release`, `mojo-compiler 0.26.2.0-release`, `mojo-python 0.26.2.0-release` — same
+build strings, only the subdir differs. `mojo build --print-supported-accelerators` offers the full
+NVIDIA range, so `--target-accelerator sm_89` cross-compiles here too.
+
+Dialect identity confirmed behaviourally, not just by version string: `Phase1PixelTopology.mojo` no
+longer reports `@nonmaterializable` (this doc's own fix is reflected), `DetId.mojo` still does
+(exactly as this doc predicted and deliberately left unfixed), `Phase1PixelTopology.mojo:24` shows
+the documented `InlineArray[T,N](a,b,…)` variadic-constructor gap, and the `sys.sizeof`/`alignof`
+and `reflection` errors are the same stdlib renames recorded elsewhere here. All 20 files this doc
+claims were standalone-compiled pass; the failures are precisely the files it never claims to have
+compiled.
+
+What still cannot be done here: running kernels, `-l:libcuda.so.1` linking, and anything behind
+`is_gpu()`. Compile-verification is now platform-independent; hardware verification is not.
+
+### The full-tree `main.mojo` build covers 41 of 108 files — not the tree
+
+This doc repeatedly cites "a full project-wide cross-compile of `main.mojo` — clean" as a
+collateral-damage check after each phase. Traced statically: `main.mojo` transitively imports **41**
+of the 108 non-`__init__` files. The other 67 are invisible to it, including *all* of Phase 1's GPU
+primitives and essentially all of Phases 2–3 — `copyAsync`, `launch`, `PrefixScan`, `OneToManyAssoc`,
+`HistoContainer`, `ScopedContext`, every `CUDADataFormats` and `CondFormats` file. Within the 41 that
+are reachable, only *referenced* declarations get elaborated, so latent errors survive there too.
+
+First complete per-file compile sweep (`mojo build -I . <file> --emit object --target-accelerator
+sm_89`, all 108 files): **31 fail, ~230 errors**, of which 10 are in files reachable from `main.mojo`
+(`FEDNumbering`, `FEDRawData`, `PluginFactory`, `ConcurrentQueue`, `File`, `OrderedMap`,
+`OrderedMultiSet`, `EventProcessor`, `PosixClockGettime`, `StreamSchedule`). Dominant class is 111
+`unqualified access to struct parameter 'X'; use 'Self.X'` — i.e. §0's dialect-migration cost, which
+the Phase 0a spike concluded "did **not** materialise". It did; the instrument could not see it.
+Remainder: 23 unknown declarations (`@nonmaterializable`), 24 parameter-inference failures, 8
+`copy`/`take` naming, 7 `@register_passable("trivial")`, 4 struct inheritance, plus the stdlib
+renames above.
+
+None of this breaks today's binary — `main.mojo` builds and runs. All 31 are guaranteed to surface
+as soon as a Phase 4 plugin reaches them. Not yet fixed; deliberately left as a separate decision.
+
+**Standing rule going forward:** a file is not "done" until it compiles *standalone*. The full-tree
+build is a link check, not a type check.
+
+### Done — `CUDADataFormats/ZVertexSoA.mojo` + `ZVertexHeterogeneous.mojo`
+
+Both Bucket A. `serial`→`cudadev` for `ZVertexSoA.h` is only the include guard and `__host__
+__device__` on `init()`; for `ZVertexHeterogeneous.h` it is the added `ZVertexCUDAProduct` alias.
+Transcribed from `mojo-serial`, with `alias`→`comptime`, `Int` array extents (matching
+`SiPixelROCsStatusAndMapping.mojo`) instead of the donor's `UInt32` + `UInt(...)` conversions, and
+the trait list narrowed from the donor's `(Copyable, Defaultable, Movable, Typeable)` to
+`(Movable, Typeable)` to match the sibling `TrackSoAHeterogeneousT.mojo` — dropping `Copyable` on a
+215 KB SoA is deliberate, the same hazard that produced the `copyAsync` `ImplicitlyCopyable` bug in
+C3. C++'s unused `#include "CUDADataFormats/PixelTrackHeterogeneous.h"` was not carried over.
+
+**`HeterogeneousSoA.mojo` changed to support the `Product` alias** — real work, not transcription.
+`Product[T]` requires `Movable & Typeable & Defaultable`; `HeterogeneousSoA` declared only `Movable`.
+Now `(Defaultable, Movable, Typeable)`, with `_HeterogeneousElement` tightened to include `Typeable`
+so `dtype()` can compose `T`'s. That composition is load-bearing, not cosmetic: `ProductRegistry`
+keys products by the runtime `T.dtype()` string (`ProductRegistry.mojo:46-49`), so a constant name
+would make `Product[PixelTrackHeterogeneous]` and `Product[ZVertexHeterogeneous]` collide. Only one
+prior instantiation existed (`HeterogeneousSoA[pixelTrack.TrackSoA]`) and `TrackSoAHeterogeneousT` is
+already `Typeable`, so the tighter bound breaks nothing.
+
+Verified: both files compile standalone, and a real instantiation test (not just the alias
+definitions, which would not monomorphize — the `initStorage` lesson) constructs `ZVertexSoA`,
+`ZVertexHeterogeneous` and `ZVertexCUDAProduct`, confirming `MAXTRACKS/MAXVTX = 32768/1024`,
+`init()` zeroing `nvFinal`, exact field round-trips, a null `get()`, and distinct registry keys:
+`HeterogeneousSoA[ZVertexSoA]` vs `HeterogeneousSoA[TrackSoAHeterogeneousT[32768]]`.
+
+Still open: `ScopedContext.wrap[T: Movable & Typeable] -> Product[T]`
+(`ScopedContext.mojo:377`) is missing `Defaultable` on its own bound. It compiles only because
+nothing instantiates it — the same masking as above. Expect it at the first real producer.
+
+### Done — `plugin_BeamSpotProducer/BeamSpotESProducer.mojo`
+
+Pure Bucket A: the `serial`→`cudadev` diff for `BeamSpotESProducer.cc` is **empty**. Transcribed
+from `mojo-serial` with import rewrites and the port's ESProducer shape (explicit no-arg and
+`Path`-taking `__init__`, non-`raises` `produce`, `Typeable`). `EventSetup.put` raises, so the
+donor's try/except is required rather than decorative. Field order checked against `BeamSpotPOD.h`:
+11 `float`s, and the header explicitly notes `alignas(128)` is omitted precisely so the binary dumps
+read straight — so the blob read needs no padding compensation, unlike `SiPixelROCsStatusAndMapping`.
+
+`MojoBridge/File.mojo` is one of the 31 broken files, but the fault is in `read_list`
+(`move_pointee_into` on a `MutExternalOrigin` pointer), not `read_obj`, which this producer uses —
+so it compiles. Left unfixed with the rest of the batch.
+
+Verified functionally without a GPU and without the real dataset (`data/` on this machine holds only
+`md5.txt`/`url.txt`): a fabricated 44-byte `beamspot.bin` read through the real
+`ESProducer` → `EventSetup.put` → `EventSetup.get` path returned all 11 fields exact, and a
+missing-file run reported the error and continued instead of crashing.
+
+### Done — `CondFormats/SiPixelGainForHLTonGPU.mojo`
+
+Bucket B. `serial`→`cudadev` is the include guard, the `__host__ __device__` macro shim, a
+trailing-underscore rename sweep (`v_pedestals`→`v_pedestals_`, `rangeAndCols`→`rangeAndCols_`,
+`pedPrecision`→`pedPrecision_`, `gainPrecision`→`gainPrecision_`), and `rangeAndCols[2000]` →
+`rangeAndCols_[gpuClustering::maxNumModules]`. That last one is symbolic only — `maxNumModules` is
+2000 in both the C++ header and this port's `gpuClusteringConstants.mojo`, checked rather than
+assumed — but the port uses the constant, as `cudadev` does. C++'s trailing-underscore names are
+kept (matching `TrackSoAHeterogeneousT.mojo`'s `quality_`) rather than the donor's leading-underscore
+rename.
+
+Donor dialect fixes: `@register_passable("trivial")` → `TrivialRegisterPassable` conformance,
+`alias`→`comptime`, explicit `MutAnyOrigin` on the `v_pedestals_` pointer.
+
+Verified: standalone compile, plus a functional test of `getPedAndGain`'s real arithmetic — module
+range [0,800) over 8 columns, `col=2, row=160` resolving through
+`col*lengthOfColumnData + 2*(row/80)` to `lp[102]` — returning ped/gain `26.0`/`27.0` exactly, both
+the dead-column (`255`) and noisy-column (`200`) flag paths firing correctly, and `decodePed`/
+`decodeGain` exact.
+
+### Done — `plugin_PixelTriplets/CircleEq.mojo`
+
+Bucket A: the `serial`→`cudadev` diff deletes a commented-out block and nothing else. Donor
+transcription (`mojo-serial`'s file is named `CirclEq.mojo` — a typo, corrected here), verified
+line-for-line against the C++ `compute()` body before porting. Dialect fix: every bare `T` becomes
+`Self.T` (the dominant error class in the sweep above).
+
+Verified: standalone compile, plus a numerical test on a circle of known geometry (centre (3,4),
+r=5) — `center()` exact, `|radius()|` 5.0, `|curvature()|` 0.2, `dca()` −1.0 at the centre and 0.0
+on the circle, `dca0()` 0.0 with the origin lying on it. Re-run with the point order reversed to
+exercise the `noflip == False` branch: same centre and radius.
+
+### Tier A is now blocked on the broken-file batch
+
+Of the remaining Tier A (CPU-verifiable) queue, only files with no dependency on one of the 31
+failures can proceed. Current blockers:
+
+| Blocked | Needs fixed |
+|---|---|
+| `FitResult`, `choleskyInversion`, `FitUtils`, `BrokenLine`, `RiemannFit` | `Matrix.mojo`, `Vector.mojo` |
+| `pixelCPEforGPU` | `SOARotation.mojo`, `Vector.mojo`, `Phase1PixelTopology.mojo` |
+| `ErrorChecker` | `FEDHeader.mojo`, `FEDTrailer.mojo` |
+| `CAConstants` | `VecArray.mojo` |
+
+`Matrix.mojo` fails on its *first line* (`from sys import alignof` — `align_of` in this dialect), so
+importing it fails regardless of which declarations the importer touches. Fixing 7 of the 31
+(`Matrix`, `Vector`, `SOARotation`, `Phase1PixelTopology`, `FEDHeader`, `FEDTrailer`, `VecArray`)
+unblocks the whole remaining Tier A queue.
+
+Still portable without any of that: `cuda_assert.h`, `CMSUnrollLoop.h`, `SimpleAtomicHisto.h`,
+`SiPixelClusterThresholds.h`, `propagate_const_array.h` — all new files with no donor and no
+dependency on the broken set.

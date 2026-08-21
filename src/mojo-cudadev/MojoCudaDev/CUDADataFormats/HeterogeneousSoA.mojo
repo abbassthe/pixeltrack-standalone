@@ -12,11 +12,12 @@ from MojoCudaDev.CUDACore.host_unique_ptr import (
 from MojoCudaDev.CUDACore.allocate_host import _AllocateHostState
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType
 from MojoCudaDev.CUDACore.copyAsync import copyAsync
+from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 # copyAsync's own bound (AnyType) is looser than what this struct needs:
 # __del__ must be able to destroy_pointee() on std_ptr, which needs real
-# destructibility, not just AnyType.
-comptime _HeterogeneousElement = Movable & ImplicitlyDestructible
+# destructibility, not just AnyType. Typeable is needed by dtype() below.
+comptime _HeterogeneousElement = Movable & ImplicitlyDestructible & Typeable
 
 
 # OwnedPointer has no default constructor -- wrap a default (null) _HostAllocation instead.
@@ -24,7 +25,7 @@ fn _null_host_ptr[T: _HeterogeneousElement]() -> HostUniquePtr[T]:
     return HostUniquePtr[T](_HostAllocation[T]())
 
 
-struct HeterogeneousSoA[T: _HeterogeneousElement](Movable):
+struct HeterogeneousSoA[T: _HeterogeneousElement](Defaultable, Movable, Typeable):
     comptime Product = Self.T
 
     var dm_ptr: DeviceUniquePtr[Self.T]
@@ -85,3 +86,9 @@ struct HeterogeneousSoA[T: _HeterogeneousElement](Movable):
         var ret = make_host_unique[Self.T](state, stream)
         copyAsync[Self.T](ret, self.dm_ptr, stream)
         return ret^
+
+    # ProductRegistry keys products by this string, so T must be encoded:
+    # a constant name would collide across instantiations.
+    @staticmethod
+    fn dtype() -> String:
+        return "HeterogeneousSoA[" + Self.T.dtype() + "]"
