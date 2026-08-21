@@ -2327,177 +2327,229 @@ that machinery separately (`CachingDeviceAllocator.mojo`/`CachingHostAllocator.m
 workload through CachingDeviceAllocator") — it's just never been wired into the `make_*_unique`
 factory functions everything else calls.
 
-**The user wants this fixed** — no bypass of the caching layer.
+**The user wants this fixed** — no bypass of the caching layer. Explicitly deferred for now (picking
+Phase 4 back up instead) — not abandoned.
 
-Plan, scoped but not yet executed:
-- Change `_AllocateDeviceState.allocate_device`/`free_device` (`allocate_device.mojo`) to call
-  `_CachingAllocatorState.getCachingDeviceAllocator()[].DeviceAllocate(bytes, stream)` /
-  `.DeviceFree(device, ptr)` (`getCachingDeviceAllocator.mojo`) instead of the raw `DeviceContext`
-  calls. Same for `_AllocateHostState.allocate_host_raw`/`free_host_raw`
-  (`allocate_host.mojo`) via `_CachingHostAllocatorState.getCachingHostAllocator()[].DeviceAllocate(...)`/
-  `.HostFree(...)` (`getCachingHostAllocator.mojo`) — yes, `CachingHostAllocator`'s own allocate
-  method really is named `DeviceAllocate` too (mirrors `CachingDeviceAllocator`'s naming, just
-  allocates pinned host memory internally instead).
-- `make_device_unique`/`make_host_unique`'s own signatures don't need to change — every existing
-  caller (~20+ files since Phase 1) keeps working unmodified and starts getting real caching for
-  free, since the change is internal to `allocate_device.mojo`/`allocate_host.mojo` only.
-- The real complication: `_AllocateDeviceState`'s current bookkeeping
-  (`_allocated_buffers: List[Tuple[UInt, ByteDeviceBuffer, DeviceContext]]`) stores actual
-  `DeviceBuffer` RAII objects and relies on their destructor to free memory when popped. The caching
-  allocator instead hands back a raw pointer from `DeviceAllocate` and expects an explicit
-  `DeviceFree(device, ptr)` call — bookkeeping needs to change from "own the buffer object" to "track
-  enough (device id + pointer) to call `DeviceFree` correctly later," not rely on RAII destruction
-  for the free.
-- Verify with a real hardware test afterward (repeated alloc/free of the same size should reuse a
-  cached block rather than re-allocating — this is directly observable/loggable via
-  `CachingDeviceAllocator`'s own `debug` flag).
+**Correction to the original plan above (the "internal, zero call-site changes" idea doesn't work):**
+`CachingDeviceAllocator.mojo`/`CachingHostAllocator.mojo` already call `_AllocateDeviceState.allocate_device`/
+`_AllocateHostState.allocate_host_raw` *internally* (`self.alloc_state.allocate_device(...)`,
+`self.host_alloc_state.allocate_host_raw(...)`) — that's how each caching allocator gets fresh memory
+from the OS/CUDA runtime when its own cache has no suitable block to reuse. `_AllocateDeviceState`/
+`_AllocateHostState` are the caching allocators' own raw backing allocator. Redirecting
+`_AllocateDeviceState.allocate_device` to call `CachingDeviceAllocator.DeviceAllocate` would be
+circular: the caching allocator would call itself through its own backing allocator.
 
-## Phase 4 — started (2026-08-21), and a toolchain/coverage correction
+So the real fix has to live in `make_device_unique`/`make_host_unique` themselves — they need to call
+`CachingDeviceAllocator.DeviceAllocate`/`CachingHostAllocator.DeviceAllocate` (via a
+`_CachingAllocatorState`/`_CachingHostAllocatorState`, from `getCachingDeviceAllocator.mojo`/
+`getCachingHostAllocator.mojo`) directly, in place of `_AllocateDeviceState`/`_AllocateHostState`.
+`_AllocateDeviceState`/`_AllocateHostState` themselves stay untouched — still the caching layer's own
+backing allocator, nothing else changes about them.
 
-### The toolchain runs on macOS arm64 — no Linux box required to compile
+This means `make_device_unique`/`make_host_unique`'s `state: _AllocateDeviceState`/`_AllocateHostState`
+parameter has to become a caching-allocator-state instead — a real signature change touching every
+call site across the ~20+ files that construct one of these states and thread it through (every D2/D3
+file so far), not the zero-call-site-change internal fix originally described here. Scope this
+properly (probably a dedicated pass touching every affected file, not a quick edit) before starting.
 
-Every entry above was written on the linux-64 host. This session ran on `Darwin arm64` with no
-NVIDIA GPU and no `mojo` on `PATH`, which §0 treated as "textual work only". That is wrong:
-`max 26.2.0` has an `osx-arm64` build, and `pixi exec --spec "max==26.2.*"` provides it in a
-throwaway environment with **no change to `pixi.toml` or `pixi.lock`** (no `osx-arm64` added to
-`platforms`). Verified identical to the committed lock, package by package: `max 26.2.0-3.14release`,
-`max-core 26.2.0-release`, `mojo-compiler 0.26.2.0-release`, `mojo-python 0.26.2.0-release` — same
-build strings, only the subdir differs. `mojo build --print-supported-accelerators` offers the full
-NVIDIA range, so `--target-accelerator sm_89` cross-compiles here too.
+## Phase 4 (SiPixelClusterizer) — scoping and started, 2026-08-18
 
-Dialect identity confirmed behaviourally, not just by version string: `Phase1PixelTopology.mojo` no
-longer reports `@nonmaterializable` (this doc's own fix is reflected), `DetId.mojo` still does
-(exactly as this doc predicted and deliberately left unfixed), `Phase1PixelTopology.mojo:24` shows
-the documented `InlineArray[T,N](a,b,…)` variadic-constructor gap, and the `sys.sizeof`/`alignof`
-and `reflection` errors are the same stdlib renames recorded elsewhere here. All 20 files this doc
-claims were standalone-compiled pass; the failures are precisely the files it never claims to have
-compiled.
+Scoped via real `diff -u` between `src/cuda/plugin-SiPixelClusterizer/*`/`src/cuda/CondFormats/*` and
+their `src/cudadev` counterparts, not by guessing from file size or plan-doc labels. Classified as pure
+rename sweeps (0–30 diff lines, identifier renames matching centralized-constant refactors, no logic
+changes): `ErrorChecker.h/.cc`, `gpuCalibPixel.h`, `SiPixelGainCalibrationForHLTGPU.h/.cc`,
+`SiPixelGainForHLTonGPU.h`. Classified as real rewrites, needing dedicated design work later, not part
+of this sweep: `gpuClustering.h` (454 diff / 312 total lines), `gpuClusterChargeCut.h` (191/132),
+`SiPixelRawToClusterGPUKernel.h` (94/183), `SiPixelRawToClusterGPUKernel.cu` (190/659),
+`SiPixelRawToClusterCUDA.cc`.
 
-What still cannot be done here: running kernels, `-l:libcuda.so.1` linking, and anything behind
-`is_gpu()`. Compile-verification is now platform-independent; hardware verification is not.
+### Done — `CUDADataFormats/SiPixelClusterThresholds.mojo` (2026-08-18)
 
-### The full-tree `main.mojo` build covers 41 of 108 files — not the tree
+New in cudadev, no `cuda`/`mojo-serial` equivalent (`mojo-serial` hardcodes a moduleId-based charge cut
+instead of this layer-based lookup). Trivial two-field struct + a `comptime` default instance. Verified
+via a direct functional test: `layer1=2000`, `otherLayers=4000`,
+`getThresholdForLayerOnCondition(True/False)` both exact.
 
-This doc repeatedly cites "a full project-wide cross-compile of `main.mojo` — clean" as a
-collateral-damage check after each phase. Traced statically: `main.mojo` transitively imports **41**
-of the 108 non-`__init__` files. The other 67 are invisible to it, including *all* of Phase 1's GPU
-primitives and essentially all of Phases 2–3 — `copyAsync`, `launch`, `PrefixScan`, `OneToManyAssoc`,
-`HistoContainer`, `ScopedContext`, every `CUDADataFormats` and `CondFormats` file. Within the 41 that
-are reachable, only *referenced* declarations get elaborated, so latent errors survive there too.
+### Done — `CondFormats/SiPixelGainForHLTonGPU.mojo` (2026-08-18)
 
-First complete per-file compile sweep (`mojo build -I . <file> --emit object --target-accelerator
-sm_89`, all 108 files): **31 fail, ~230 errors**, of which 10 are in files reachable from `main.mojo`
-(`FEDNumbering`, `FEDRawData`, `PluginFactory`, `ConcurrentQueue`, `File`, `OrderedMap`,
-`OrderedMultiSet`, `EventProcessor`, `PosixClockGettime`, `StreamSchedule`). Dominant class is 111
-`unqualified access to struct parameter 'X'; use 'Self.X'` — i.e. §0's dialect-migration cost, which
-the Phase 0a spike concluded "did **not** materialise". It did; the instrument could not see it.
-Remainder: 23 unknown declarations (`@nonmaterializable`), 24 parameter-inference failures, 8
-`copy`/`take` naming, 7 `@register_passable("trivial")`, 4 struct inheritance, plus the stdlib
-renames above.
+Pure rename sweep, confirmed via diff: `v_pedestals`/`rangeAndCols`/`pedPrecision`/`gainPrecision` all
+gained a trailing underscore, and the hardcoded array size `2000` became `gpuClustering::maxNumModules`.
+Ported with C++'s exact trailing-underscore field names, not `mojo-serial`'s leading-underscore
+convention (a `mojo-serial`-specific stylistic deviation, not a C++ish choice worth preserving here).
 
-None of this breaks today's binary — `main.mojo` builds and runs. All 31 are guaranteed to surface
-as soon as a Phase 4 plugin reaches them. Not yet fixed; deliberately left as a separate decision.
+### Done — `CondFormats/SiPixelGainCalibrationForHLTGPU.mojo` (2026-08-18)
 
-**Standing rule going forward:** a file is not "done" until it compiles *standalone*. The full-tree
-build is a link check, not a type check.
+`mojo-serial`'s port is CPU-only (`getCPUProduct()`, no `ESProduct`/GPU machinery at all) despite the
+tiny cuda-vs-cudadev diff, so the device side was added fresh, following the
+`SiPixelROCsStatusAndMappingWrapper.mojo` pattern (`ESProduct` + `escaping` closure). `gain` is taken by
+borrow and `memcpy`'d, not moved, for the same reason established there.
 
-### Done — `CUDADataFormats/ZVertexSoA.mojo` + `ZVertexHeterogeneous.mojo`
+C++ copies the whole host struct to device first (every field right except `v_pedestals_`, which lands
+with a stale host-side value), then does a **second, separate** copy that patches just that field with
+the device address of a second buffer (`gainDataOnGPU`) — an address only known after that buffer is
+itself allocated inside the same transfer callback, so it can't be folded into the first copy's source
+struct. Ported by computing the field's address via `UnsafePointer(to=ptr[0].field)` (see the docs-search
+note below) and adding a sixth `copyAsync` overload, "both raw pointers, host → device"
+(`copyAsync.mojo`), for the patch itself.
 
-Both Bucket A. `serial`→`cudadev` for `ZVertexSoA.h` is only the include guard and `__host__
-__device__` on `init()`; for `ZVertexHeterogeneous.h` it is the added `ZVertexCUDAProduct` alias.
-Transcribed from `mojo-serial`, with `alias`→`comptime`, `Int` array extents (matching
-`SiPixelROCsStatusAndMapping.mojo`) instead of the donor's `UInt32` + `UInt(...)` conversions, and
-the trait list narrowed from the donor's `(Copyable, Defaultable, Movable, Typeable)` to
-`(Movable, Typeable)` to match the sibling `TrackSoAHeterogeneousT.mojo` — dropping `Copyable` on a
-215 KB SoA is deliberate, the same hazard that produced the `copyAsync` `ImplicitlyCopyable` bug in
-C3. C++'s unused `#include "CUDADataFormats/PixelTrackHeterogeneous.h"` was not carried over.
+**Field-address approach**: the initial plan was to bitcast the struct's base device pointer and assume
+`v_pedestals_` sits at offset 0 — rejected as too fragile (breaks silently if field order ever changes).
+Searched Mojo's docs for the address-of-a-field idiom; the manual confirms `UnsafePointer(to=value)` as
+the standard address-of syntax but doesn't explicitly confirm or deny taking the address of a field
+reached through a dereferenced pointer. Verified empirically instead, via two escalating spikes: a plain
+host-resident struct (`UnsafePointer(to=host_struct[0].field)` computed the correct non-zero offset and
+round-tripped a write/read correctly), then the same pattern on a `make_device_unique`-allocated struct
+(computed the correct offset with no crash). Both confirmed the pattern is sound for address computation
+alone.
 
-**`HeterogeneousSoA.mojo` changed to support the `Product` alias** — real work, not transcription.
-`Product[T]` requires `Movable & Typeable & Defaultable`; `HeterogeneousSoA` declared only `Movable`.
-Now `(Defaultable, Movable, Typeable)`, with `_HeterogeneousElement` tightened to include `Typeable`
-so `dtype()` can compose `T`'s. That composition is load-bearing, not cosmetic: `ProductRegistry`
-keys products by the runtime `T.dtype()` string (`ProductRegistry.mojo:46-49`), so a constant name
-would make `Product[PixelTrackHeterogeneous]` and `Product[ZVertexHeterogeneous]` collide. Only one
-prior instantiation existed (`HeterogeneousSoA[pixelTrack.TrackSoA]`) and `TrackSoAHeterogeneousT` is
-already `Typeable`, so the tighter bound breaks nothing.
+**Found and fixed — a real runtime crash (`CUDA_ERROR_ILLEGAL_ADDRESS`), not the known late-hang issue.**
+Wiring the full copy-then-patch sequence together crashed on real hardware, reproducibly, *before* any
+GPU-side print ran — i.e. during setup, not at teardown, so this was **not** the same class of
+pre-existing late-hang/crash logged at the end of the D3 section above. Isolated with a minimal
+`Pair`-struct spike (ruling out `SiPixelGainForHLTonGPU`'s size/complexity as the cause) and granular
+per-step prints. Root cause: `copyAsync`'s raw-pointer overloads compile down to a GPU kernel
+(`_copy_kernel` in `copyAsync.mojo`) that dereferences *both* `src` and `dst` from device code — so any
+host-side source must be GPU-visible (pinned) memory, never a plain `List[T].unsafe_ptr()` or the address
+of an ordinary host-stack local. Both of those were present in the original code: `gainData_` was a plain
+`List[UInt8]`, and the `v_pedestals_` patch value was staged in a local variable.
 
-Verified: both files compile standalone, and a real instantiation test (not just the alias
-definitions, which would not monomorphize — the `initStorage` lesson) constructs `ZVertexSoA`,
-`ZVertexHeterogeneous` and `ZVertexCUDAProduct`, confirming `MAXTRACKS/MAXVTX = 32768/1024`,
-`init()` zeroing `nvFinal`, exact field round-trips, a null `get()`, and distinct registry keys:
-`HeterogeneousSoA[ZVertexSoA]` vs `HeterogeneousSoA[TrackSoAHeterogeneousT[32768]]`.
+Fixed by switching `gainData_` to `HostAllocator[UInt8]` (already-established pinned-buffer type, per
+`HostAllocator.mojo`'s own doc comment) and staging the patch value in a single-element
+`HostAllocator[...]` instead of a local. The patch staging buffer is ephemeral (freed when the `transfer`
+closure returns), and `ESProduct.dataForCurrentDeviceAsync` does not synchronize after calling `transfer`
+— so an explicit `stream.synchronize()` was added right after the patch `copyAsync` call, before the
+staging buffer drops, mirroring `copyAsyncOwned`'s existing synchronize-before-free idiom (no new
+`copyAsync` overload added for this, since the need is a single call site, not a general shape).
 
-Still open: `ScopedContext.wrap[T: Movable & Typeable] -> Product[T]`
-(`ScopedContext.mojo:377`) is missing `Defaultable` on its own bound. It compiles only because
-nothing instantiates it — the same masking as above. Expect it at the first real producer.
+**This is a port-wide constraint worth remembering**: any file that stages a `List` or other
+non-pinned host buffer as a `copyAsync` source will hit the same crash. Every other current call site
+already used `HostUniquePtr`/`HostAllocator`-backed sources; this file was the first to use a plain
+`List`.
 
-### Done — `plugin_BeamSpotProducer/BeamSpotESProducer.mojo`
+Verified end-to-end on real hardware via a GPU kernel readback: `v_pedestals_[3].gain=111`,
+`v_pedestals_[3].ped=222`, `minPed_*1000=1500`, `numberOfRowsAveragedOver_=80` — all exact, plus the
+earlier CPU-side checks (`cpuProduct` non-null, `minPed_=1.5`).
 
-Pure Bucket A: the `serial`→`cudadev` diff for `BeamSpotESProducer.cc` is **empty**. Transcribed
-from `mojo-serial` with import rewrites and the port's ESProducer shape (explicit no-arg and
-`Path`-taking `__init__`, non-`raises` `produce`, `Typeable`). `EventSetup.put` raises, so the
-donor's try/except is required rather than decorative. Field order checked against `BeamSpotPOD.h`:
-11 `float`s, and the header explicitly notes `alignas(128)` is omitted precisely so the binary dumps
-read straight — so the blob read needs no padding compensation, unlike `SiPixelROCsStatusAndMapping`.
+### Done — `plugin_SiPixelClusterizer/ErrorChecker.mojo` (2026-08-19)
 
-`MojoBridge/File.mojo` is one of the 31 broken files, but the fault is in `read_list`
-(`move_pointee_into` on a `MutExternalOrigin` pointer), not `read_obj`, which this producer uses —
-so it compiles. Left unfixed with the rest of the batch.
+Byte-identical across `serial`/`cuda`/`cudadev` (confirmed via diff), so ported from `mojo-serial`'s own
+`ErrorChecker.mojo` almost as-is, with one real correction. `Errors`/`DetErrors` use
+`SiPixelFormatterErrors` (this tree's own port of `DataFormats/SiPixelFormatterErrors.h`, the type
+`ErrorChecker.h`'s inline typedefs actually describe) instead of porting `mojo-serial`'s separate
+`PixelErrors.mojo`/`PixelFormatterErrors` — `SiPixelFormatterErrors` was already ported and verified as
+part of `SiPixelDigiErrorsCUDA.mojo` (D2), and is the real C++ type, not a mojo-serial-only abstraction.
 
-Verified functionally without a GPU and without the real dataset (`data/` on this machine holds only
-`md5.txt`/`url.txt`): a fabricated 44-byte `beamspot.bin` read through the real
-`ESProducer` → `EventSetup.put` → `EventSetup.get` path returned all 11 fields exact, and a
-missing-file run reported the error and continued instead of crashing.
+**Found and fixed a real semantic bug relative to true C++ behavior, present in `mojo-serial`'s own
+port**: C++'s `errors[dummyDetId].push_back(error)` relies on `std::map::operator[]` auto-vivifying a
+missing key with an empty vector. Mojo's `Dict.__getitem__` raises on a missing key instead —
+`mojo-serial`'s port wrapped this in a try/except that prints and silently swallows the exception, which
+means the *first* error for any detId is silently dropped, every time, not matching C++ at all. Fixed
+here by checking `key not in errors` and inserting an empty `List` first, matching the real semantics.
+Verified via a dedicated test exercising all three methods (`checkCRC`/`checkHeader`/`checkTrailer`) with
+both a first and second error on the same key, confirming the count accumulates correctly (1, then 2).
 
-### Done — `CondFormats/SiPixelGainForHLTonGPU.mojo`
+**Found and fixed two unrelated, pre-existing compile bugs in `FEDHeader.mojo`/`FEDTrailer.mojo`** — both
+files existed already but had apparently never actually been compiled by anything (nothing imported them
+until now): `@register_passable("trivial")` (a removed decorator; fixed by conforming to
+`TrivialRegisterPassable` instead, matching this session's established convention) and several bare
+`UnsafePointer[T]` field/parameter declarations that fail origin inference in this compiler version
+(fixed with explicit `MutAnyOrigin`, including replacing a `mut=True` parameter-position usage that
+itself triggered a separate "inferred parameter passed out of order" error — `mut=True` works in return-type
+position elsewhere in this tree but not in parameter position; `MutAnyOrigin` works in both).
 
-Bucket B. `serial`→`cudadev` is the include guard, the `__host__ __device__` macro shim, a
-trailing-underscore rename sweep (`v_pedestals`→`v_pedestals_`, `rangeAndCols`→`rangeAndCols_`,
-`pedPrecision`→`pedPrecision_`, `gainPrecision`→`gainPrecision_`), and `rangeAndCols[2000]` →
-`rangeAndCols_[gpuClustering::maxNumModules]`. That last one is symbolic only — `maxNumModules` is
-2000 in both the C++ header and this port's `gpuClusteringConstants.mojo`, checked rather than
-assumed — but the port uses the constant, as `cudadev` does. C++'s trailing-underscore names are
-kept (matching `TrackSoAHeterogeneousT.mojo`'s `quality_`) rather than the donor's leading-underscore
-rename.
+Verified end-to-end on real hardware: 12 checks across all three methods (valid header, mismatched
+sourceID twice accumulating errors correctly, invalid trailer, CRC error, and a clean CRC pass with no
+side effects) — all exact.
 
-Donor dialect fixes: `@register_passable("trivial")` → `TrivialRegisterPassable` conformance,
-`alias`→`comptime`, explicit `MutAnyOrigin` on the `v_pedestals_` pointer.
+### Done — `plugin_SiPixelClusterizer/gpuCalibPixel.mojo` (2026-08-19) — Phase 4 rename sweep closed out
 
-Verified: standalone compile, plus a functional test of `getPedAndGain`'s real arithmetic — module
-range [0,800) over 8 columns, `col=2, row=160` resolving through
-`col*lengthOfColumnData + 2*(row/80)` to `lp[102]` — returning ped/gain `26.0`/`27.0` exactly, both
-the dead-column (`255`) and noisy-column (`200`) flag paths firing correctly, and `decodePed`/
-`decodeGain` exact.
+13-line diff, pure rename from `cuda` (confirmed via diff): a local `InvId` constant became
+`gpuClustering::invalidModuleId`, `MaxNumModules` became `maxNumModules` — no logic changes. Unlike
+`mojo-serial`'s `GPUCalibPixel.mojo` (a simplified single-threaded CPU port — plain sequential loop, no
+grid striding, `nClustersInModule` zeroed via `memset`), `cudadev`'s version is a real `__global__` GPU
+kernel, so this port is a real grid-stride kernel instead: `blockDim.x*blockIdx.x+threadIdx.x` plus
+`gridDim.x*blockDim.x`-strided while loops, following the idiom already established in
+`OneToManyAssoc.mojo`'s `bulkFinalizeFill`. C++'s `if (invalidModuleId == id[i]) continue;` became an
+if-wrapped loop body instead of a literal `continue` (a `continue` in a `while` loop would skip the
+stride increment and infinite-loop).
 
-### Done — `plugin_PixelTriplets/CircleEq.mojo`
+**Found a real Mojo API constraint, not a style choice**: `calibDigis` is meant to be launched directly
+as a kernel (matching its C++ `__global__` role), but `enqueue_function` requires every argument to
+conform to `DevicePassable`, and `Bool` doesn't (confirmed via a minimal isolated spike — `Int32` does,
+already established by `memsetAsync.mojo`'s scalar args). So `isRun2` is `Int32` (0/nonzero) here, not
+`Bool`, converted to a `Bool` once at the top of the function body for the internal ternaries.
 
-Bucket A: the `serial`→`cudadev` diff deletes a commented-out block and nothing else. Donor
-transcription (`mojo-serial`'s file is named `CirclEq.mojo` — a typo, corrected here), verified
-line-for-line against the C++ `compute()` body before porting. Dialect fix: every bare `T` becomes
-`Self.T` (the dominant error class in the sweep above).
+Verified end-to-end on real hardware via a real kernel launch (3 pixels: one that clamps to the 100
+minimum, one with an invalid moduleId that must pass through completely untouched, one that stays above
+the minimum), reusing `SiPixelGainCalibrationForHLTGPU`'s already-verified device-struct machinery to
+supply a real, correctly-patched `SiPixelGainForHLTonGPU*`: `adc[0]=100` (clamped), `id[1]`/`adc[1]`
+unchanged (65534/999), `adc[2]=330`, `moduleStart[0]=0`, `clusModuleStart[0]=0`,
+`nClustersInModule[0]=0`, `nClustersInModule[1999]=0` — all exact. A crash occurred after every check
+already printed correctly, during `DeviceContext` teardown (`cuStreamIsCapturing`/
+`AsyncRT_DeviceContext_release` in the stack) — matching the exact, already-documented late-teardown
+issue seen repeatedly elsewhere this session, not a new bug.
 
-Verified: standalone compile, plus a numerical test on a circle of known geometry (centre (3,4),
-r=5) — `center()` exact, `|radius()|` 5.0, `|curvature()|` 0.2, `dca()` −1.0 at the centre and 0.0
-on the circle, `dca0()` 0.0 with the origin lying on it. Re-run with the point order reversed to
-exercise the `noflip == False` branch: same centre and radius.
+This closes out the Phase 4 "pure rename sweep" set (`SiPixelClusterThresholds.mojo`,
+`SiPixelGainForHLTonGPU.mojo`, `SiPixelGainCalibrationForHLTGPU.mojo`, `ErrorChecker.mojo`,
+`gpuCalibPixel.mojo`). Remaining Phase 4 work is the real-rewrite set scoped earlier
+(`gpuClustering.h`, `gpuClusterChargeCut.h`, `SiPixelRawToClusterGPUKernel.{h,cu}`,
+`SiPixelRawToClusterCUDA.cc`) — not started, needs real design work, not a rename.
 
-### Tier A is now blocked on the broken-file batch
+## Plugin BeamSpotProducer — done (2026-08-19)
 
-Of the remaining Tier A (CPU-verifiable) queue, only files with no dependency on one of the 31
-failures can proceed. Current blockers:
+`BeamSpotESProducer.mojo` and `BeamSpotToCUDA.mojo` — both byte-identical to `cuda`. First
+`EDProducer` (as opposed to `ESProducer`) ported in this tree, and the first real use of
+`ScopedContextProduce`/`Product[T]`/`host_noncached_unique_ptr` together. `BeamSpotCUDA.mojo` needed
+`Defaultable`/`Typeable` added (required by `Product[T]`'s own bound, unused until now).
 
-| Blocked | Needs fixed |
-|---|---|
-| `FitResult`, `choleskyInversion`, `FitUtils`, `BrokenLine`, `RiemannFit` | `Matrix.mojo`, `Vector.mojo` |
-| `pixelCPEforGPU` | `SOARotation.mojo`, `Vector.mojo`, `Phase1PixelTopology.mojo` |
-| `ErrorChecker` | `FEDHeader.mojo`, `FEDTrailer.mojo` |
-| `CAConstants` | `VecArray.mojo` |
+**Found and fixed a real design bug before shipping**: the first version of `BeamSpotToCUDA.mojo` gave
+itself its own private, heap-allocated `CUDAAppContext` (mirroring `SiPixelROCsStatusAndMappingWrapperESProducer.mojo`'s
+"own your state" workaround for `ESProducer`). Caught in review — `CUDAAppContext`'s own header comment
+says it holds "all formerly-global CUDA state for *one* application context"; a private copy per producer
+defeats that (no shared stream/event/allocator pooling across the pipeline). `bin/StreamSchedule.mojo`
+already allocates exactly one `_cuda_ctx` for the whole run, but never threaded it into
+`PluginFactory.create`/`produce()` — that gap, not a per-producer copy, was the real fix needed.
 
-`Matrix.mojo` fails on its *first line* (`from sys import alignof` — `align_of` in this dialect), so
-importing it fails regardless of which declarations the importer touches. Fixing 7 of the 31
-(`Matrix`, `Vector`, `SOARotation`, `Phase1PixelTopology`, `FEDHeader`, `FEDTrailer`, `VecArray`)
-unblocks the whole remaining Tier A queue.
+Fixed by threading the shared context through `produce()` (not `__init__`) — matching where C++ itself
+reaches for the global (`ScopedContextProduce ctx{iEvent.streamID()}` is constructed fresh inside
+`produce()`, not stored from the constructor). Changed: `EDProducer.produce()`'s trait signature gained a
+`ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]` parameter; `PluginFactory.mojo`'s `EDProducerConcrete._P`/
+`produce_templ` thread it through; `StreamSchedule.run()` passes its own `self._cuda_ctx`.
+`BeamSpotToCUDA.mojo` now takes `ctx` as a `produce()` parameter instead of owning one. `BeamSpotToCUDA`
+was the only `EDProducer` conformer at the time, so this was a safe, zero-other-call-site trait change.
+`ESProducer.produce()` has the same kind of gap (`SiPixelROCsStatusAndMappingWrapperESProducer.mojo` still
+owns its own `_AllocateHostState`/`EventCache`/`CUDARuntime`) — not fixed here, out of scope for this pass.
 
-Still portable without any of that: `cuda_assert.h`, `CMSUnrollLoop.h`, `SimpleAtomicHisto.h`,
-`SiPixelClusterThresholds.h`, `propagate_const_array.h` — all new files with no donor and no
-dependency on the broken set.
+Verified end-to-end on real hardware against `data/beamspot.bin`: ES-producer read gives
+`z=5e-05`, `sigmaZ=4.0`, `beamWidthX=0.0015`; after `BeamSpotToCUDA.produce()`, a device-side readback of
+the emplaced `Product[BeamSpotCUDA]` gives the same three values back exactly.
+
+## `ESProducer` given the same shared-context wiring as `EDProducer` (2026-08-19)
+
+Before writing `SiPixelGainCalibrationForHLTGPUESProducer.mojo` (which needed the exact same
+own-vs-shared-state choice `SiPixelROCsStatusAndMappingWrapperESProducer.mojo` made), fixed `ESProducer`
+the same way `EDProducer` was just fixed above, rather than writing a second file with the same flaw.
+`ESProducer.produce()`'s trait signature gained the same `ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]`
+parameter; `ESPluginFactory.mojo` threads it through the same way `PluginFactory.mojo` does.
+
+ES producers run once at startup, before `StreamSchedule` previously existed (`EventProcessor.mojo` runs
+them, then constructs `StreamSchedule` afterward) — so `CUDAAppContext` ownership moved up from
+`StreamSchedule` to `EventProcessor`, which now allocates it once and passes the same pointer to both the
+ES-producer loop and into `StreamSchedule`'s constructor. `StreamSchedule` no longer owns or frees it.
+
+Retrofitted `SiPixelROCsStatusAndMappingWrapperESProducer.mojo` to use `ctx[].host_state`/
+`ctx[].event_cache`/`ctx[].runtime` instead of its own fields (removed entirely). Re-verified against real
+data after the retrofit: `fedIds` count 108, `hasQuality` True — unchanged from before.
+
+### Done — `plugin_SiPixelClusterizer/SiPixelGainCalibrationForHLTGPUESProducer.mojo` (2026-08-19)
+
+Byte-identical to `cuda`. `SiPixelGainForHLTonGPU` has the same large `InlineArray` field
+(`rangeAndCols_`, 2000 elements) as `SiPixelROCsStatusAndMapping`, so it's read via `memcpy` rather than
+`read_obj`, for the same reason already documented on `SiPixelROCsStatusAndMappingWrapperESProducer.mojo`.
+
+Verified end-to-end on real hardware against the real 3.1MB `data/gain.bin` (cross-checked byte layout
+and expected values against the file in Python first): `minPed_=0.0`, `maxPed_=255.0`, `minGain_=0.0`,
+`maxGain_=10.0`, `pedPrecision_=1.0079051`, `gainPrecision_=0.03952569`,
+`numberOfRowsAveragedOver_=80`, `nBinsToUseForEncoding_=253`, `deadFlag_=255`, `noisyFlag_=254` — all
+exact. Also confirms the trailing `gainData` size (`nbytes` field in the file) is exactly 3088384 bytes —
+matching `SiPixelGainForHLTonGPU.mojo`'s own `debug_assert(offset < 3088384)` bound.

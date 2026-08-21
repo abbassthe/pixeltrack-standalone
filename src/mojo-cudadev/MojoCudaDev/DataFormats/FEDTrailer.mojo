@@ -4,8 +4,7 @@ from MojoCudaDev.MojoBridge.DTypes import Typeable, UChar
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct FedtStruct(Copyable, Defaultable, Movable, Typeable):
+struct FedtStruct(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var conscheck: UInt32
     var eventsize: UInt32
 
@@ -117,17 +116,16 @@ fn FED_WRONG_FEDID_EXTRACT(a: Int) -> Int:
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct FEDTrailer(Copyable, Defaultable, Movable, Typeable):
+struct FEDTrailer(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     alias length: UInt32 = sizeof[FedtType]()
-    var theTrailer: UnsafePointer[FedtType]
+    var theTrailer: UnsafePointer[FedtType, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
-        self.theTrailer = UnsafePointer[FedtType]()
+        self.theTrailer = UnsafePointer[FedtType, MutAnyOrigin]()
 
     @always_inline
-    fn __init__(out self, trailer: UnsafePointer[UChar]):
+    fn __init__(out self, trailer: UnsafePointer[UChar, MutAnyOrigin]):
         self.theTrailer = trailer.bitcast[FedtType]()
 
     @always_inline
@@ -175,7 +173,7 @@ struct FEDTrailer(Copyable, Defaultable, Movable, Typeable):
 
     @staticmethod
     fn set(
-        trailer: UnsafePointer[UChar, mut=True],
+        trailer: UnsafePointer[UChar, MutAnyOrigin],
         var length: UInt32,
         var crc: UInt16,
         var evtStatus: UInt8,

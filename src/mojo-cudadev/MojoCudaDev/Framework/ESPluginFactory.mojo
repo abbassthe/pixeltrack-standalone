@@ -1,6 +1,7 @@
 from collections.dict import _DictKeyIter
 from pathlib import Path
 
+from MojoCudaDev.CUDACore.CUDAAppContext import CUDAAppContext
 from MojoCudaDev.Framework.ESProducer import ESProducer
 from MojoCudaDev.Framework.EventSetup import EventSetup
 from MojoCudaDev.MojoBridge.DTypes import Typeable
@@ -53,7 +54,7 @@ struct ESProducerWrapperT[T: Typeable & ESProducer](Movable, Typeable):
 
 struct ESProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
     alias _C = fn (var Path) -> ESProducerWrapper
-    alias _P = fn (mut ESProducerWrapper, mut EventSetup)
+    alias _P = fn (mut ESProducerWrapper, mut EventSetup, UnsafePointer[CUDAAppContext, MutAnyOrigin])
     alias _D = fn (mut ESProducerWrapper)
     var _producer: ESProducerWrapper
     var _create: Self._C
@@ -90,8 +91,8 @@ struct ESProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
         self._producer = self._create(path^)
 
     @always_inline
-    fn produce(mut self, mut eventSetup: EventSetup):
-        self._produce(self._producer, eventSetup)
+    fn produce(mut self, mut eventSetup: EventSetup, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]):
+        self._produce(self._producer, eventSetup, ctx)
 
     @staticmethod
     @always_inline
@@ -176,9 +177,13 @@ fn fwkEventSetupModule[T: Typeable & ESProducer](mut reg: Registry):
     @always_inline
     fn produce_templ[
         T: Typeable & ESProducer
-    ](mut esproducer: ESProducerWrapper, mut eventSetup: EventSetup):
+    ](
+        mut esproducer: ESProducerWrapper,
+        mut eventSetup: EventSetup,
+        ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
+    ):
         rebind[ESProducerWrapperT[T]](esproducer).producer()[].produce(
-            eventSetup
+            eventSetup, ctx
         )
 
     @always_inline

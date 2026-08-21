@@ -1,4 +1,7 @@
-# Mojo port of CondFormats/SiPixelGainForHLTonGPU.h.
+# Mojo port of CondFormats/SiPixelGainForHLTonGPU.h. Pure rename sweep from
+# `cuda` (confirmed via diff): v_pedestals/rangeAndCols/pedPrecision/
+# gainPrecision all gained a trailing underscore, and the hardcoded array
+# size 2000 became gpuClustering::maxNumModules -- no logic changes.
 from MojoCudaDev.CUDADataFormats.gpuClusteringConstants import gpuClustering
 from MojoCudaDev.MojoBridge.DTypes import Float, Typeable
 
@@ -10,12 +13,10 @@ struct SiPixelGainForHLTonGPU_DecodingStructure(
     var gain: UInt8
     var ped: UInt8
 
-    @always_inline
     fn __init__(out self):
         self.gain = 0
         self.ped = 0
 
-    @always_inline
     @staticmethod
     fn dtype() -> String:
         return "SiPixelGainForHLTonGPU_DecodingStructure"
@@ -25,11 +26,9 @@ struct SiPixelGainForHLTonGPU_DecodingStructure(
 struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
     comptime DecodingStructure = SiPixelGainForHLTonGPU_DecodingStructure
     comptime Range = Tuple[UInt32, UInt32]
-    comptime maxNumModules = Int(gpuClustering.maxNumModules)
 
     var v_pedestals_: UnsafePointer[Self.DecodingStructure, MutAnyOrigin]
-    var rangeAndCols_: InlineArray[Tuple[Self.Range, Int32], Self.maxNumModules]
-
+    var rangeAndCols_: InlineArray[Tuple[Self.Range, Int32], Int(gpuClustering.maxNumModules)]
     var minPed_: Float
     var maxPed_: Float
     var minGain_: Float
@@ -43,13 +42,11 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
     var deadFlag_: UInt32
     var noisyFlag_: UInt32
 
-    @always_inline
     fn __init__(out self):
         self.v_pedestals_ = UnsafePointer[Self.DecodingStructure, MutAnyOrigin]()
-        self.rangeAndCols_ = InlineArray[
-            Tuple[Self.Range, Int32], Self.maxNumModules
-        ](fill=Tuple[Self.Range, Int32](Self.Range(0, 0), 0))
-
+        self.rangeAndCols_ = InlineArray[Tuple[Self.Range, Int32], Int(gpuClustering.maxNumModules)](
+            fill=Tuple[Self.Range, Int32](Self.Range(0, 0), 0)
+        )
         self.minPed_ = 0.0
         self.maxPed_ = 0.0
         self.minGain_ = 0.0
@@ -63,7 +60,6 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
         self.deadFlag_ = 0
         self.noisyFlag_ = 0
 
-    @always_inline
     fn getPedAndGain(
         self,
         moduleInd: UInt32,
@@ -75,16 +71,13 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
         var range = self.rangeAndCols_[moduleInd][0]
         var nCols = self.rangeAndCols_[moduleInd][1]
 
-        # which averaged data block we are in (1 or 2, depending on whether
-        # the plaquette is 1 by X or 2 by X)
+        # determine what averaged data block we are in (there should be 1 or 2 of these depending on if plaquette is 1 by X or 2 by X
         var lengthOfColumnData: UInt32 = (
             (range[1].cast[DType.int32]() - range[0].cast[DType.int32]()) // nCols
         ).cast[DType.uint32]()
-        # always only two values per column averaged block
+        # we always only have two values per column averaged block
         var lengthOfAveragedDataInEachColumn: UInt32 = 2
-        var numberOfDataBlocksToSkip = (
-            row.cast[DType.uint32]() // self.numberOfRowsAveragedOver_
-        )
+        var numberOfDataBlocksToSkip = row.cast[DType.uint32]() // self.numberOfRowsAveragedOver_
         var offset = (
             range[0]
             + col.cast[DType.uint32]() * lengthOfColumnData
@@ -104,15 +97,12 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
             self.decodeGain(s.gain.cast[DType.uint32]() & 0xFF),
         )
 
-    @always_inline
     fn decodeGain(self, gain: UInt32) -> Float:
         return gain.cast[DType.float32]() * self.gainPrecision_ + self.minGain_
 
-    @always_inline
     fn decodePed(self, ped: UInt32) -> Float:
         return ped.cast[DType.float32]() * self.pedPrecision_ + self.minPed_
 
-    @always_inline
     @staticmethod
     fn dtype() -> String:
         return "SiPixelGainForHLTonGPU"

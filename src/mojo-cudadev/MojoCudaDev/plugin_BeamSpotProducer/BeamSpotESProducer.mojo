@@ -1,4 +1,5 @@
-# Mojo port of plugin-BeamSpotProducer/BeamSpotESProducer.cc.
+# Mojo port of plugin-BeamSpotProducer/BeamSpotESProducer.cc. Byte-identical
+# to cuda.
 from pathlib import Path
 
 from MojoCudaDev.DataFormats.BeamSpotPOD import BeamSpotPOD
@@ -21,7 +22,7 @@ struct BeamSpotESProducer(ESProducer, Typeable):
         try:
             with open(self._data / "beamspot.bin", "r") as file:
                 var bs = read_obj[BeamSpotPOD](file)
-                eventSetup.put[BeamSpotPOD](bs)
+                eventSetup.put[BeamSpotPOD](bs^)
         except e:
             print("Error during loading data in BeamSpotESProducer:", e)
 

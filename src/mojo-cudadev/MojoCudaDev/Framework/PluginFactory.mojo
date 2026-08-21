@@ -1,5 +1,6 @@
 from collections.dict import _DictKeyIter
 
+from MojoCudaDev.CUDACore.CUDAAppContext import CUDAAppContext
 from MojoCudaDev.Framework.EDProducer import EDProducer
 from MojoCudaDev.Framework.Event import Event
 from MojoCudaDev.Framework.EventSetup import EventSetup
@@ -54,7 +55,7 @@ struct EDProducerWrapperT[T: Typeable & EDProducer](Movable, Typeable):
 
 struct EDProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
     alias _C = fn (mut ProductRegistry) raises -> EDProducerWrapper
-    alias _P = fn (mut EDProducerWrapper, mut Event, EventSetup)
+    alias _P = fn (mut EDProducerWrapper, mut Event, EventSetup, UnsafePointer[CUDAAppContext, MutAnyOrigin])
     alias _E = fn (mut EDProducerWrapper)
     alias _D = fn (mut EDProducerWrapper)
     var _producer: EDProducerWrapper
@@ -94,8 +95,8 @@ struct EDProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
         self._producer = self._create(reg)
 
     @always_inline
-    fn produce(mut self, mut event: Event, ref eventSetup: EventSetup):
-        self._produce(self._producer, event, eventSetup)
+    fn produce(mut self, mut event: Event, ref eventSetup: EventSetup, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]):
+        self._produce(self._producer, event, eventSetup, ctx)
 
     @always_inline
     fn endJob(mut self):
@@ -190,9 +191,10 @@ fn fwkModule[T: Typeable & EDProducer](mut reg: Registry):
         mut edproducer: EDProducerWrapper,
         mut event: Event,
         eventSetup: EventSetup,
+        ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
     ):
         rebind[EDProducerWrapperT[T]](edproducer).producer()[].produce(
-            event, eventSetup
+            event, eventSetup, ctx
         )
 
     @always_inline

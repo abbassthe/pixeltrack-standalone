@@ -167,3 +167,18 @@ fn copyAsync[T: _CopyElement](
     stream: CUDAStreamType,
 ) raises:
     _launch_copy[T](dst.get(), src, Int(nelements), stream)
+
+
+# Multiple elements, host -> device, both raw pointers -- e.g. patching a
+# specific field of an already-copied device struct (SiPixelGainCalibrationForHLTGPU.mojo's
+# v_pedestals_, whose correct device address is only known after a second,
+# separately-allocated buffer has itself been allocated) via
+# UnsafePointer(to=device_struct_ptr[0].field), rather than copying into a
+# fresh DeviceUniquePtr.
+fn copyAsync[T: _CopyElement](
+    dst: UnsafePointer[T, MutAnyOrigin],
+    src: UnsafePointer[T, MutAnyOrigin],
+    nelements: UInt,
+    stream: CUDAStreamType,
+) raises:
+    _launch_copy[T](dst, src, Int(nelements), stream)

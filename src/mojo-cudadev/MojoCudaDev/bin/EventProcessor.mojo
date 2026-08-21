@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from MojoCudaDev.CUDACore.CUDAAppContext import CUDAAppContext
 from MojoCudaDev.Framework.ProductRegistry import ProductRegistry
 from MojoCudaDev.Framework.EventSetup import EventSetup
 from MojoCudaDev.Framework.ESPluginFactory import ESPluginFactory
@@ -17,6 +18,7 @@ struct EventProcessor(Defaultable, Typeable):
     var _warmupEvents: Int32
     var _maxEvents: Int32
     var _runForMinutes: Int32
+    var _cuda_ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
@@ -27,6 +29,7 @@ struct EventProcessor(Defaultable, Typeable):
         self._warmupEvents = 0
         self._maxEvents = 0
         self._runForMinutes = 0
+        self._cuda_ctx = UnsafePointer[CUDAAppContext, MutAnyOrigin]()
 
     fn __init__(
         out self,
@@ -38,6 +41,7 @@ struct EventProcessor(Defaultable, Typeable):
         esreg: UnsafePointer[Framework.ESPluginFactory.Registry, MutAnyOrigin],
         edreg: UnsafePointer[Framework.PluginFactory.Registry, MutAnyOrigin],
     ):
+        self._cuda_ctx = UnsafePointer[CUDAAppContext, MutAnyOrigin]()
         try:
             self._registry = ProductRegistry()
             self._source = Source(
@@ -48,19 +52,31 @@ struct EventProcessor(Defaultable, Typeable):
             self._maxEvents = maxEvents
             self._runForMinutes = runForMinutes
 
+            self._cuda_ctx = alloc[CUDAAppContext](1)
+            __get_address_as_uninit_lvalue(self._cuda_ctx.address) = CUDAAppContext()
+
             for name in ESPluginFactory.getAll(esreg[]):
                 var esp = ESPluginFactory.create(name, path, esreg[])
-                esp.produce(self._eventSetup)
+                esp.produce(self._eventSetup, self._cuda_ctx)
 
             self._schedule = StreamSchedule(
                 UnsafePointer(to=self._registry),
                 UnsafePointer(to=self._source),
                 UnsafePointer(to=self._eventSetup),
                 edreg,
+                self._cuda_ctx,
             )
         except e:
             print("Error occurred in Bin/EventProcessor.mojo,", e)
+            if self._cuda_ctx != UnsafePointer[CUDAAppContext, MutAnyOrigin]():
+                self._cuda_ctx.destroy_pointee()
+                self._cuda_ctx.free()
             return Self()
+
+    fn __del__(deinit self):
+        if self._cuda_ctx != UnsafePointer[CUDAAppContext, MutAnyOrigin]():
+            self._cuda_ctx.destroy_pointee()
+            self._cuda_ctx.free()
 
     @always_inline
     fn warmUp(mut self):

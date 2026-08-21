@@ -129,11 +129,66 @@ direct, correctly-typed, aligned pointer with no bitcast. It was not done here
 because it changes the struct's representation rather than just adding atomicity, and
 it touches every `[0]`/`[1]` accessor in `HistoContainer` and `GPUCACell`.
 
+### `atomic_fetch_min` — added for `gpuClustering.mojo`'s DSU, verified on hardware (2026-08-19)
+
+`gpuClustering.h`'s `findClus` union-find loop needs `atomicMin(address, val)` returning the pre-update
+value (to detect whether anything changed, and to symmetrically pull both union endpoints down). Checked
+this Mojo version's actual API surface (via `strings` on the compiled `std.mojopkg`, since there's no
+source to grep) rather than assuming: no `fetch_min`/`atomic_min` exists — only a non-returning
+`Atomic.min[ordering](ptr, val)`. `gpu.primitives.block.min`/`warp.min` exist but solve a different
+problem (many threads collapsing to one shared minimum) — not applicable here, since each thread updates
+a different address (`clusterId[m]` for its own `m`).
+
+Built from `Atomic.compare_exchange`, confirmed via spike to update its `expected` argument in place to
+the real current value on failure (standard CAS ABI) — a plain CAS retry loop. Verified two ways: a
+single-call correctness spike, and a 100,000-thread concurrent stress test (matching `fetch_add`'s own
+verification scale below) where every thread submits a distinct value in `[0, 99999]` against a shared
+location seeded above that range — final value landed on the true minimum (`0`), every returned "old"
+value stayed within the valid range (ruling out torn reads), and exactly one thread observed the
+untouched initial sentinel (as expected — only one CAS can be first against it).
+
+### `syncthreads_or` — added for `gpuClustering.mojo`'s DSU, verified on hardware (2026-08-19)
+
+`findClus`'s union-find loop is `while (__syncthreads_or(more))` — a single hardware instruction in
+CUDA that barriers the block and OR-reduces `more` across every thread, atomically as one op. No direct
+Mojo equivalent: `_barrier_and` exists as a symbol (found via `strings`) but isn't importable from
+`std.gpu.sync` (where `barrier()` lives) without more setup than was worth chasing down, and there's no
+`_barrier_or` at all.
+
+Built instead from primitives already verified elsewhere in this port: `barrier()` (`PrefixScan.mojo`)
+plus `atomic_fetch_add` on a shared counter (reset, add, read). `atomic_fetch_add`/`atomic_fetch_sub`/
+`atomic_fetch_min` gained an `address_space` generic parameter (defaulting to `AddressSpace.GENERIC`, so
+every existing call site is unaffected) to allow this shared-memory use — confirmed via `pixi run verify`
+that `OneToManyAssoc.mojo`/`HistoContainer.mojo`'s existing calls still compile unchanged.
+
+**Real bug caught before shipping**: the first version used two barriers (reset→barrier→add→barrier→read),
+which is enough for a single call but not for a `while` loop calling this every iteration — nothing
+stops a fast thread from finishing its read and resetting the shared counter for the *next* iteration
+before a slower thread (in a different warp — warps don't run in lockstep with each other) has read the
+*current* iteration's value. Added a third barrier after the read, closing the gap. A single-call test
+wouldn't have caught this; verified instead with a 1024-thread block calling `syncthreads_or` 2000 times
+in a tight loop with a rotating single-true-thread pattern each iteration (every iteration must return
+true) — all 2000 correct with the fix, none would have been guaranteed correct without it.
+
+`CUDACore/CUDASync.mojo` — new file (block-sync primitives are their own category, not atomics).
+
+### `atomic_fetch_inc_wrap` — added for `gpuClustering.mojo`'s `countModules`, verified on hardware (2026-08-19)
+
+`countModules`'s `atomicInc(moduleStart, maxNumModules)` is CUDA's wrap-around increment:
+`old = *addr; *addr = (old >= bound) ? 0 : old + 1; return old`. (`findClus`'s own `atomicInc(&foundClusters,
+0xffffffff)` doesn't need this — that bound is never reachable in practice, so it's just
+`atomic_fetch_add` with extra steps and reuses the existing primitive directly.) Same CAS-loop
+construction as `atomic_fetch_min`. Verified two ways: 1000 concurrent threads incrementing with a bound
+of 2000 (never wraps) land on exactly 1000; 13 concurrent threads with a bound of 5 land on exactly `13
+mod 6 = 1` — an exact invariant regardless of thread interleaving, since the value-to-next-value mapping
+is a fixed function independent of which thread performs which step.
+
 ## Status
 
 | file | state |
 |---|---|
-| `CUDACore/CUDAAtomics.mojo` | **verified on real hardware** (2026-08-04), one real syntax bug found and fixed along the way |
+| `CUDACore/CUDAAtomics.mojo` | **verified on real hardware** (2026-08-04), one real syntax bug found and fixed along the way; `atomic_fetch_min` added and verified 2026-08-19 |
+| `CUDACore/CUDASync.mojo` | `syncthreads_or` — **verified on real hardware** (2026-08-19), one real cross-iteration race found and fixed along the way |
 | `CUDACore/AtomicPairCounter.mojo` | re-atomicised (1 site); underlying primitive now verified, `.add()` itself not yet directly hardware-tested |
 | `CUDACore/SimpleVector.mojo` | re-atomicised (6 sites); not directly hardware-tested |
 | `CUDACore/VecArray.mojo` | re-atomicised (4 sites); not directly hardware-tested |

@@ -1,12 +1,5 @@
 # Mojo port of plugin-SiPixelClusterizer/SiPixelROCsStatusAndMappingWrapperESProducer.cc.
 #
-# produce()'s trait signature (mut self, mut eventSetup: EventSetup) has no
-# room for external allocator state -- nothing threads GPU allocator state
-# into an ESProducer's produce() call anywhere in this port yet, and
-# main.mojo's own TODO flags this producer's registration as still pending
-# (Phase 4). So this owns its own _AllocateHostState/EventCache/CUDARuntime,
-# constructed once in __init__, rather than block on that broader wiring.
-#
 # cablingMap.bin's struct isn't read via read_obj[SiPixelROCsStatusAndMapping]
 # -- confirmed via bisection that read_obj's return-boundary move of this
 # specific 1.4MB, InlineArray-heavy struct makes `mojo build` hang (580s+,
@@ -23,9 +16,8 @@ from MojoCudaDev.CondFormats.SiPixelROCsStatusAndMapping import SiPixelROCsStatu
 from MojoCudaDev.CondFormats.SiPixelROCsStatusAndMappingWrapper import (
     SiPixelROCsStatusAndMappingWrapper,
 )
-from MojoCudaDev.CUDACore.allocate_host import _AllocateHostState
-from MojoCudaDev.CUDACore.CUDACompat import CUDARuntime, cudaStreamDefault
-from MojoCudaDev.CUDACore.EventCache import EventCache
+from MojoCudaDev.CUDACore.CUDAAppContext import CUDAAppContext
+from MojoCudaDev.CUDACore.CUDACompat import cudaStreamDefault
 from MojoCudaDev.Framework.ESProducer import ESProducer
 from MojoCudaDev.Framework.EventSetup import EventSetup
 from MojoCudaDev.MojoBridge.DTypes import Typeable
@@ -34,23 +26,14 @@ from MojoCudaDev.MojoBridge.File import read_simd
 
 struct SiPixelROCsStatusAndMappingWrapperESProducer(ESProducer, Typeable):
     var _data: Path
-    var _host_state: _AllocateHostState
-    var _event_cache: EventCache
-    var _runtime: CUDARuntime
 
     fn __init__(out self):
         self._data = Path("")
-        self._host_state = _AllocateHostState()
-        self._event_cache = EventCache()
-        self._runtime = CUDARuntime()
 
     fn __init__(out self, var path: Path):
         self._data = path^
-        self._host_state = _AllocateHostState()
-        self._event_cache = EventCache()
-        self._runtime = CUDARuntime()
 
-    fn produce(mut self, mut eventSetup: EventSetup):
+    fn produce(mut self, mut eventSetup: EventSetup, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]):
         try:
             with open(self._data / "fedIds.bin", "r") as file:
                 var nfeds = read_simd[DType.uint32](file)
@@ -76,9 +59,9 @@ struct SiPixelROCsStatusAndMappingWrapperESProducer(ESProducer, Typeable):
                     SiPixelROCsStatusAndMappingWrapper(
                         obj,
                         modToUnpDefault^,
-                        self._host_state,
-                        self._event_cache,
-                        self._runtime,
+                        ctx[].host_state,
+                        ctx[].event_cache,
+                        ctx[].runtime,
                         cudaStreamDefault,
                     )
                 )
