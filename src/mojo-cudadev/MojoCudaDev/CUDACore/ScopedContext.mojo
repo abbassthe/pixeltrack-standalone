@@ -40,7 +40,7 @@ struct ScopedContextBase(Movable):
         )
         self.stream_ = ctx[].stream_cache.get()
 
-    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
+    fn __init__(out self, data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.ctx_ = ctx
         self.currentDevice_ = data.device()
         _ = cudaCheck_(
@@ -88,7 +88,7 @@ struct ScopedContextGetterBase(Movable):
     fn __init__(out self, streamID: StreamID, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.base = ScopedContextBase(streamID, ctx)
 
-    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
+    fn __init__(out self, data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.base = ScopedContextBase(data, ctx)
 
     fn __init__(out self, device: Int, var stream: SharedStreamPtr, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
@@ -106,7 +106,9 @@ struct ScopedContextGetterBase(Movable):
     fn streamPtr(self) -> SharedStreamPtr:
         return self.base.streamPtr()
 
-    fn get[T: Movable & Typeable](mut self, ref data: Product[T]) raises -> ref [data] T:
+    fn get[
+        T: Movable & Typeable & Defaultable
+    ](mut self, ref data: Product[T]) raises -> ref [data.data_] T:
         self.synchronizeStreams(
             data._base.device(),
             data._base.stream(),
@@ -114,11 +116,6 @@ struct ScopedContextGetterBase(Movable):
             data._base.event(),
         )
         return data.data_
-
-    fn get[
-        T: Movable & Typeable
-    ](mut self, ref event: Event, ref token: EDGetTokenT[Product[T]]) raises -> ref [event] T:
-        return self.get[T](event.get[Product[T]](token))
 
     fn synchronizeStreams(
         mut self,
@@ -132,8 +129,7 @@ struct ScopedContextGetterBase(Movable):
 
         if dataStream != self.stream() and not available:
             _ = cudaCheck_(
-                __source_location().file_name(),
-                __source_location().line(),
+                "ScopedContext.mojo", 0,
                 "cudaStreamWaitEvent",
                 cudaStreamWaitEvent(self.stream(), dataEvent, 0),
                 "Failed to make a stream wait for an event",
@@ -259,7 +255,7 @@ struct ScopedContextAcquire(Movable):
 
     fn __init__(
         out self,
-        mut data: ProductBase,
+        data: ProductBase,
         var waitingTaskHolder: WaitingTaskWithArenaHolder,
         ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
     ) raises:
@@ -270,7 +266,7 @@ struct ScopedContextAcquire(Movable):
 
     fn __init__(
         out self,
-        mut data: ProductBase,
+        data: ProductBase,
         var waitingTaskHolder: WaitingTaskWithArenaHolder,
         mut state: ContextState,
         ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
@@ -304,13 +300,8 @@ struct ScopedContextAcquire(Movable):
     fn streamPtr(self) -> SharedStreamPtr:
         return self.getter.streamPtr()
 
-    fn get[T: Movable & Typeable](mut self, ref data: Product[T]) raises -> ref [data] T:
+    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data.data_] T:
         return self.getter.get[T](data)
-
-    fn get[
-        T: Movable & Typeable
-    ](mut self, ref event: Event, ref token: EDGetTokenT[Product[T]]) raises -> ref [event] T:
-        return self.getter.get[T](event, token)
 
     fn pushNextTask[F: Movable](mut self, var func: F) raises:
         if not self.hasContextState_:
@@ -335,7 +326,7 @@ struct ScopedContextProduce(Movable):
         self.getter = ScopedContextGetterBase(streamID, ctx)
         self.event_ = ctx[].event_cache.get(ctx[].runtime)
 
-    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
+    fn __init__(out self, data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.getter = ScopedContextGetterBase(data, ctx)
         self.event_ = ctx[].event_cache.get(ctx[].runtime)
 
@@ -366,15 +357,10 @@ struct ScopedContextProduce(Movable):
     fn streamPtr(self) -> SharedStreamPtr:
         return self.getter.streamPtr()
 
-    fn get[T: Movable & Typeable](mut self, ref data: Product[T]) raises -> ref [data] T:
+    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data.data_] T:
         return self.getter.get[T](data)
 
-    fn get[
-        T: Movable & Typeable
-    ](mut self, ref event: Event, ref token: EDGetTokenT[Product[T]]) raises -> ref [event] T:
-        return self.getter.get[T](event, token)
-
-    fn wrap[T: Movable & Typeable](mut self, var data: T) -> Product[T]:
+    fn wrap[T: Movable & Typeable & Defaultable](mut self, var data: T) -> Product[T]:
         var stream = self.streamPtr()
         var event = self.event_.copy()
         return Product[T](self.device(), stream^, event^, data^)
@@ -391,7 +377,7 @@ struct ScopedContextProduce(Movable):
 struct ScopedContextAnalyze(Movable):
     var getter: ScopedContextGetterBase
 
-    fn __init__(out self, mut data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
+    fn __init__(out self, data: ProductBase, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]) raises:
         self.getter = ScopedContextGetterBase(data, ctx)
 
     fn __moveinit__(out self, deinit take: Self):
@@ -406,10 +392,6 @@ struct ScopedContextAnalyze(Movable):
     fn streamPtr(self) -> SharedStreamPtr:
         return self.getter.streamPtr()
 
-    fn get[T: Movable & Typeable](mut self, ref data: Product[T]) raises -> ref [data] T:
+    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data.data_] T:
         return self.getter.get[T](data)
 
-    fn get[
-        T: Movable & Typeable
-    ](mut self, ref event: Event, ref token: EDGetTokenT[Product[T]]) raises -> ref [event] T:
-        return self.getter.get[T](event, token)

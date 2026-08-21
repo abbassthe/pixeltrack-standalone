@@ -2,6 +2,26 @@
 
 from os.atomic import Atomic, Consistency
 from std.memory import AddressSpace
+from sys.intrinsics import inlined_assembly
+
+
+@always_inline
+fn atomic_fetch_min_block(
+    ptr: UnsafePointer[Int32, MutAnyOrigin], val: Int32
+) -> Int32:
+    """Atomically set `ptr[]` to min(ptr[], val) with block scope, returning the
+    value held before.
+
+    Mirrors CUDA `atomicMin_block(address, val)`. `os.atomic` exposes no memory
+    scope, so this is the PTX instruction directly. Int32 only -- the mnemonic
+    is type-specific and this is the only type used.
+    """
+    return inlined_assembly[
+        "atom.cta.min.s32 $0, [$1], $2;",
+        Int32,
+        constraints="=r,l,r",
+        has_side_effect=True,
+    ](ptr, val)
 
 
 @always_inline

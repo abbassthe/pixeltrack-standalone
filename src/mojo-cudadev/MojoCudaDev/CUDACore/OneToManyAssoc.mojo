@@ -211,10 +211,10 @@ struct OneToManyAssoc[
 
     # C++: finalize(Counter *ws = nullptr) -- OneToManyAssoc.h:259-263
     fn finalize[
-        block_size: Int, ws_address_space: AddressSpace
+        ws_address_space: AddressSpace
     ](mut self, ws: UnsafePointer[Self.Counter, MutAnyOrigin, address_space=ws_address_space]):
         debug_assert(self.off[self.totOnes() - 1] == 0, "OneToManyAssoc.finalize: last off must be 0")
-        blockPrefixScan[block_size=block_size](self.off.data(), UInt32(self.totOnes()), ws)
+        blockPrefixScan(self.off.data(), UInt32(self.totOnes()), ws)
         debug_assert(
             self.off[self.totOnes() - 1] == self.off[self.totOnes() - 2],
             "OneToManyAssoc.finalize: scan did not converge",

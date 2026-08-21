@@ -15,6 +15,7 @@ from MojoCudaDev.CUDACore.allocate_device import _AllocateDeviceState
 from MojoCudaDev.CUDACore.allocate_host import _AllocateHostState
 from MojoCudaDev.CUDACore.copyAsync import copyAsync, copyAsyncOwned
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
+from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 
 # C++: __device__ __forceinline__ accessors -- SiPixelDigisCUDA.h:53-58
@@ -53,7 +54,7 @@ struct DeviceConstView(Movable):
         return self.clus_[i]
 
 
-struct SiPixelDigisCUDA(Movable):
+struct SiPixelDigisCUDA(Defaultable, Movable, Typeable):
     # Consumed by downstream device code.
     var xx_d: DeviceUniquePtr[UInt16]
     var yy_d: DeviceUniquePtr[UInt16]
@@ -181,3 +182,7 @@ struct SiPixelDigisCUDA(Movable):
         var ret = make_host_unique[UInt32](UInt(self.nDigis()), state, stream)
         copyAsync[UInt32](ret, self.rawIdArr_d, UInt(self.nDigis()), stream)
         return ret^
+
+    @staticmethod
+    fn dtype() -> String:
+        return "SiPixelDigisCUDA"

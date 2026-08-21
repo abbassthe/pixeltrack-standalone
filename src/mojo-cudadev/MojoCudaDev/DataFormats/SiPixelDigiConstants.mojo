@@ -2,7 +2,6 @@ alias Word64 = UInt64
 alias Word32 = UInt32
 
 
-@nonmaterializable(NoneType)
 struct SiPixelConstants:
     alias dummyDetId: UInt32 = 0xFFFFFFFF
 

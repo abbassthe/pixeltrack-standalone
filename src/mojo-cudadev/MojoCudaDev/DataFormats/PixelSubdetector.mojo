@@ -1,4 +1,3 @@
-@nonmaterializable(NoneType)
 struct PixelSubdetector:
     """Enumeration for Pixel Tracker Subdetectors."""
 

@@ -2,6 +2,7 @@ from memory import bitcast
 from math import Ceilable, CeilDivable, Floorable, Truncable
 from builtin.device_passable import DevicePassable
 from sys import alignof, is_gpu
+from std.sys.info import bit_width_of
 from bit import pop_count
 from utils.numerics import max_finite as _max_finite
 from utils.numerics import max_or_inf as _max_or_inf
@@ -14,7 +15,7 @@ from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 @always_inline
 fn _pow_2[T: DType, //, n: Scalar[T]]() -> Scalar[T]:
-    alias num_bits = T.bitwidth()
+    alias num_bits = bit_width_of[T]()
     var result = n - 1
 
     @parameter
@@ -121,15 +122,14 @@ struct _VecIterator[
 
 
 @fieldwise_init
-@register_passable("trivial")
 struct Vector[T: DType, size: Int](
     Absable,
+    TrivialRegisterPassable,
     CeilDivable,
     Ceilable,
     Copyable,
     Defaultable,
     DevicePassable,
-    ExplicitlyCopyable,
     Floorable,
     Hashable,
     Movable,

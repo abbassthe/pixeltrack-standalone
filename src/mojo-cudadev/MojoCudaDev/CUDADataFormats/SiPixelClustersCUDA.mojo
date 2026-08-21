@@ -12,6 +12,7 @@ from MojoCudaDev.CUDACore.allocate_device import _AllocateDeviceState
 from MojoCudaDev.CUDACore.allocate_host import _AllocateHostState
 from MojoCudaDev.CUDACore.copyAsync import copyAsync, copyAsyncOwned
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
+from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 
 # C++: __device__ __forceinline__ accessors, read through __ldg (a load hint
@@ -45,7 +46,7 @@ struct DeviceConstView(Movable):
         return self.clusModuleStart_[i]
 
 
-struct SiPixelClustersCUDA(Movable):
+struct SiPixelClustersCUDA(Defaultable, Movable, Typeable):
     var moduleStart_d: DeviceUniquePtr[UInt32]  # index of the first pixel of each module
     var clusInModule_d: DeviceUniquePtr[UInt32]  # number of clusters found in each module
     var moduleId_d: DeviceUniquePtr[UInt32]  # module id of each module
@@ -115,3 +116,7 @@ struct SiPixelClustersCUDA(Movable):
 
     fn view(self) -> UnsafePointer[DeviceConstView, MutAnyOrigin]:
         return self.view_d.get()
+
+    @staticmethod
+    fn dtype() -> String:
+        return "SiPixelClustersCUDA"

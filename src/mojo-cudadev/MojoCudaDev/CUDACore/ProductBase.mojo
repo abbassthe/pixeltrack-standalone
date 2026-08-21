@@ -1,5 +1,5 @@
 from std.memory.arc_pointer import ArcPointer
-from os.atomic import Atomic
+from os.atomic import Atomic, Consistency
 
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType, CUDAEventType, cudaEventQuery, cudaSuccess
 from MojoCudaDev.MojoBridge.DTypes import cudaError_t
@@ -73,7 +73,9 @@ struct ProductBase(Movable):
     fn isValid(self) -> Bool:
         return self.stream_ is not None
 
-    fn isAvailable(self) -> Bool:
+    # C++ is `const` and non-throwing in signature, but reaches
+    # eventWorkHasCompleted -> cudaCheck, which throws (ProductBase.cc).
+    fn isAvailable(self) raises -> Bool:
         # if default-constructed, the product is not available
         if not self.event_:
             return False
@@ -100,7 +102,15 @@ struct ProductBase(Movable):
     fn streamPtr(self) -> Optional[SharedStreamPtr]:
         return self.stream_
 
-    fn mayReuseStream(mut self) -> Bool:
-        # compare_exchange_weak not available in Mojo 0.26.2; fetch_sub is equivalent
-        # for this binary flag: first caller decrements 1→0 and gets True.
-        return self.mayReuseStream_.fetch_sub(1) == UInt8(1)
+    # C++ is `const` but flips a `mutable std::atomic<bool>` (ProductBase.h:68).
+    # Mojo has no `mutable`, so the pointer is rebound to a mutable origin --
+    # the field itself stays inline. One-shot: only the first caller sees True.
+    fn mayReuseStream(self) -> Bool:
+        var p = rebind[UnsafePointer[Scalar[DType.uint8], MutAnyOrigin]](
+            UnsafePointer(to=self.mayReuseStream_).bitcast[Scalar[DType.uint8]]()
+        )
+        var expected = UInt8(1)
+        return Atomic.compare_exchange[
+            success_ordering = Consistency.SEQUENTIAL,
+            failure_ordering = Consistency.SEQUENTIAL,
+        ](p, expected, UInt8(0))

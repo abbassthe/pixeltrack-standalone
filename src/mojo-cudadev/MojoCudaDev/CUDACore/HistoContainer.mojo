@@ -121,9 +121,9 @@ struct HistoContainer[
         self.base.bulkFinalizeFill(apc)
 
     fn finalize[
-        block_size: Int, ws_address_space: AddressSpace
+        ws_address_space: AddressSpace
     ](mut self, ws: UnsafePointer[Self.Counter, MutAnyOrigin, address_space=ws_address_space]):
-        self.base.finalize[block_size=block_size](ws)
+        self.base.finalize(ws)
 
     fn size(mut self) -> UInt32:
         return self.base.size()

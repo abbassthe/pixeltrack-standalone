@@ -4,8 +4,8 @@ from runtime.asyncrt import TaskGroup
 
 # Port of Framework/WaitingTaskHolder.h through C++ line 54.
 # C++ uses tbb::task_group* and WaitingTask*.
-alias TaskGroupPtr = UnsafePointer[TaskGroup]
-alias WaitingTaskPtr = UnsafePointer[WaitingTask]
+alias TaskGroupPtr = UnsafePointer[TaskGroup, MutAnyOrigin]
+alias WaitingTaskPtr = UnsafePointer[WaitingTask, MutAnyOrigin]
 
 
 struct WaitingTaskHolder(Movable):

@@ -12,9 +12,9 @@ struct TaskBase(Movable,ImplicitlyDestructible):
     fn __init__(out self):
         self.m_refCount = Atomic[DType.uint32](0)
 
-    fn __moveinit__(out self, var other: Self):
+    fn __moveinit__(out self, deinit take: Self):
         # Atomic is not movable; preserve the counter value.
-        self.m_refCount = Atomic[DType.uint32](other.m_refCount.load())
+        self.m_refCount = Atomic[DType.uint32](take.m_refCount.load())
 
     # Override in concrete task implementations.
     fn execute(mut self):

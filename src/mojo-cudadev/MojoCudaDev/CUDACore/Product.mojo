@@ -39,6 +39,12 @@ struct Product[T: Movable & Typeable & Defaultable](Movable, Typeable):
         self._base = take._base^
         self.data_ = take.data_^
 
+    # C++ passes a Product<T> wherever a `const ProductBase&` is expected, via
+    # implicit derived-to-base conversion (e.g. ScopedContextProduce{pdigis}).
+    # Mojo has no inheritance, so that conversion is spelled out here.
+    fn base(ref self) -> ref [self._base] ProductBase:
+        return self._base
+
     @staticmethod
     @always_inline
     fn dtype() -> String:

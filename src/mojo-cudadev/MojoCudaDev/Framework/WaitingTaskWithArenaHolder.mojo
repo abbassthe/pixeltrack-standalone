@@ -22,11 +22,11 @@ struct TaskArena(Movable):
     fn attach() -> Self:
         return Self()
 
-    fn __copyinit__(out self, other: Self):
-        self._enqueue_workers = other._enqueue_workers
+    fn __copyinit__(out self, copy: Self):
+        self._enqueue_workers = copy._enqueue_workers
 
-    fn __moveinit__(out self, var other: Self):
-        self._enqueue_workers = other._enqueue_workers
+    fn __moveinit__(out self, deinit take: Self):
+        self._enqueue_workers = take._enqueue_workers
 
     fn enqueue(self, group: TaskGroupPtr, task: WaitingTaskPtr):
         @parameter

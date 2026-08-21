@@ -2553,3 +2553,110 @@ and expected values against the file in Python first): `minPed_=0.0`, `maxPed_=2
 `numberOfRowsAveragedOver_=80`, `nBinsToUseForEncoding_=253`, `deadFlag_=255`, `noisyFlag_=254` — all
 exact. Also confirms the trailing `gainData` size (`nbytes` field in the file) is exactly 3088384 bytes —
 matching `SiPixelGainForHLTonGPU.mojo`'s own `debug_assert(offset < 3088384)` bound.
+
+### Done — `plugin_SiPixelClusterizer/gpuClustering.mojo` — `findClus` (2026-08-21)
+
+The first of the Phase 4 "real rewrite" set. `countModules` was already ported; this adds `findClus`
+(`gpuClustering.h:38-309`), the clustering kernel proper — shared-memory histogram, block-scoped
+atomics, per-thread neighbour lists, and the iterative label-propagation loop.
+
+**The blocking discovery: a non-copyable aggregate cannot be used through a SHARED-space pointer.**
+`__shared__ Hist hist` (h:81) maps to `stack_allocation[1, Hist, address_space=SHARED]()`, but
+`hist[].count(y)` then fails with `value of type 'Hist' cannot be implicitly copied` —
+`HistoContainer` is deliberately not `ImplicitlyCopyable`. Isolated to the address space, not the
+type: the identical code compiles with a generic-space `stack_allocation` and as a plain local. Fixed
+with `.address_space_cast[AddressSpace.GENERIC]()`, which is sound because CUDA's generic address
+space subsumes shared — the 9,720-byte histogram stays in shared memory, only the pointer's static
+type changes. Verified on hardware before building on it (cooperative zero / `count` / `finalize` /
+`fill` across 32 threads, exact read-back). **Expect this for every shared-memory aggregate.**
+
+**`blockPrefixScan` block size is now runtime, not a compile-time parameter.** It was
+`blockPrefixScan[block_size]`, which would have forced `findClus[block_size]` and diverged from C++'s
+signature. Checking why, the parameter was used only as a loop stride and in a
+`constrained[block_size % 32 == 0]` — and `prefixScan.h:58-79` does both at runtime via `blockDim.x`,
+with `assert(0 == blockDim.x % 32)`. So the compile-time version was a porting choice, not a
+necessity. Changed to read `block_dim.x`, cascading through `OneToManyAssoc.finalize` and
+`HistoContainer.finalize`; no other call sites existed. The `constrained` becomes a `debug_assert`,
+matching the C++ assert exactly.
+
+**Two new primitives, both hardware-verified:**
+- `CUDAAtomics.atomic_fetch_min_block` — real block-scoped `atomicMin_block` (h:222,232). `os.atomic`
+  has no `Scope` in this version, but `sys.intrinsics.inlined_assembly` does exist, so this emits
+  `atom.cta.min.s32` directly. **First use of inline PTX in this port.** `Int32` only: the mnemonic is
+  type-specific and nothing else needs it. (C++'s `__CUDA_ARCH__ >= 600` guard is the pre-Pascal
+  fallback; scoped atomics arrived with sm_60, so the block-scoped path is the live one here.)
+- `CUDASync.syncthreads_and` — `__syncthreads_and` (h:249), mirroring `syncthreads_or`'s shape.
+
+**`@parameter if` is not `#ifdef`.** It opens a lexical scope *and* still name-resolves its body even
+when the condition is `False` (confirmed with four minimal cases: a name that exists nowhere is an
+error inside a never-taken branch). C++ declares `totGood` inside `#ifdef GPU_DEBUG` at h:102 and uses
+it at h:113/h:123 inside *different* `#ifdef` blocks — the preprocessor deletes all three together, so
+the declaration lands at function scope. In Mojo those are three scopes, so `totGood` is declared just
+outside the conditional. One line off the C++ position; the alternative was merging h:101-127 into a
+single `@parameter if`, duplicating the fill-histo loop and `finalize` under both flag values.
+
+**All `GPU_DEBUG` blocks are ported, not skipped** (`comptime GPU_DEBUG = False`, flip to enable).
+`gMaxHit` (h:15) is a `__device__` global, which this dialect rejects outright (`global vars are not
+supported`), so it is a kernel parameter instead — always present, only touched under `GPU_DEBUG`.
+
+Smaller notes: `nn`/`nnn` are `InlineArray(uninitialized=True)`, matching C++ leaving `nn`
+uninitialized and zeroing only `nnn` (h:146-147) — PTX confirms both `InlineArray` and
+`stack_allocation` produce the same 336-byte `__local_depot`, but `InlineArray` keeps the C++'s
+`nn[k][l]` indexing instead of manual flattening; using `fill=` instead unrolls into 176 `st.local`
+stores, so the ergonomic default is the expensive one. `maxiter = 16` takes the `__CUDA_ARCH__` branch
+(h:136), this port being CUDA-only. The inner NN loop walks content indices rather than pointers,
+since this dialect has no pointer-pointer subtraction.
+
+Verified on real hardware with a hand-checkable case, three consecutive runs: 7 pixels over 2 modules,
+where `(10,10) (10,11) (11,10)` must merge into one cluster (exercising both the same-y-bin `|Δx| ≤ 1`
+link and the y/y+1 bin link) and `(50,50)` must stay separate. Got `moduleStart = 0, 4`,
+`clusterId = 0 0 0 1 0 0 1`, `nClustersInModule = 2 2`, `moduleId = 0 1` — all exact. Checks
+equivalence classes rather than specific ids, since cluster numbering comes from an `atomicInc` race.
+Also re-run with `GPU_DEBUG = True`: compiles *and* executes (`histo size 3`, `# loops 3`, `2 clusters
+in module 1`, module 0 correctly silent since `0 % 100 != 1`), with the `syncthreads_and` and
+`hist.size() == totGood` asserts passing. Full project-wide cross-compile clean.
+
+**Not yet wired up:** nothing calls `findClus`. Its caller is `SiPixelRawToClusterGPUKernel.{h,cu}`,
+still in the not-started set, along with `gpuClusterChargeCut.h` and `SiPixelRawToClusterCUDA.cc`.
+
+### Audit — files present but undocumented, plus dialect fixes (2026-08-21)
+
+Swept every `.mojo` in the tree against this document. Four files had **no mention anywhere**, and
+three more appear only as Bucket B table rows with no progress entry. All seven landed without being
+recorded; none had a hardware test. Compile status below is by driver-import (see the note on
+verification method in the `gpuClustering` entry's sibling discussion — compiling a file *directly*
+does not establish package context and yields false failures).
+
+| file | lines | compiles | note |
+|---|---|---|---|
+| `CUDACore/cudaDeviceAllocatorStatus.mojo` | 10 | yes | |
+| `CUDADataFormats/ZVertexHeterogeneous.mojo` | 7 | yes | `HeterogeneousSoA[ZVertexSoA]` + `ZVertexCUDAProduct` aliases |
+| `plugin_PixelTriplets/CircleEq.mojo` | 123 | yes | |
+| `plugin_SiPixelRecHits/PixelCPEFastESProducer.mojo` | 35 | **no** | still imports `MojoSerial.*` (4 lines) — the Phase 0b import rewrite missed it, and `CondFormats/PixelCPEFast.mojo` does not exist in this tree at all |
+| `plugin_PixelTriplets/choleskyInversion.mojo` | ~350 | blocked | blocked only by `MojoBridge/Matrix.mojo`, not by its own code |
+| `CondFormats/PixelCPEforGPU.mojo` | ~345 | yes | supersedes the "modeled as a minimal opaque placeholder" note in the `TrackingRecHit2DSOAView` entry above — the real file now exists |
+| `plugin_PixelTriplets/FitUtils.mojo` | ~244 | blocked | same `Matrix.mojo` block |
+
+**Dialect fixes applied while chasing the above.** `MojoBridge/Vector.mojo` now compiles (it did not
+before): dropped `ExplicitlyCopyable` (no such trait in this dialect) and replaced
+`@register_passable("trivial")` with the `TrivialRegisterPassable` trait — the same landmine already
+recorded for `BeamSpotPOD`/`SOARotation`. Same `ExplicitlyCopyable` removal applied to `Matrix.mojo`.
+
+**`Matrix.mojo` is still broken and it blocks the whole fit chain** (`choleskyInversion`, `FitUtils`,
+`SymmetricEigen`). Two remaining problems, and neither is a one-liner: 130 bare-`T` sites needing
+`Self.` qualification in a 1,742-line file — unsafe to sed, since generic *function* parameters must
+stay bare, unlike `SOARotation`'s clean 68-site sweep — and `_MatIterator`'s
+`mat_origin: Origin[mat_mutability]` (`Matrix.mojo:21`), where this dialect rejects a positional
+`Origin` parameter and the `Origin[mut=...]` form fails with "inferred parameter cannot depend on
+non-inferred parameter". That second one is a genuine restructure of the iterator's parameter list.
+
+**`Product[T]` conformance fixed on two data formats.** `Product[T]` requires
+`T: Movable & Typeable & Defaultable`, but `SiPixelDigisCUDA` and `SiPixelClustersCUDA` were declared
+`(Movable)` only, so `Product[SiPixelDigisCUDA]` did not compile — which blocks every producer and
+consumer of those products. Both now carry `(Defaultable, Movable, Typeable)` with a `dtype()`, exactly
+matching `BeamSpotCUDA`, which had all three precisely so `Product[BeamSpotCUDA]` works in
+`BeamSpotToCUDA.mojo`. (The `SiPixelClustersCUDA` entry above claims `Typeable` was dropped "following
+BeamSpotCUDA" — that was a misreading; `BeamSpotCUDA` never dropped it.)
+
+Full project-wide cross-compile clean after all of the above, with the `findClus` clustering test and
+the `SiPixelClustersCUDA` GPU demo both still passing.

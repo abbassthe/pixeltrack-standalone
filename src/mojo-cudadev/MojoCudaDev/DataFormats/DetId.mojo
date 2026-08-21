@@ -1,7 +1,6 @@
 from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 
-@nonmaterializable(NoneType)
 struct Detector:
     alias Tracker: UInt32 = 1
     alias Muon: UInt32 = 2

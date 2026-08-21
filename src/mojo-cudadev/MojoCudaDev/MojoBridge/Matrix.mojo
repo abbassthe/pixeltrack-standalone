@@ -123,7 +123,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     Ceilable,
     Copyable,
     Defaultable,
-    ExplicitlyCopyable,
     Floorable,
     Hashable,
     MatrixLike,

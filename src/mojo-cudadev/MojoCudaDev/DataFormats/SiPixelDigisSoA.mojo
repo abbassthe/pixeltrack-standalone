@@ -29,21 +29,21 @@ struct SiPixelDigisSoA(Copyable, Defaultable, Movable, Sized, Typeable):
     fn __init__(
         out self,
         var nDigis: SizeType,
-        pdigi: UnsafePointer[UInt32],
-        rawIdArr: UnsafePointer[UInt32],
-        adc: UnsafePointer[UInt16],
-        clus: UnsafePointer[Int32],
+        pdigi: UnsafePointer[UInt32, MutAnyOrigin],
+        rawIdArr: UnsafePointer[UInt32, MutAnyOrigin],
+        adc: UnsafePointer[UInt16, MutAnyOrigin],
+        clus: UnsafePointer[Int32, MutAnyOrigin],
     ):
-        self._pdigi = List[UInt32](unsafe_uninit_length=UInt(nDigis))
-        self._rawIdArr = List[UInt32](unsafe_uninit_length=UInt(nDigis))
-        self._adc = List[UInt16](unsafe_uninit_length=UInt(nDigis))
-        self._clus = List[Int32](unsafe_uninit_length=UInt(nDigis))
-        for i in range(UInt(nDigis)):
+        self._pdigi = List[UInt32](unsafe_uninit_length=Int(nDigis))
+        self._rawIdArr = List[UInt32](unsafe_uninit_length=Int(nDigis))
+        self._adc = List[UInt16](unsafe_uninit_length=Int(nDigis))
+        self._clus = List[Int32](unsafe_uninit_length=Int(nDigis))
+        for i in range(Int(nDigis)):
             (self._pdigi.unsafe_ptr() + i).init_pointee_copy(pdigi[i])
             (self._rawIdArr.unsafe_ptr() + i).init_pointee_copy(rawIdArr[i])
             (self._adc.unsafe_ptr() + i).init_pointee_copy(adc[i])
             (self._clus.unsafe_ptr() + i).init_pointee_copy(clus[i])
-        debug_assert(self._pdigi.__len__() == UInt(nDigis))
+        debug_assert(len(self._pdigi) == Int(nDigis))
 
     @always_inline
     fn __len__(self) -> Int:

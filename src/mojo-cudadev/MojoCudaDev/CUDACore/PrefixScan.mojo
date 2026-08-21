@@ -56,7 +56,7 @@ fn warpPrefixScan[
 
 # C++: blockPrefixScan(VT const* ci, VT* co, uint32_t size, T* ws) -- prefixScan.h:46-79
 fn blockPrefixScan[
-    dtype: DType, ws_address_space: AddressSpace, //, block_size: Int
+    dtype: DType, ws_address_space: AddressSpace, //
 ](
     ci: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     co: UnsafePointer[Scalar[dtype], MutAnyOrigin],
@@ -65,10 +65,11 @@ fn blockPrefixScan[
 ):
     @parameter
     if is_gpu():
-        from std.gpu import thread_idx
+        from std.gpu import thread_idx, block_dim
         from std.gpu.sync import barrier
 
-        constrained[block_size % 32 == 0, "blockPrefixScan: block_size must be a multiple of 32"]()
+        var block_size = Int(block_dim.x)
+        debug_assert(block_size % 32 == 0, "blockPrefixScan: blockDim.x must be a multiple of 32")
         debug_assert(
             ws != UnsafePointer[Scalar[dtype], MutAnyOrigin, address_space=ws_address_space](),
             "blockPrefixScan: ws must not be null",
@@ -113,10 +114,10 @@ fn blockPrefixScan[
 
 # C++: blockPrefixScan(T* c, uint32_t size, T* ws) -- prefixScan.h:87-119 (in-place)
 fn blockPrefixScan[
-    dtype: DType, ws_address_space: AddressSpace, //, block_size: Int
+    dtype: DType, ws_address_space: AddressSpace, //
 ](
     c: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     size: UInt32,
     ws: UnsafePointer[Scalar[dtype], MutAnyOrigin, address_space=ws_address_space],
 ):
-    blockPrefixScan[block_size=block_size](c, c, size, ws)
+    blockPrefixScan(c, c, size, ws)

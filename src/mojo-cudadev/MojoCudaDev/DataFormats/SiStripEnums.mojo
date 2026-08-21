@@ -1,4 +1,3 @@
-@nonmaterializable(NoneType)
 struct SiStripSubdetector:
     alias UNKNOWN: UInt32 = 0
     alias TIB: UInt32 = 3
@@ -7,7 +6,6 @@ struct SiStripSubdetector:
     alias TEC: UInt32 = 6
 
 
-@nonmaterializable(NoneType)
 struct SiStripModuleGeometry:
     alias UNKNOWNGEOMETRY: UInt32 = 0
     alias IB1: UInt32 = 1
