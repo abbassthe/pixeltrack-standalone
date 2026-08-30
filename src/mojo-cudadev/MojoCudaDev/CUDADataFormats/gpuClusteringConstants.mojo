@@ -1,11 +1,11 @@
 # Mojo port of CUDADataFormats/gpuClusteringConstants.h.
-comptime GPU_SMALL_EVENTS = False  # matches TrackSoAHeterogeneousT.mojo's own #ifdef modeling
+from sys import is_defined
 
 
 struct gpuClustering:
     @staticmethod
     fn maxHitsInIter() -> UInt32:
-        if GPU_SMALL_EVENTS:
+        if is_defined["GPU_SMALL_EVENTS"]():
             return 64
         else:
             return 160

@@ -2,14 +2,8 @@
 # new OneToManyAssoc (not mojo-serial's HistoContainer-based one) and fixed
 # to match C++'s hindex_type = uint32_t (mojo-serial used uint16 -- a real
 # CMS-code delta the port plan flagged, not a typo).
-#
-# GPU_SMALL_EVENTS is a build-time #ifdef in C++, undefined by default (the
-# `#else` branch is what real builds use) -- modeled as a comptime Bool,
-# same idiom as is_gpu() standing in for #ifdef __CUDA_ARCH__ elsewhere in
-# this port.
-comptime GPU_SMALL_EVENTS = False
-
 from math import copysign
+from sys import is_defined
 
 from MojoCudaDev.CUDACore.OneToManyAssoc import OneToManyAssoc
 from MojoCudaDev.CUDACore.eigenSoA import ScalarSoA
@@ -35,7 +29,7 @@ struct pixelTrack:
 
     @staticmethod
     fn maxNumber() -> Int:
-        if GPU_SMALL_EVENTS:
+        if is_defined["GPU_SMALL_EVENTS"]():
             return 2 * 1024
         else:
             return 32 * 1024

@@ -108,14 +108,28 @@ struct ScopedContextGetterBase(Movable):
 
     fn get[
         T: Movable & Typeable & Defaultable
-    ](mut self, ref data: Product[T]) raises -> ref [data.data_] T:
+    ](mut self, ref data: Product[T]) raises -> ref [data] T:
         self.synchronizeStreams(
             data._base.device(),
             data._base.stream(),
             data._base.isAvailable(),
             data._base.event(),
         )
-        return data.data_
+        # The natural origin here is data.data_, but then the two-arg overload
+        # below would need `event._products.data_`, which is not spellable.
+        # Rebinding widens it to `data`, which is.
+        var p = rebind[UnsafePointer[T, MutAnyOrigin]](
+            UnsafePointer(to=data.data_)
+        )
+        return p[]
+
+    # C++: get(iEvent, token) -- sugar for get(iEvent.get(token)), ScopedContext.h
+    fn get[
+        T: Movable & Typeable & Defaultable
+    ](
+        mut self, event: Event, ref token: EDGetTokenT[Product[T]]
+    ) raises -> ref [event._products] T:
+        return self.get[T](event.get[Product[T]](token))
 
     fn synchronizeStreams(
         mut self,
@@ -300,8 +314,15 @@ struct ScopedContextAcquire(Movable):
     fn streamPtr(self) -> SharedStreamPtr:
         return self.getter.streamPtr()
 
-    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data.data_] T:
+    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data] T:
         return self.getter.get[T](data)
+
+    fn get[
+        T: Movable & Typeable & Defaultable
+    ](
+        mut self, event: Event, ref token: EDGetTokenT[Product[T]]
+    ) raises -> ref [event._products] T:
+        return self.getter.get[T](event, token)
 
     fn pushNextTask[F: Movable](mut self, var func: F) raises:
         if not self.hasContextState_:
@@ -357,8 +378,15 @@ struct ScopedContextProduce(Movable):
     fn streamPtr(self) -> SharedStreamPtr:
         return self.getter.streamPtr()
 
-    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data.data_] T:
+    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data] T:
         return self.getter.get[T](data)
+
+    fn get[
+        T: Movable & Typeable & Defaultable
+    ](
+        mut self, event: Event, ref token: EDGetTokenT[Product[T]]
+    ) raises -> ref [event._products] T:
+        return self.getter.get[T](event, token)
 
     fn wrap[T: Movable & Typeable & Defaultable](mut self, var data: T) -> Product[T]:
         var stream = self.streamPtr()
@@ -392,6 +420,13 @@ struct ScopedContextAnalyze(Movable):
     fn streamPtr(self) -> SharedStreamPtr:
         return self.getter.streamPtr()
 
-    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data.data_] T:
+    fn get[T: Movable & Typeable & Defaultable](mut self, ref data: Product[T]) raises -> ref [data] T:
         return self.getter.get[T](data)
+
+    fn get[
+        T: Movable & Typeable & Defaultable
+    ](
+        mut self, event: Event, ref token: EDGetTokenT[Product[T]]
+    ) raises -> ref [event._products] T:
+        return self.getter.get[T](event, token)
 

@@ -14,7 +14,7 @@ alias DevicePtr = UnsafePointer[UInt8, MutAnyOrigin]
 alias ByteDeviceBuffer = DeviceBuffer[DType.uint8]
 
 
-struct _AllocateDeviceState(Movable):
+struct _AllocateDeviceState(Defaultable, Movable):
     var _lock: BlockingSpinLock
     # DeviceContext stored alongside its buffer so it doesn't get destroyed
     # (at allocate_device's return) before the buffer it owns.

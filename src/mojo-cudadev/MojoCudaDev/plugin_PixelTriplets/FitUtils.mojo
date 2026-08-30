@@ -1,47 +1,12 @@
 import math
 from MojoCudaDev.MojoBridge.Matrix import Matrix, MatrixLike, MatrixXd, VectorXd
 from MojoCudaDev.MojoBridge.DTypes import DType
+from MojoCudaDev.plugin_PixelTriplets.FitResults import (
+    _CircleFit,
+    _LineFit,
+    _HelixFit,
+)
 
-@fieldwise_init
-struct _CircleFit(Copyable, Defaultable, Movable):
-    var par: Matrix[DType.float64, 3, 1]  # (X0, Y0, R)
-    var cov: Matrix[DType.float64, 3, 3]
-    var qCharge: Int32  # particle charge
-    var chi2: Float32
-
-    fn __init__(out self):
-        self.par = Matrix[DType.float64, 3, 1]()
-        self.cov = Matrix[DType.float64, 3, 3]()
-        self.qCharge = 0
-        self.chi2 = 0.0
-
-
-@fieldwise_init
-struct _LineFit(Copyable, Defaultable, Movable):
-    var par: Matrix[DType.float64, 2, 1]  # (cotan(theta), Zip)
-    var cov: Matrix[DType.float64, 2, 2]
-    var chi2: Float64
-
-    fn __init__(out self):
-        self.par = Matrix[DType.float64, 2, 1]()
-        self.cov = Matrix[DType.float64, 2, 2]()
-        self.chi2 = 0.0
-
-
-@fieldwise_init
-struct _HelixFit(Copyable, Defaultable, Movable):
-    var par: Matrix[DType.float64, 5, 1]  # (phi, Tip, pt, cotan(theta), Zip)
-    var cov: Matrix[DType.float64, 5, 5]
-    var chi2_circle: Float32
-    var chi2_line: Float32
-    var qCharge: Int32  # particle charge
-
-    fn __init__(out self):
-        self.par = Matrix[DType.float64, 5, 1]()
-        self.cov = Matrix[DType.float64, 5, 5]()
-        self.chi2_circle = 0.0
-        self.chi2_line = 0.0
-        self.qCharge = 0
 
 struct riemannFit:
 

@@ -3,18 +3,10 @@
 # TrackingRecHit2DHeterogeneous's constructor. __ldg (C++'s separate `const`
 # read-only overloads) is a load hint with no correctness effect, dropped in
 # favor of this port's established single ref-returning accessor per field.
+from MojoCudaDev.CondFormats.PixelCPEforGPU import ParamsOnGPU
 from MojoCudaDev.CUDACore.HistoContainer import HistoContainer
 from MojoCudaDev.Geometry.Phase1PixelTopology import AverageGeometry as _AverageGeometry
 from MojoCudaDev.MojoBridge.DTypes import Float, Typeable
-
-# pixelCPEforGPU::ParamsOnGPU (CondFormats/pixelCPEforGPU.h, 345 lines) isn't
-# ported yet -- belongs with Phase 4's SiPixelRecHits. C++ itself only
-# forward-declares this type here too (TrackingRecHit2DSOAView.h:11-13),
-# never touching its fields in this file -- an opaque placeholder is exactly
-# as much information this file needs. Replace when something needs its
-# actual fields.
-struct ParamsOnGPU:
-    pass
 
 
 struct TrackingRecHit2DSOAView(Movable, Typeable):

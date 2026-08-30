@@ -10,7 +10,7 @@ struct VertexCount(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPass
         self._vertcies = 0
 
     @always_inline
-    fn nVertcies(self) -> UInt32:
+    fn nVertices(self) -> UInt32:
         return self._vertcies
 
     @always_inline

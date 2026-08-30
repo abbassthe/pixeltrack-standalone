@@ -21,7 +21,7 @@ struct Phase1PixelTopology:
 
     alias numberOfModules: UInt32 = 1856
     alias numberOfLayers: UInt32 = 10
-    alias layerStart = InlineArray[UInt32, Int(Self.numberOfLayers) + 1](
+    alias layerStart: InlineArray[UInt32, Int(Self.numberOfLayers) + 1] = [
         0,
         96,
         320,
@@ -33,9 +33,9 @@ struct Phase1PixelTopology:
         1632,
         1744,  # negative endcap
         Self.numberOfModules,
-    )
+    ]
 
-    alias layerName = InlineArray[StaticString, Int(Self.numberOfLayers)](
+    alias layerName: InlineArray[StaticString, Int(Self.numberOfLayers)] = [
         "BL1",
         "BL2",
         "BL3",
@@ -46,7 +46,7 @@ struct Phase1PixelTopology:
         "E-1",
         "E-2",
         "E-3",  # negative endcap
-    )
+    ]
 
     alias numberOfModulesInBarrel: UInt32 = 1184
     alias numberOfLaddersInBarrel: UInt32 = Self.numberOfModulesInBarrel / 8

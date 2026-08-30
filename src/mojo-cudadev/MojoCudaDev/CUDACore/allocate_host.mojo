@@ -4,7 +4,7 @@ from builtin.dtype import DType
 from builtin.error import Error
 from builtin.int import Int
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
-from MojoCudaDev.CUDACore.CachingDeviceAllocator import CachingDeviceAllocator
+from MojoCudaDev.CUDACore.CachingDeviceAllocator import IntPow
 from MojoCudaDev.CUDACore.getCachingDeviceAllocator import binGrowth, maxBin
 from utils.lock import BlockingSpinLock, BlockingScopedLock
 
@@ -14,7 +14,7 @@ alias ByteHostBuffer = HostBuffer[DType.uint8]
 alias cudaStream_t = CUDAStreamType
 
 
-struct _AllocateHostState(Movable):
+struct _AllocateHostState(Defaultable, Movable):
     var _lock: BlockingSpinLock
     # DeviceContext stored alongside its buffer so it doesn't get destroyed
     # (at allocate_host_raw's return) before the buffer it owns.
@@ -73,4 +73,4 @@ struct _AllocateHostState(Movable):
 
 
 fn _max_allocation_size() -> UInt:
-    return CachingDeviceAllocator.IntPow(binGrowth, maxBin)
+    return IntPow(binGrowth, maxBin)

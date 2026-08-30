@@ -3,6 +3,7 @@ from memory import stack_allocation
 from std.memory import AddressSpace
 from std.sys.info import is_gpu
 from std.gpu.sync import barrier
+from sys import is_defined
 
 from MojoCudaDev.CUDACore.CUDAAtomics import (
     atomic_fetch_add,
@@ -15,9 +16,6 @@ from MojoCudaDev.CUDACore.HistoContainer import HistoContainer
 from MojoCudaDev.CUDADataFormats.gpuClusteringConstants import gpuClustering as gpuClusteringConstants
 from MojoCudaDev.Geometry.Phase1PixelTopology import Phase1PixelTopology
 
-
-# C++ #ifdef GPU_DEBUG -- flip to True to enable the debug blocks below.
-comptime GPU_DEBUG = False
 
 # C++ declares these inside findClus's module loop (gpuClustering.h:78-80);
 # Mojo has no function-local type alias, so they live here.
@@ -101,7 +99,7 @@ struct gpuClustering:
             )
 
             @parameter
-            if GPU_DEBUG:
+            if is_defined["GPU_DEBUG"]():
                 if Int(thisModuleId) % 100 == 1:
                     if thread_idx.x == 0:
                         print(
@@ -171,7 +169,7 @@ struct gpuClustering:
             ]()
 
             @parameter
-            if GPU_DEBUG:
+            if is_defined["GPU_DEBUG"]():
                 totGood[0] = 0
                 barrier()
 
@@ -182,7 +180,7 @@ struct gpuClustering:
                     hist[].count(y[i])
 
                     @parameter
-                    if GPU_DEBUG:
+                    if is_defined["GPU_DEBUG"]():
                         _ = atomic_fetch_add(totGood, UInt32(1))
                 i += Int(block_dim.x)
             barrier()
@@ -193,7 +191,7 @@ struct gpuClustering:
             barrier()
 
             @parameter
-            if GPU_DEBUG:
+            if is_defined["GPU_DEBUG"]():
                 debug_assert(
                     hist[].size() == totGood[0], "findClus: hist size mismatch"
                 )
@@ -224,7 +222,7 @@ struct gpuClustering:
             barrier()  # for hit filling!
 
             @parameter
-            if GPU_DEBUG:
+            if is_defined["GPU_DEBUG"]():
                 # look for anomalous high occupancy
                 var n40 = stack_allocation[
                     1, UInt32, address_space = AddressSpace.SHARED
@@ -341,7 +339,7 @@ struct gpuClustering:
                 nloops += 1
 
             @parameter
-            if GPU_DEBUG:
+            if is_defined["GPU_DEBUG"]():
                 var n0 = stack_allocation[
                     1, Int32, address_space = AddressSpace.SHARED
                 ]()
@@ -396,7 +394,7 @@ struct gpuClustering:
                 moduleId[module] = UInt32(thisModuleId)
 
                 @parameter
-                if GPU_DEBUG:
+                if is_defined["GPU_DEBUG"]():
                     if foundClusters[0] > gMaxHit[0]:
                         gMaxHit[0] = foundClusters[0]
                         if foundClusters[0] > 8:

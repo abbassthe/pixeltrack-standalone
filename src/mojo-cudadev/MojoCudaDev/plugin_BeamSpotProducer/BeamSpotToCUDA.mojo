@@ -48,7 +48,7 @@ struct BeamSpotToCUDA(EDProducer, Typeable):
         except e:
             print("Error during BeamSpotToCUDA.produce:", e)
 
-    fn endJob(mut self):
+    fn endJob(mut self) raises:
         pass
 
     @staticmethod

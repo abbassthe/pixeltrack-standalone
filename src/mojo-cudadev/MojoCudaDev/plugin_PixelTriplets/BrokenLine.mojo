@@ -17,21 +17,21 @@ alias karimaki_circle_fit = riemannFit.CircleFit
 #!
 #\brief data needed for the Broken Line fit procedure.
 struct PreparedBrokenLineData[N: Int]:
-    var q: Int                     #!< particle charge
-    var radii: riemannFit.Matrix2xNd[N]  #!< xy data in the system in which the pre-fitted center is the origin
-    var s: riemannFit.VectorNd[N]        #!< total distance traveled in the transverse plane
+    var qCharge: Int               #!< particle charge
+    var radii: riemannFit.Matrix2xNd[Self.N]  #!< xy data in the system in which the pre-fitted center is the origin
+    var sTransverse: riemannFit.VectorNd[Self.N]  #!< total distance traveled in the transverse plane
                                    #   starting from the pre-fitted closest approach
-    var S: riemannFit.VectorNd[N]        #!< total distance traveled (three-dimensional)
-    var Z: riemannFit.VectorNd[N]        #!< orthogonal coordinate to the pre-fitted line in the sz plane
-    var VarBeta: riemannFit.VectorNd[N]  #!< kink angles in the SZ plane
+    var sTotal: riemannFit.VectorNd[Self.N]   #!< total distance traveled (three-dimensional)
+    var zInSZplane: riemannFit.VectorNd[Self.N]  #!< orthogonal coordinate to the pre-fitted line in the sz plane
+    var varBeta: riemannFit.VectorNd[Self.N]  #!< kink angles in the SZ plane
 
     fn __init__(out self):
         self.qCharge = 0
-        self.radii = riemannFit.Matrix2xNd[N]()
-        self.sTransverse = riemannFit.VectorNd[N]()
-        self.sTotal = riemannFit.VectorNd[N]()
-        self.zInSZplane = riemannFit.VectorNd[N]()
-        self.varBeta = riemannFit.VectorNd[N]()
+        self.radii = riemannFit.Matrix2xNd[Self.N]()
+        self.sTransverse = riemannFit.VectorNd[Self.N]()
+        self.sTotal = riemannFit.VectorNd[Self.N]()
+        self.zInSZplane = riemannFit.VectorNd[Self.N]()
+        self.varBeta = riemannFit.VectorNd[Self.N]()
 
 
 #!

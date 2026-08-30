@@ -1,4 +1,5 @@
 from MojoCudaDev.CUDACore.CachingHostAllocator import CachingHostAllocator
+from MojoCudaDev.CUDACore.CachingDeviceAllocator import IntPow
 from MojoCudaDev.CUDACore.getCachingDeviceAllocator import (
     binGrowth,
     minBin,
@@ -64,7 +65,7 @@ fn _printHostSettings():
     print("  resulting bins:")
     var bin = minBin
     while bin <= maxBin:
-        var bin_size = CachingHostAllocator.IntPow(binGrowth, bin)
+        var bin_size = IntPow(binGrowth, bin)
         print("    " + _formatBinSize(bin_size))
         bin += 1
     print(

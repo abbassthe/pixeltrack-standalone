@@ -56,7 +56,7 @@ struct EDProducerWrapperT[T: Typeable & EDProducer](Movable, Typeable):
 struct EDProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
     alias _C = fn (mut ProductRegistry) raises -> EDProducerWrapper
     alias _P = fn (mut EDProducerWrapper, mut Event, EventSetup, UnsafePointer[CUDAAppContext, MutAnyOrigin])
-    alias _E = fn (mut EDProducerWrapper)
+    alias _E = fn (mut EDProducerWrapper) raises
     alias _D = fn (mut EDProducerWrapper)
     var _producer: EDProducerWrapper
     var _create: Self._C
@@ -99,7 +99,7 @@ struct EDProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
         self._produce(self._producer, event, eventSetup, ctx)
 
     @always_inline
-    fn endJob(mut self):
+    fn endJob(mut self) raises:
         self._end(self._producer)
 
     @always_inline
@@ -198,7 +198,7 @@ fn fwkModule[T: Typeable & EDProducer](mut reg: Registry):
         )
 
     @always_inline
-    fn end_templ[T: Typeable & EDProducer](mut edproducer: EDProducerWrapper):
+    fn end_templ[T: Typeable & EDProducer](mut edproducer: EDProducerWrapper) raises:
         rebind[EDProducerWrapperT[T]](edproducer).producer()[].endJob()
 
     @always_inline

@@ -22,12 +22,14 @@ from MojoCudaDev.MojoBridge.DTypes import DType
 #
 #
 
+@always_inline
 fn invert11[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var inv = 1.0 / src[0, 0]
     dst[0, 0] = inv
 
 
 
+@always_inline
 fn invert22[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0] * src[1, 0] * luc0
@@ -41,6 +43,7 @@ fn invert22[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
+@always_inline
 fn invert33[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
@@ -62,6 +65,7 @@ fn invert33[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
+@always_inline
 fn invert44[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
@@ -94,6 +98,7 @@ fn invert44[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
+@always_inline
 fn invert55[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
@@ -152,6 +157,7 @@ fn invert55[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
+@always_inline
 fn invert66[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
@@ -311,23 +317,23 @@ fn symmetrize66[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
 struct Inverter[T: DType, rows: Int, cols: Int, N: Int]:
     @staticmethod
     @always_inline
-    fn eval(src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
+    fn eval(src: Matrix[Self.T, Self.rows, Self.cols], mut dst: Matrix[Self.T, Self.rows, Self.cols]):
         @parameter
-        if N == 1:
+        if Self.N == 1:
             invert11(src, dst)
-        elif N == 2:
+        elif Self.N == 2:
             invert22(src, dst)
             symmetrize22(dst)
-        elif N == 3:
+        elif Self.N == 3:
             invert33(src, dst)
             symmetrize33(dst)
-        elif N == 4:
+        elif Self.N == 4:
             invert44(src, dst)
             symmetrize44(dst)
-        elif N == 5:
+        elif Self.N == 5:
             invert55(src, dst)
             symmetrize55(dst)
-        elif N == 6:
+        elif Self.N == 6:
             invert66(src, dst)
             symmetrize66(dst)
         else:
@@ -335,6 +341,7 @@ struct Inverter[T: DType, rows: Int, cols: Int, N: Int]:
 
 
 
+@always_inline
 fn invert[T: DType, rows: Int, cols: Int](
     src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]
 ):

@@ -65,9 +65,9 @@ struct _VecIterator[
     vec_mutability: Bool, //,
     W: DType,
     size: Int,
-    vec_origin: Origin[vec_mutability],
+    vec_origin: Origin[mut=vec_mutability],
     forward: Bool = True,
-](Copyable, Iterator, Movable, Typeable):
+](Copyable, ImplicitlyCopyable, Iterator, Movable, Typeable):
     alias vec_type = Vector[W, size]
     alias T = Scalar[W]
     alias Element = Self.T
@@ -132,6 +132,7 @@ struct Vector[T: DType, size: Int](
     DevicePassable,
     Floorable,
     Hashable,
+    ImplicitlyCopyable,
     Movable,
     Powable,
     Representable,
@@ -142,22 +143,22 @@ struct Vector[T: DType, size: Int](
     Typeable,
     Writable,
 ):
-    alias psize = _pow_2[size]()
-    alias _D = Scalar[T]
-    alias _DC = SIMD[T, Self.psize]
+    alias psize = _pow_2[Self.size]()
+    alias _D = Scalar[Self.T]
+    alias _DC = SIMD[Self.T, Self.psize]
     alias _Mask = Vector[DType.bool, size]
     var _data: Self._DC
 
     # SIMD specifics
 
-    alias device_type: AnyTrivialRegType = Self
+    alias device_type: AnyType = Self
 
-    fn _to_device_type(self, target: OpaquePointer):
+    fn _to_device_type[o: MutOrigin, //](self, target: UnsafePointer[NoneType, o]):
         target.bitcast[Self.device_type]()[] = self
 
     @staticmethod
     fn get_type_name() -> String:
-        return "Vector[" + repr(T) + ", " + repr(size) + "]"
+        return "Vector[" + repr(Self.T) + ", " + repr(Self.size) + "]"
 
     @staticmethod
     fn get_device_type_name() -> String:
@@ -175,7 +176,7 @@ struct Vector[T: DType, size: Int](
     @implicit
     fn __init__(out self, value: __mlir_type.index, /):
         # support MLIR assignment for compatibility purposes
-        self._data = value
+        self._data = Self._DC(Int(mlir_value=value))
 
     # Lifecycle methods
 
@@ -187,31 +188,31 @@ struct Vector[T: DType, size: Int](
     @always_inline
     fn copy(self) -> Self:
         """Explicitly construct a copy of self."""
-        return Self.__copyinit__(self)
+        return self
 
     @implicit
-    fn __init__[vsize: Int, //](out self, vec: Vector[T, vsize]):
+    fn __init__[vsize: Int, //](out self, vec: Vector[Self.T, vsize]):
         """Initialize a vector from an arbitrary vector. Might cause data loss (implicit).
         """
         self = Self()
 
         @parameter
-        for i in range(min(size, vsize)):
+        for i in range(min(Self.size, vsize)):
             self._data[i] = vec[i]
 
     @implicit
-    fn __init__[vsize: Int, //](out self, vec: SIMD[T, vsize]):
+    fn __init__[vsize: Int, //](out self, vec: SIMD[Self.T, vsize]):
         """Initialize a vector from an arbitrary SIMD vector. Might cause data loss (implicit).
         """
         self = Self()
 
         @parameter
-        for i in range(min(size, vsize)):
+        for i in range(min(Self.size, vsize)):
             self._data[i] = vec[i]
 
     @always_inline
     @implicit
-    fn __init__(out self, var vec: SIMD[T, size], /):
+    fn __init__(out self, var vec: SIMD[Self.T, Self.size], /):
         """Initialize a vector from a SIMD object of the same size (implicit).
         """
         self._data = rebind[Self._DC](vec)
@@ -221,7 +222,7 @@ struct Vector[T: DType, size: Int](
         """Initialize a vector from a list of values. Might cause data loss (implicit).
         """
         self = Self()
-        for i in range(min(size, values.__len__())):
+        for i in range(min(Self.size, values.__len__())):
             self._data[i] = values[i]
 
     @always_inline
@@ -266,21 +267,21 @@ struct Vector[T: DType, size: Int](
         self._data = Self._DC(val)
 
     @always_inline
-    fn __init__[U: DType, //](out self, value: SIMD[U, size], /):
+    fn __init__[U: DType, //](out self, value: SIMD[U, Self.size], /):
         """Initializes a vector with a SIMD vector of the same size and of a different data type.
         """
-        self._data = rebind[Self._DC](value.cast[T]())
+        self._data = rebind[Self._DC](value.cast[Self.T]())
 
     @always_inline
-    fn __init__[U: DType, //](out self, vec: Vector[U, size], /):
+    fn __init__[U: DType, //](out self, vec: Vector[U, Self.size], /):
         """Initializes a vector with a vector of the same size and of a different data type.
         """
-        self._data = rebind[Self._DC](vec._data.cast[T]())
+        self._data = rebind[Self._DC](vec._data.cast[Self.T]())
 
-    fn __init__[*, offset: Int](out self, vec: Vector[T, _]):
+    fn __init__[*, offset: Int](out self, vec: Vector[Self.T, _]):
         """Initializes a vector as a slice of another vector with specified output size and offset.
         """
-        alias output_width = size
+        alias output_width = Self.size
 
         self = Self()
         var i = 0
@@ -306,8 +307,8 @@ struct Vector[T: DType, size: Int](
     fn __setitem__(mut self, idx: Int, val: Self._D):
         self._data[idx] = val
 
-    fn __iter__(ref self) -> _VecIterator[T, size, __origin_of(self)]:
-        return _VecIterator[T, size, __origin_of(self)](0, Pointer(to=self))
+    fn __iter__(ref self) -> _VecIterator[T, size, origin_of(self)]:
+        return _VecIterator[T, size, origin_of(self)](0, Pointer(to=self))
 
     @always_inline
     fn __contains__(self, value: Self._D) -> Bool:
@@ -315,17 +316,17 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     fn __add__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        constrained[Self.T.is_numeric(), "DType must be numeric"]()
         return self._data + rhs._data
 
     @always_inline
     fn __sub__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        constrained[Self.T.is_numeric(), "DType must be numeric"]()
         return self._data - rhs._data
 
     @always_inline
     fn __mul__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        constrained[Self.T.is_numeric(), "DType must be numeric"]()
         return self._data * rhs._data
 
     @always_inline
@@ -338,7 +339,7 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     fn __truediv__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        constrained[Self.T.is_numeric(), "DType must be numeric"]()
         return self._data / rhs._data
 
     @always_inline
@@ -353,12 +354,12 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     fn __pow__(self, exp: Int) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        constrained[Self.T.is_numeric(), "DType must be numeric"]()
         return self._data**exp
 
     @always_inline
     fn __pow__(self, exp: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        constrained[Self.T.is_numeric(), "DType must be numeric"]()
         return self._data**exp._data
 
     @always_inline
@@ -398,7 +399,7 @@ struct Vector[T: DType, size: Int](
     @always_inline
     fn __and__(self, rhs: Self) -> Self:
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType must be an integral or bool type",
         ]()
         return self._data & rhs._data
@@ -406,7 +407,7 @@ struct Vector[T: DType, size: Int](
     @always_inline
     fn __xor__(self, rhs: Self) -> Self:
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType must be an integral or bool type",
         ]()
         return self._data ^ rhs._data
@@ -414,7 +415,7 @@ struct Vector[T: DType, size: Int](
     @always_inline
     fn __or__(self, rhs: Self) -> Self:
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType must be an integral or bool type",
         ]()
         return self._data | rhs._data
@@ -432,7 +433,7 @@ struct Vector[T: DType, size: Int](
     @always_inline
     fn __invert__(self) -> Self:
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType must be an integral or bool type",
         ]()
         return ~self._data
@@ -477,7 +478,7 @@ struct Vector[T: DType, size: Int](
     @always_inline("nodebug")
     fn __iand__(mut self, rhs: Self):
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType must be an integral or bool type",
         ]()
         self = self & rhs
@@ -485,7 +486,7 @@ struct Vector[T: DType, size: Int](
     @always_inline("nodebug")
     fn __ixor__(mut self, rhs: Self):
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType must be an integral or bool type",
         ]()
         self = self ^ rhs
@@ -493,7 +494,7 @@ struct Vector[T: DType, size: Int](
     @always_inline("nodebug")
     fn __ior__(mut self, rhs: Self):
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType must be an integral or bool type",
         ]()
         self = self | rhs
@@ -511,7 +512,7 @@ struct Vector[T: DType, size: Int](
     @always_inline("nodebug")
     fn __iinvert__(mut self):
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType must be an integral or bool type",
         ]()
         self = ~self
@@ -560,7 +561,7 @@ struct Vector[T: DType, size: Int](
     @always_inline
     fn __rand__(self, value: Self) -> Self:
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType be an integral or bool type",
         ]()
         return value & self
@@ -568,7 +569,7 @@ struct Vector[T: DType, size: Int](
     @always_inline
     fn __rxor__(self, value: Self) -> Self:
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType be an integral or bool type",
         ]()
         return value ^ self
@@ -576,7 +577,7 @@ struct Vector[T: DType, size: Int](
     @always_inline
     fn __ror__(self, value: Self) -> Self:
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "DType be an integral or bool type",
         ]()
         return value | self
@@ -596,11 +597,11 @@ struct Vector[T: DType, size: Int](
     @always_inline
     @staticmethod
     fn dtype() -> String:
-        return "Vector[" + T.__repr__() + ", " + String(size) + "]"
+        return "Vector[" + Self.T.__repr__() + ", " + String(Self.size) + "]"
 
     @always_inline
     fn __len__(self) -> Int:
-        return size
+        return Self.size
 
     @always_inline
     fn __str__(self) -> String:
@@ -609,7 +610,7 @@ struct Vector[T: DType, size: Int](
     @no_inline
     fn __repr__(self) -> String:
         var output = String()
-        output.write("Vector[" + T.__repr__() + ", ", size, "](")
+        output.write("Vector[" + Self.T.__repr__() + ", ", Self.size, "](")
         for i in range(self.__len__()):
             output.write(self[i])
             if i < self.__len__() - 1:
@@ -653,18 +654,18 @@ struct Vector[T: DType, size: Int](
 
     @always_inline("nodebug")
     fn _refine[
-        T: DType = Self.T, size: Int = Self.size
-    ](self) -> Vector[T, size]:
-        return rebind[Vector[T, size]](self)
+        W: DType = Self.T, nsize: Int = Self.size
+    ](self) -> Vector[W, nsize]:
+        return rebind[Vector[W, nsize]](self)
 
     @always_inline
-    fn cast[target: DType](self) -> Vector[target, size]:
+    fn cast[target: DType](self) -> Vector[target, Self.size]:
         @parameter
-        if T is target:
+        if Self.T == target:
             return self._refine[target]()
 
         @parameter
-        if T in (DType.float8_e4m3fn, DType.float8_e5m2):
+        if Self.T in (DType.float8_e4m3fn, DType.float8_e5m2):
             constrained[
                 target
                 in (
@@ -679,7 +680,7 @@ struct Vector[T: DType, size: Int](
                             "Only FP8->F64, FP8->F32, FP8->F16, and FP8->BF16"
                             " castings are implemented. "
                         ),
-                        T,
+                        Self.T,
                         "->",
                         target,
                     )
@@ -853,7 +854,7 @@ struct Vector[T: DType, size: Int](
         var A = self._data[0]
 
         @parameter
-        for i in range(1, size):
+        for i in range(1, Self.size):
             A = max(A, self._data[i])
         return A
 
@@ -864,7 +865,7 @@ struct Vector[T: DType, size: Int](
         var A = self._data[0]
 
         @parameter
-        for i in range(1, size):
+        for i in range(1, Self.size):
             A = min(A, self._data[i])
         return A
 
@@ -875,7 +876,7 @@ struct Vector[T: DType, size: Int](
         var A = self._data[0]
 
         @parameter
-        for i in range(1, size):
+        for i in range(1, Self.size):
             A = A + self._data[i]
         return A
 
@@ -914,12 +915,12 @@ struct Vector[T: DType, size: Int](
 
     fn reduce_bit_count(self) -> Int:
         constrained[
-            T.is_integral() or T is DType.bool,
+            T.is_integral() or T == DType.bool,
             "Expected either integral or bool type",
         ]()
 
         @parameter
-        if T is DType.bool:
+        if T == DType.bool:
             return Int(self.cast[DType.uint8]().reduce_add())
         else:
             return Int(Vector[T, size](pop_count(self._data)).reduce_add())

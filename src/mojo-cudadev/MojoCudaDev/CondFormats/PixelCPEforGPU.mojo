@@ -12,8 +12,9 @@ alias Rotation = SOARotation[DType.float32]
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct CommonParams(Copyable, Defaultable, Movable, Typeable):
+struct CommonParams(
+    Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable
+):
     var theThicknessB: Float
     var theThicknessE: Float
     var thePitchX: Float
@@ -106,17 +107,17 @@ struct LayerGeometry(Copyable, Defaultable, Movable, Typeable):
 
 @fieldwise_init
 struct ParamsOnGPU(Copyable, Defaultable, Movable, Typeable):
-    var m_commonParams: UnsafePointer[CommonParams]
-    var m_detParams: UnsafePointer[DetParams]
-    var m_layerGeometry: UnsafePointer[LayerGeometry]
-    var m_averageGeometry: UnsafePointer[AverageGeometry]
+    var m_commonParams: UnsafePointer[CommonParams, MutAnyOrigin]
+    var m_detParams: UnsafePointer[DetParams, MutAnyOrigin]
+    var m_layerGeometry: UnsafePointer[LayerGeometry, MutAnyOrigin]
+    var m_averageGeometry: UnsafePointer[AverageGeometry, MutAnyOrigin]
 
     @always_inline
     fn __init__(out self):
-        self.m_commonParams = UnsafePointer[CommonParams]()
-        self.m_detParams = UnsafePointer[DetParams]()
-        self.m_layerGeometry = UnsafePointer[LayerGeometry]()
-        self.m_averageGeometry = UnsafePointer[AverageGeometry]()
+        self.m_commonParams = UnsafePointer[CommonParams, MutAnyOrigin]()
+        self.m_detParams = UnsafePointer[DetParams, MutAnyOrigin]()
+        self.m_layerGeometry = UnsafePointer[LayerGeometry, MutAnyOrigin]()
+        self.m_averageGeometry = UnsafePointer[AverageGeometry, MutAnyOrigin]()
 
     @always_inline
     fn commonParams(self) -> CommonParams:

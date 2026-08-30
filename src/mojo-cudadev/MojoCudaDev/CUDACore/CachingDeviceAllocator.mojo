@@ -155,39 +155,109 @@ struct BlockDescriptor(Copyable, Movable, ImplicitlyCopyable):
         self.ready_event = CUDAEventType()
 
 
-    @always_inline
+
+# C++: template <typename Traits> -- GenericCachingAllocator.h:50, with the
+# concrete policies in getCachingDeviceAllocator.h:55 (DeviceTraits) and
+# getCachingHostAllocator.h (HostTraits). Device and pinned-host memory differ
+# in more than which malloc they call: they disagree on whether a cached block
+# belonging to another device is reusable, and on whether same-queue reuse is
+# safe without checking the event.
+#
+# Static methods only, no associated types -- keeps this clear of the
+# self-referential associated-type shape that crashes this compiler (the
+# OneToManyAssoc "Bug B" notes in doc/MojoCudaDevPort.md).
+# C++: allocator::intPow -- GenericCachingAllocator.h:19
+@always_inline
+fn IntPow(base: UInt, exp: UInt) -> UInt:
+    var b = base
+    var e = exp
+    var retval: UInt = 1
+    while e > 0:
+        if (e & 1) != 0:
+            retval = retval * b
+        b = b * b
+        e = e >> 1
+    return retval
+
+
+trait CachingAllocatorTraits:
+    # C++ has no equivalent: its Traits::allocate/free are statics reaching the
+    # global CUDA runtime. This port replaced that global with explicit state
+    # objects (_AllocateDeviceState / _AllocateHostState) because Mojo has no
+    # module-level mutable state and its buffer types own their memory -- see
+    # allocate_device.mojo:19. So the state travels with the traits.
+    alias State: Movable & Defaultable
+
+    # C++: Traits::allocate / Traits::tryAllocate (getCachingDeviceAllocator.h:52,58).
+    # C++ splits them so the caller can distinguish "failed" from "threw"; here the
+    # single raising form covers both, and the free-cached-and-retry path catches.
     @staticmethod
-    fn PtrCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
-        if a.device == b.device:
-            return Int(a.d_ptr) < Int(b.d_ptr)
-        return a.device < b.device
+    fn allocate(
+        mut state: Self.State,
+        device: Int,
+        nbytes: UInt,
+        stream: CUDAStreamType,
+    ) raises -> UnsafePointer[UInt8, MutAnyOrigin]:
+        ...
 
-
-    @always_inline
+    # C++: Traits::free. `device` is unused by the host policy, but the shared
+    # body has to be able to pass it.
     @staticmethod
-    fn SizeCompare(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
-        if a.device == b.device:
-            return a.bytes < b.bytes
-        return a.device < b.device
+    fn free(
+        mut state: Self.State,
+        device: Int,
+        ptr: UnsafePointer[UInt8, MutAnyOrigin],
+        stream: CUDAStreamType,
+    ):
+        ...
 
-struct BlockByPtrCompare(LessComparator):
+    # C++: Traits::deviceCompare(a_dev, b_dev, compare). C++ passes the
+    # tie-break as a lambda; it is a side-effect-free comparison, so it is
+    # evaluated eagerly and passed as a Bool here.
+    @staticmethod
+    fn device_compare(a_dev: Int, b_dev: Int, tie: Bool) -> Bool:
+        ...
+
+    # C++: Traits::memoryDevice(deviceEvent) -- translates the device an event
+    # was recorded on into the device the memory was allocated from.
+    @staticmethod
+    fn memory_device(event_device: Int) -> Int:
+        ...
+
+    # C++: Traits::canReuseInDevice(a, b)
+    @staticmethod
+    fn can_reuse_in_device(cached_device: Int, want_device: Int) -> Bool:
+        ...
+
+    # C++: Traits::canReuseInQueue(a, b)
+    @staticmethod
+    fn can_reuse_in_queue(a: CUDAStreamType, b: CUDAStreamType) -> Bool:
+        ...
+
+
+struct BlockByPtrCompare[T: CachingAllocatorTraits](LessComparator):
     alias ItemType = BlockDescriptor
 
     @always_inline
     @staticmethod
     fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
-        return BlockDescriptor.PtrCompare(a, b)
+        return Self.T.device_compare(
+            a.device, b.device, Int(a.d_ptr) < Int(b.d_ptr)
+        )
 
-struct BlockBySizeCompare(LessComparator):
+struct BlockBySizeCompare[T: CachingAllocatorTraits](LessComparator):
     alias ItemType = BlockDescriptor
 
     @always_inline
     @staticmethod
     fn less(read a: BlockDescriptor, read b: BlockDescriptor) -> Bool:
-        return BlockDescriptor.SizeCompare(a, b)
+        return Self.T.device_compare(a.device, b.device, a.bytes < b.bytes)
 
 
-struct CachingDeviceAllocator(Movable):
+# C++: GenericCachingAllocator<Traits> -- GenericCachingAllocator.h:50-51.
+# Kept under its original name so existing call sites and the notcub-derived
+# body stay put; the policy differences live entirely in T.
+struct CachingDeviceAllocator[T: CachingAllocatorTraits](Movable):
 
     #---------------------------------------------------------------------
     # Constants
@@ -212,25 +282,16 @@ struct CachingDeviceAllocator(Movable):
     alias cudaEvent_t = CUDAEventType
     alias DevicePtr = UnsafePointer[UInt8, MutAnyOrigin]
 
-    alias CachedBlocks = OrderedMultiSet[BlockBySizeCompare]
-    alias BusyBlocks = OrderedMultiSet[BlockByPtrCompare]
+    alias CachedBlocks = OrderedMultiSet[BlockBySizeCompare[Self.T]]
+    alias BusyBlocks = OrderedMultiSet[BlockByPtrCompare[Self.T]]
 
     #---------------------------------------------------------------------
     # Utility functions
     #---------------------------------------------------------------------
 
-    @always_inline
-    @staticmethod
-    fn IntPow(base: UInt, exp: UInt) -> UInt:
-        var b = base
-        var e = exp
-        var retval: UInt = 1
-        while e > 0:
-            if (e & 1) != 0:
-                retval = retval * b
-            b = b * b
-            e = e >> 1
-        return retval
+    # IntPow moved to module scope below -- it carries no policy, and as a
+    # member of a now-generic struct every call site would have to name T.
+    # C++ has it free too: allocator::intPow, GenericCachingAllocator.h:19.
 
     @always_inline
     @staticmethod
@@ -271,7 +332,7 @@ struct CachingDeviceAllocator(Movable):
     var live_blocks: Self.BusyBlocks  # Set of live device allocations currently in use
 
     var alloc_runtime: CUDARuntime  # Isolated runtime for internal event bookkeeping
-    var alloc_state: _AllocateDeviceState  # Isolated device allocation state for pool blocks
+    var alloc_state: Self.T.State  # Isolated allocation state for pool blocks
 
     #---------------------------------------------------------------------
     # Methods
@@ -293,8 +354,8 @@ struct CachingDeviceAllocator(Movable):
         self.bin_growth = bin_growth
         self.min_bin = min_bin
         self.max_bin = max_bin
-        self.min_bin_bytes = CachingDeviceAllocator.IntPow(bin_growth, min_bin)
-        self.max_bin_bytes = CachingDeviceAllocator.IntPow(bin_growth, max_bin)
+        self.min_bin_bytes = IntPow(bin_growth, min_bin)
+        self.max_bin_bytes = IntPow(bin_growth, max_bin)
         self.max_cached_bytes = max_cached_bytes
         self.skip_cleanup = skip_cleanup
         self.debug = debug
@@ -302,7 +363,7 @@ struct CachingDeviceAllocator(Movable):
         self.cached_blocks = Self.CachedBlocks()
         self.live_blocks = Self.BusyBlocks()
         self.alloc_runtime = CUDARuntime()
-        self.alloc_state = _AllocateDeviceState()
+        self.alloc_state = Self.T.State()
 
     #/**
     # * \brief Default constructor.
@@ -322,10 +383,10 @@ struct CachingDeviceAllocator(Movable):
         self.bin_growth = 8
         self.min_bin = 3
         self.max_bin = 7
-        self.min_bin_bytes = CachingDeviceAllocator.IntPow(
+        self.min_bin_bytes = IntPow(
             self.bin_growth, self.min_bin
         )
-        self.max_bin_bytes = CachingDeviceAllocator.IntPow(
+        self.max_bin_bytes = IntPow(
             self.bin_growth, self.max_bin
         )
         self.max_cached_bytes = (self.max_bin_bytes * 3) - 1
@@ -335,7 +396,7 @@ struct CachingDeviceAllocator(Movable):
         self.cached_blocks = Self.CachedBlocks()
         self.live_blocks = Self.BusyBlocks()
         self.alloc_runtime = CUDARuntime()
-        self.alloc_state = _AllocateDeviceState()
+        self.alloc_state = Self.T.State()
 
     fn __moveinit__(out self, deinit take: Self):
         self.mutex = BlockingSpinLock()
@@ -425,14 +486,26 @@ struct CachingDeviceAllocator(Movable):
                 var block_itr = self.cached_blocks.lower_bound(search_key)
                 while (
                     (block_itr != self.cached_blocks.__len__()) and
-                    (self.cached_blocks[block_itr].device == device) and
+                    # C++: Traits::canReuseInDevice -- `a == b` for device
+                    # memory, always true for pinned host memory, which any
+                    # device can address.
+                    Self.T.can_reuse_in_device(
+                        self.cached_blocks[block_itr].device, device
+                    ) and
                     (self.cached_blocks[block_itr].bin == search_key.bin)
                 ):
                     # To prevent races with reusing blocks returned by the host but still
                     # in use by the device, only consider cached blocks that are
                     # either (from the active stream) or (from an idle stream)
+                    #
+                    # C++: Traits::canReuseInQueue -- `a == b` for device
+                    # memory (the stream orders it), always false for pinned
+                    # host memory, which must fall through to the event check.
                     if (
-                        (active_stream == self.cached_blocks[block_itr].associated_stream) or
+                        Self.T.can_reuse_in_queue(
+                            active_stream,
+                            self.cached_blocks[block_itr].associated_stream,
+                        ) or
                         (cudaEventQuery(self.cached_blocks[block_itr].ready_event) != cudaErrorNotReady)
                     ):
                         # Reuse existing cache block.  Insert into live blocks.
@@ -483,8 +556,9 @@ struct CachingDeviceAllocator(Movable):
 
             # Attempt to allocate
             try:
-                search_key.d_ptr = self.alloc_state.allocate_device(
-                    Int32(device),
+                search_key.d_ptr = Self.T.allocate(
+                    self.alloc_state,
+                    device,
                     search_key.bytes,
                     cudaStreamDefault
                 )
@@ -522,8 +596,9 @@ struct CachingDeviceAllocator(Movable):
 
                         # the mojo implemetation of cudaFree and it doesnt
                         # return an error
-                        self.alloc_state.free_device(
-                            Int32(device),
+                        Self.T.free(
+                            self.alloc_state,
+                            device,
                             block.d_ptr,
                             cudaStreamDefault
                         )
@@ -563,8 +638,9 @@ struct CachingDeviceAllocator(Movable):
 
                 # Try to allocate again
                 try:
-                    search_key.d_ptr = self.alloc_state.allocate_device(
-                        Int32(device),
+                    search_key.d_ptr = Self.T.allocate(
+                        self.alloc_state,
+                        device,
                         search_key.bytes,
                         cudaStreamDefault
                     )
@@ -724,8 +800,9 @@ struct CachingDeviceAllocator(Movable):
 
         if not recached:
             # Free the allocation from the runtime and cleanup the event.
-            self.alloc_state.free_device(
-                Int32(device),
+            Self.T.free(
+                self.alloc_state,
+                device,
                 d_ptr,
                 cudaStreamDefault
             )
@@ -779,8 +856,9 @@ struct CachingDeviceAllocator(Movable):
             while self.cached_blocks.__len__() > 0:
                 var begin = self.cached_blocks[0]
 
-                self.alloc_state.free_device(
-                    Int32(begin.device),
+                Self.T.free(
+                    self.alloc_state,
+                    begin.device,
                     begin.d_ptr,
                     cudaStreamDefault
                 )
