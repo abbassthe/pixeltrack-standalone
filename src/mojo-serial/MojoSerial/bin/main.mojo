@@ -1,7 +1,8 @@
-from sys import argv, external_call
-from sys.terminate import exit
-from time import perf_counter_ns
-from pathlib import Path
+from std.sys import argv
+from std.ffi import external_call
+from std.sys.terminate import exit
+from std.time import perf_counter_ns
+from std.pathlib import Path
 
 from MojoSerial.bin.EventProcessor import EventProcessor
 from MojoSerial.bin.PosixClockGettime import (
@@ -9,10 +10,10 @@ from MojoSerial.bin.PosixClockGettime import (
     CLOCK_THREAD_CPUTIME_ID,
 )
 from MojoSerial.MojoBridge.DTypes import Double
-from algorithm.functional import parallelize
+from std.algorithm.functional import parallelize
 
 
-fn print_help(ref name: String):
+def print_help(ref name: String):
     print(
         "Usage:",
         name,
@@ -35,7 +36,7 @@ Options:
 
 
 @always_inline
-fn parallelism_level() -> Int:
+def parallelism_level() -> Int:
     """Gets the parallelism level of the Runtime.
 
     Returns:
@@ -48,7 +49,7 @@ fn parallelism_level() -> Int:
         ]()
     )
 
-fn main() raises:
+def main() raises:
     var args = argv()
     var warmupEvents = 0
     var maxEvents = -1
@@ -143,7 +144,7 @@ fn main() raises:
 
     var processing_error = False
 
-    fn worker(i : Int) capturing:
+    def worker(i : Int) capturing:
         ## Init plugins manually
         var _esreg = MojoSerial.Framework.ESPluginFactory.Registry()
         var _edreg = MojoSerial.Framework.PluginFactory.Registry()

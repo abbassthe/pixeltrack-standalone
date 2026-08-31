@@ -1,18 +1,18 @@
-from collections import Set
-from compile.reflection import get_type_name
+from std.collections import Set
+from std.reflection import get_type_name
 
 from MojoSerial.MojoBridge.Matrix import Matrix
 
 
-alias StringStandardType = Copyable & Movable & Stringable
-alias StringStandardKeyType = StringStandardType & KeyElement
+comptime StringStandardType = Copyable & Movable & Stringable
+comptime StringStandardKeyType = StringStandardType & KeyElement
 
 
-fn pprint[T1: StringStandardType, T2: StringStandardType, //](t: Tuple[T1, T2]):
+def pprint[T1: StringStandardType, T2: StringStandardType, //](t: Tuple[T1, T2]):
     print("(" + t[0].__str__() + ", " + t[1].__str__() + ")")
 
 
-fn pprint[T: StringStandardType](L: List[T]):
+def pprint[T: StringStandardType](L: List[T]):
     print("[", end="")
     if L.__len__() > 0:
         print(L[0].__str__(), end="")
@@ -21,7 +21,7 @@ fn pprint[T: StringStandardType](L: List[T]):
     print("]")
 
 
-fn pprint[T: StringStandardType, size: Int, //](L: InlineArray[T, size]):
+def pprint[T: StringStandardType, size: Int, //](L: InlineArray[T, size]):
     print("[", end="")
 
     if size > 0:
@@ -32,7 +32,7 @@ fn pprint[T: StringStandardType, size: Int, //](L: InlineArray[T, size]):
     print("]")
 
 
-fn pprint[T: StringStandardType, //](L: InlineArray[T, _], var ran: Int):
+def pprint[T: StringStandardType, //](L: InlineArray[T, _], var ran: Int):
     print("[", end="")
 
     if ran > 0:
@@ -43,7 +43,7 @@ fn pprint[T: StringStandardType, //](L: InlineArray[T, _], var ran: Int):
     print("]")
 
 
-fn pprint[T1: StringStandardKeyType, T2: StringStandardType](D: Dict[T1, T2]):
+def pprint[T1: StringStandardKeyType, T2: StringStandardType](D: Dict[T1, T2]):
     print("{", end="")
     if D.__len__() > 0:
         var skip = True
@@ -56,7 +56,7 @@ fn pprint[T1: StringStandardKeyType, T2: StringStandardType](D: Dict[T1, T2]):
     print("}")
 
 
-fn pprint[T: StringStandardKeyType](S: Set[T]):
+def pprint[T: StringStandardKeyType](S: Set[T]):
     print("{", end="")
     if S.__len__() > 0:
         var skip = True
@@ -69,14 +69,14 @@ fn pprint[T: StringStandardKeyType](S: Set[T]):
     print("}")
 
 
-fn pprint[T: StringStandardType](o: Optional[T]):
+def pprint[T: StringStandardType](o: Optional[T]):
     if o:
         print(o.value().__str__())
     else:
         print("None")
 
 
-fn wprint[
+def wprint[
     T: DType, //
 ](i: Scalar[T], *, width: Int = 0, end: StaticString = "\n"):
     var _w = i.__str__().__len__()
@@ -84,7 +84,7 @@ fn wprint[
     print(" " * (_c if _c > 0 else 0) + i.__str__(), end=end)
 
 
-fn pprint[T: DType, //](M: Matrix[T, _, _]):
+def pprint[T: DType, //](M: Matrix[T, _, _]):
     var width: Int = 0
     for i in range(M.__len__()):
         width = max(width, M[i].__str__().__len__())
@@ -96,10 +96,10 @@ fn pprint[T: DType, //](M: Matrix[T, _, _]):
 
 
 @always_inline
-fn type[T: UnknownDestructibility](it: T, out type: String):
+def type[T: UnknownDestructibility](it: T, out type: String):
     return get_type_name[__type_of(it)]().split(".")[-1]
 
 
 @always_inline
-fn tprint[T: UnknownDestructibility](it: T):
+def tprint[T: UnknownDestructibility](it: T):
     print(type(it))

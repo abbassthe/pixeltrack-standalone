@@ -1,4 +1,4 @@
-from collections.list import _ListIter
+from std.collections.list import _ListIter
 
 from MojoSerial.MojoBridge.DTypes import SizeType, Typeable, UChar
 
@@ -11,16 +11,16 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
     The FED data should include the standard FED header and trailer.
     """
 
-    alias Data = List[UChar]
-    alias Iterator = _ListIter[Self.Data.T, Self.Data.hint_trivial_type]
+    comptime Data = List[UChar]
+    comptime Iterator = _ListIter[Self.Data.T, Self.Data.hint_trivial_type]
     var _data: Self.Data
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._data = []
 
     @always_inline
-    fn __init__(out self, newsize: SizeType):
+    def __init__(out self, newsize: SizeType):
         debug_assert(
             newsize % 8 == 0,
             "FEDRawData::resize: "
@@ -31,15 +31,15 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
         self._data = Self.Data(length=UInt(newsize), fill=0)
 
     @always_inline
-    fn __copyinit__(out self, existing: Self):
+    def __copyinit__(out self, existing: Self):
         self._data = existing._data
 
     @always_inline
-    fn __moveinit__(out self, var existing: Self):
+    def __moveinit__(out self, var existing: Self):
         self._data = existing._data^
 
     @always_inline
-    fn data[
+    def data[
         origin: Origin, //
     ](ref [origin]self) -> UnsafePointer[
         UInt8, mut = origin.mut, origin=origin
@@ -47,15 +47,15 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
         return self._data.unsafe_ptr()
 
     @always_inline
-    fn size(self) -> SizeType:
+    def size(self) -> SizeType:
         return self._data.__len__()
 
     @always_inline
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         return self._data.__len__()
 
     @always_inline
-    fn resize(mut self, newsize: SizeType):
+    def resize(mut self, newsize: SizeType):
         debug_assert(
             newsize % 8 == 0,
             "FEDRawData::resize: "
@@ -70,5 +70,5 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "FEDRawData"

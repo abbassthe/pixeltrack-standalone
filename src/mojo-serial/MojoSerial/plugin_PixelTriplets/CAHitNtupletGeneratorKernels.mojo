@@ -1,10 +1,10 @@
-import math
+import std.math as math
 
-from os.atomic import Atomic, Consistency
-from sys import is_defined
-from sys.info import sizeof
+from std.atomic import Atomic, Consistency
+from std.sys import is_defined
+from std.sys.info import size_of
 
-from memory import OwnedPointer
+from std.memory import OwnedPointer
 
 import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 import MojoSerial.plugin_PixelTriplets.gpuPixelDoublets as gpuPixelDoublets
@@ -30,12 +30,12 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
     TrackingRecHit2DSOAView,
 )
 
-alias HitToTuple = CAConstants.HitToTuple
-alias TupleMultiplicity = CAConstants.TupleMultiplicity
-alias Quality = pixelTrack.Quality
-alias TkSoA = pixelTrack.TrackSoA
-alias HitContainer = pixelTrack.HitContainer
-alias Stream = CUDAStreamType
+comptime HitToTuple = CAConstants.HitToTuple
+comptime TupleMultiplicity = CAConstants.TupleMultiplicity
+comptime Quality = pixelTrack.Quality
+comptime TkSoA = pixelTrack.TrackSoA
+comptime HitContainer = pixelTrack.HitContainer
+comptime Stream = CUDAStreamType
 
 
 @fieldwise_init
@@ -52,7 +52,7 @@ struct Counters(Defaultable, Movable):
     var nEmptyCells: UInt64
     var nZeroTrackCells: UInt64
 
-    fn __init__(out self):
+    def __init__(out self):
         self.nEvents = 0
         self.nHits = 0
         self.nCells = 0
@@ -106,7 +106,7 @@ struct Params(Copyable, Movable):
     var dcaCutOuterTriplet: Float32
     var cuts: QualityCuts
 
-    fn __init__(
+    def __init__(
         out self,
         onGPU: Bool,
         minHitsPerNtuplet: UInt32,
@@ -178,7 +178,7 @@ struct Params(Copyable, Movable):
 # cycle entirely -- these functions still are ordinary free functions (they
 # were free/namespace-level functions in the C++ original too, not member
 # functions), just no longer split across two mutually-importing files.
-fn Kernel_checkOverflows(
+def Kernel_checkOverflows(
     foundNtuplets: UnsafePointer[HitContainer],
     tupleMultiplicity: UnsafePointer[TupleMultiplicity],
     apc: UnsafePointer[AtomicPairCounter],
@@ -218,8 +218,7 @@ fn Kernel_checkOverflows(
             UInt64(tupleMultiplicity[].size()),
         )
 
-    @parameter
-    if is_defined["NTUPLE_DEBUG"]():
+    comptime if is_defined["NTUPLE_DEBUG"]():
         if first == 0:
             print(
                 "number of found cells",
@@ -240,8 +239,7 @@ fn Kernel_checkOverflows(
                     foundNtuplets[].size() == apc[].get()[0],
                     "Size mismatch",
                 )
-    @parameter
-    if is_defined["NTUPLE_DEBUG"]():
+    comptime if is_defined["NTUPLE_DEBUG"]():
         var nBins = Int(foundNtuplets[].nbins())
         for idx in range(Int(first), nBins, 1):
             var idx_u = UInt32(idx)
@@ -301,12 +299,12 @@ fn Kernel_checkOverflows(
         idx += 1
 
 
-fn kernel_fishboneCleaner(
+def kernel_fishboneCleaner(
     cells: UnsafePointer[GPUCACell],
     nCells: UnsafePointer[UInt32],
     quality: UnsafePointer[Quality],
 ):
-    alias bad = trackQuality.bad
+    comptime bad = trackQuality.bad
     var nt = Int(nCells[])
     for idx in range(0, nt, 1):
         ref thisCell = (cells + idx)[]
@@ -321,14 +319,14 @@ fn kernel_fishboneCleaner(
             it += 1
 
 
-fn kernel_earlyDuplicateRemover(
+def kernel_earlyDuplicateRemover(
     cells: UnsafePointer[GPUCACell],
     nCells: UnsafePointer[UInt32],
     foundNtuplets: UnsafePointer[HitContainer],
     quality: UnsafePointer[Quality]
     ):
 
-    alias dup = trackQuality.dup
+    comptime dup = trackQuality.dup
 
     debug_assert(Bool(nCells))
     var nt = Int(nCells[])
@@ -355,7 +353,7 @@ fn kernel_earlyDuplicateRemover(
             it += 1
 
 
-fn kernel_fastDuplicateRemover(
+def kernel_fastDuplicateRemover(
     cells: UnsafePointer[GPUCACell],
     nCells: UnsafePointer[UInt32],
     foundNtuplets: UnsafePointer[HitContainer],
@@ -376,7 +374,7 @@ fn kernel_fastDuplicateRemover(
         var mc: Float32 = 10000.0
         var im: UInt16 = 60000
 
-        fn score(it: UInt16) -> Float32:
+        def score(it: UInt16) -> Float32:
             return abs(tracks[].tip(Int32(it))) # tip
             # or chi2
         #find min socre
@@ -396,7 +394,7 @@ fn kernel_fastDuplicateRemover(
             it += 1
 
 
-fn kernel_connect(
+def kernel_connect(
             apc1: UnsafePointer[AtomicPairCounter],
             apc2: UnsafePointer[AtomicPairCounter],  # just to zero them
             hhp: UnsafePointer[GPUCACell.Hits],
@@ -472,7 +470,7 @@ fn kernel_connect(
                 oc.theUsed |= 1
         idx += 1
 
-fn kernel_find_ntuplets(
+def kernel_find_ntuplets(
     hhp : UnsafePointer[GPUCACell.Hits],
     cells : UnsafePointer[GPUCACell],
     nCells : UnsafePointer[UInt32],
@@ -509,7 +507,7 @@ fn kernel_find_ntuplets(
             )
             debug_assert(stack.empty())
 
-fn kernel_mark_used(
+def kernel_mark_used(
     hhp: UnsafePointer[GPUCACell.Hits],
     cells: UnsafePointer[GPUCACell],
     nCells: UnsafePointer[UInt32],
@@ -520,7 +518,7 @@ fn kernel_mark_used(
         if not thisCell.tracks().empty():
             thisCell.theUsed |= 2
 
-fn kernel_countMultiplicity(  foundNtuplets : UnsafePointer[HitContainer],
+def kernel_countMultiplicity(  foundNtuplets : UnsafePointer[HitContainer],
                               quality : UnsafePointer[Quality],
                               tupleMultiplicity : UnsafePointer[CAConstants.TupleMultiplicity ]):
     var nt = Int(foundNtuplets[].nbins())
@@ -537,7 +535,7 @@ fn kernel_countMultiplicity(  foundNtuplets : UnsafePointer[HitContainer],
         debug_assert(nhits < 8)
         tupleMultiplicity[].countDirect(nhits)
 
-fn kernel_fillMultiplicity(foundNtuplets : UnsafePointer[HitContainer],
+def kernel_fillMultiplicity(foundNtuplets : UnsafePointer[HitContainer],
                               quality : UnsafePointer[Quality],
                               tupleMultiplicity : UnsafePointer[CAConstants.TupleMultiplicity ]):
     var nt = Int(foundNtuplets[].nbins())
@@ -557,7 +555,7 @@ fn kernel_fillMultiplicity(foundNtuplets : UnsafePointer[HitContainer],
             it_u.cast[DType.uint16](),
         )
 
-fn kernel_classifyTracks(
+def kernel_classifyTracks(
     tuples: UnsafePointer[HitContainer],
     tracks: UnsafePointer[TkSoA],
     cuts: QualityCuts,
@@ -587,8 +585,7 @@ fn kernel_classifyTracks(
             isNaN = isNaN or Bool(math.isnan(tracks[].stateAtBS.state[it_i][i, 0]))
 
         if isNaN:
-            @parameter
-            if is_defined["NTUPLE_DEBUG"]():
+            comptime if is_defined["NTUPLE_DEBUG"]():
                 print(
                     "NaN in fit",
                     it,
@@ -612,8 +609,7 @@ fn kernel_classifyTracks(
         )
         # above number were for Quads not normalized so for the time being just multiple by ndof for Quads  (triplets to be understood)
         if 3.0 * tracks[].chi2[it] >= chi2Cut:
-            @parameter
-            if is_defined["NTUPLE_DEBUG"]():
+            comptime if is_defined["NTUPLE_DEBUG"]():
                 print(
                     "Bad fit",
                     it,
@@ -644,7 +640,7 @@ fn kernel_classifyTracks(
         if isOk:
             quality[it] = trackQuality.loose
 
-fn kernel_doStatsForTracks(tuples  : UnsafePointer[HitContainer] ,
+def kernel_doStatsForTracks(tuples  : UnsafePointer[HitContainer] ,
                            quality : UnsafePointer[Quality] ,
                            counters : UnsafePointer[Counters] ):
     var nt = Int(tuples[].nbins())
@@ -660,7 +656,7 @@ fn kernel_doStatsForTracks(tuples  : UnsafePointer[HitContainer] ,
         )
 
 
-fn kernel_countHitInTracks(tuples  : UnsafePointer[HitContainer] ,
+def kernel_countHitInTracks(tuples  : UnsafePointer[HitContainer] ,
                            quality : UnsafePointer[Quality] ,
                            hitToTuple : UnsafePointer[HitToTuple] ):
     var nt = Int(tuples[].nbins())
@@ -676,7 +672,7 @@ fn kernel_countHitInTracks(tuples  : UnsafePointer[HitContainer] ,
             hitToTuple[].countDirect(UInt32(h[]))
             h += 1
 
-fn kernel_fillHitInTracks(tuples  : UnsafePointer[HitContainer] ,
+def kernel_fillHitInTracks(tuples  : UnsafePointer[HitContainer] ,
                            quality : UnsafePointer[Quality] ,
                            hitToTuple : UnsafePointer[HitToTuple] ):
     var nt = Int(tuples[].nbins())
@@ -696,7 +692,7 @@ fn kernel_fillHitInTracks(tuples  : UnsafePointer[HitContainer] ,
             )
             h += 1
 
-fn kernel_fillHitDetIndices(tuples  : UnsafePointer[HitContainer] ,
+def kernel_fillHitDetIndices(tuples  : UnsafePointer[HitContainer] ,
                            hhp : UnsafePointer[TrackingRecHit2DSOAView] ,
                            hitDetIndices : UnsafePointer[HitContainer] ):
     # copy offsets
@@ -711,7 +707,7 @@ fn kernel_fillHitDetIndices(tuples  : UnsafePointer[HitContainer] ,
         debug_assert(UInt32(tuples[].bins[idx]) < nhits)
         hitDetIndices[].bins[idx] = hh.detectorIndex(Int(tuples[].bins[idx]))
 
-fn kernel_doStatsForHitInTracks(hitToTuple: UnsafePointer[HitToTuple] ,counters :  UnsafePointer[Counters]):
+def kernel_doStatsForHitInTracks(hitToTuple: UnsafePointer[HitToTuple] ,counters :  UnsafePointer[Counters]):
     ref c = counters[]
     var nt = Int(hitToTuple[].nbins())
     for idx in range(0, nt, 1):
@@ -728,7 +724,7 @@ fn kernel_doStatsForHitInTracks(hitToTuple: UnsafePointer[HitToTuple] ,counters 
                 UInt64(1),
             )
 
-fn kernel_tripletCleaner(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[HitToTuple]):
+def kernel_tripletCleaner(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[HitToTuple]):
     var bad  = trackQuality.bad
     var dup  = trackQuality.dup
 
@@ -785,7 +781,7 @@ fn kernel_tripletCleaner(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples 
             ip += 1
 
 
-fn kernel_print_found_ntuplets(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[HitToTuple] ,  maxPrint : UInt32  ,  iev : Int):
+def kernel_print_found_ntuplets(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[HitToTuple] ,  maxPrint : UInt32  ,  iev : Int):
     ref foundNtuplets = ptuples[]
     ref tracks = ptracks[]
 
@@ -817,7 +813,7 @@ fn kernel_print_found_ntuplets(hhp : UnsafePointer[TrackingRecHit2DSOAView] , pt
         )
         i += 1
 
-fn kernel_printCounters(
+def kernel_printCounters(
     counters: UnsafePointer[Counters],
 ):
     ref c = counters[]
@@ -885,19 +881,19 @@ fn kernel_printCounters(
 # import type-identity bug (see the comment above `Kernel_checkOverflows`),
 # so everything ended up in this one file instead.
 struct CAHitNtupletGeneratorKernelsCPU(Movable):
-    alias QualityCuts = QualityCuts
-    alias Params = Params
-    alias Counters = Counters
+    comptime QualityCuts = QualityCuts
+    comptime Params = Params
+    comptime Counters = Counters
 
-    alias HitsView = TrackingRecHit2DSOAView
-    alias HitsOnGPU = TrackingRecHit2DSOAView
+    comptime HitsView = TrackingRecHit2DSOAView
+    comptime HitsOnGPU = TrackingRecHit2DSOAView
     # mojo version of TrackingRecHit2DHeterogeneous is not generic
-    alias HitsOnCPU = TrackingRecHit2DHeterogeneous
-    alias HitToTuple = HitToTuple
-    alias TupleMultiplicity = TupleMultiplicity
-    alias Quality = Quality
-    alias TkSoA = TkSoA
-    alias HitContainer = HitContainer
+    comptime HitsOnCPU = TrackingRecHit2DHeterogeneous
+    comptime HitToTuple = HitToTuple
+    comptime TupleMultiplicity = TupleMultiplicity
+    comptime Quality = Quality
+    comptime TkSoA = TkSoA
+    comptime HitContainer = HitContainer
 
     var counters_: UnsafePointer[Counters]
 
@@ -926,7 +922,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
     # after construction, so the difference is not observable.
     var m_params: Params
 
-    fn __init__(out self, params: Params):
+    def __init__(out self, params: Params):
         self.counters_ = UnsafePointer[Counters]()
 
         self.cellStorage_ = List[UInt8]()
@@ -957,7 +953,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
 
         self.m_params = params
 
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self.counters_ = other.counters_
         self.cellStorage_ = other.cellStorage_^
         self.device_theCellNeighbors_ = other.device_theCellNeighbors_^
@@ -978,11 +974,11 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         self.device_storage_ = other.device_storage_^
         self.m_params = other.m_params
 
-    fn tuple_multiplicity(mut self) -> UnsafePointer[TupleMultiplicity]:
+    def tuple_multiplicity(mut self) -> UnsafePointer[TupleMultiplicity]:
         return self.device_tupleMultiplicity_.unsafe_ptr()
 
     # C++: CAHitNtupletGeneratorKernelsCPU::allocateOnGPU (CAHitNtupletGeneratorKernelsAlloc.h)
-    fn allocate_on_gpu(mut self, stream: Stream):
+    def allocate_on_gpu(mut self, stream: Stream):
         #//////////////////////////////////////////////////////////
         #// ALLOCATIONS FOR THE INTERMEDIATE RESULTS (STAYS ON WORKER)
         #//////////////////////////////////////////////////////////
@@ -1018,11 +1014,10 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         launchZero(self.device_hitToTuple_[])  # we may wish to keep it in the edm...
 
     # C++: CAHitNtupletGeneratorKernelsCPU::buildDoublets (CAHitNtupletGeneratorKernels.cc)
-    fn build_doublets(mut self, hh: Self.HitsOnCPU, stream: Stream) raises:
+    def build_doublets(mut self, hh: Self.HitsOnCPU, stream: Stream) raises:
         var nhits = hh.nHits()
 
-        @parameter
-        if is_defined["NTUPLE_DEBUG"]():
+        comptime if is_defined["NTUPLE_DEBUG"]():
             print("building Doublets out of", nhits, "Hits")
 
         # in principle we can use "nhits" to heuristically dimension the
@@ -1034,10 +1029,10 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
 
         var neighborsBytes = Int(
             CAConstants.maxNumOfActiveDoublets()
-        ) * sizeof[CAConstants.CellNeighbors]()
+        ) * size_of[CAConstants.CellNeighbors]()
         var tracksBytes = Int(
             CAConstants.maxNumOfActiveDoublets()
-        ) * sizeof[CAConstants.CellTracks]()
+        ) * size_of[CAConstants.CellTracks]()
         self.cellStorage_ = List[UInt8](
             length=neighborsBytes + tracksBytes, fill=0
         )
@@ -1088,7 +1083,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         )
 
     # C++: CAHitNtupletGeneratorKernelsCPU::launchKernels (CAHitNtupletGeneratorKernels.cc)
-    fn launch_kernels(
+    def launch_kernels(
         mut self,
         hh: Self.HitsOnCPU,
         tracks_d: UnsafePointer[TkSoA],
@@ -1194,7 +1189,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
             )
 
     # C++: CAHitNtupletGeneratorKernelsCPU::classifyTuples (CAHitNtupletGeneratorKernels.cc)
-    fn classify_tuples(
+    def classify_tuples(
         mut self,
         hh: Self.HitsOnCPU,
         tracks_d: UnsafePointer[TkSoA],
@@ -1245,8 +1240,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
             )
             kernel_doStatsForTracks(tuples_d, quality_d, self.counters_)
 
-        @parameter
-        if is_defined["DUMP_GPU_TK_TUPLES"]():
+        comptime if is_defined["DUMP_GPU_TK_TUPLES"]():
             # C++ keeps a static atomic `iev` counter across calls to number
             # the printed events; Mojo has no mutable module-level globals,
             # and this dump path is off by default (disabled-debug-only), so
@@ -1262,7 +1256,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
             )
 
     # C++: CAHitNtupletGeneratorKernelsCPU::fillHitDetIndices (CAHitNtupletGeneratorKernels.cc)
-    fn fill_hit_det_indices(
+    def fill_hit_det_indices(
         mut self,
         hv: UnsafePointer[TrackingRecHit2DSOAView],
         tracks_d: UnsafePointer[TkSoA],
@@ -1277,13 +1271,13 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
     # C++ declares this method but never defines or calls it anywhere in the
     # serial backend -- the List/OwnedPointer fields free themselves when
     # `self` is destroyed, so there's nothing left to free manually here.
-    fn cleanup(mut self, cudaStream: Stream):
+    def cleanup(mut self, cudaStream: Stream):
         pass
 
     @staticmethod
-    fn print_counters(counters: UnsafePointer[Counters]):
+    def print_counters(counters: UnsafePointer[Counters]):
         kernel_printCounters(counters)
 
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "CAHitNtupletGeneratorKernelsCPU"

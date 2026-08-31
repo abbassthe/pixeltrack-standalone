@@ -1,10 +1,10 @@
 # Translated from pixeltrack-standalone/src/serial/plugin-PixelTriplets/gpuFishbone.h
 
-from memory.unsafe_pointer import UnsafePointer
+from std.memory.unsafe_pointer import UnsafePointer
 from MojoSerial.plugin_PixelTriplets.GPUCACell import GPUCACell
 
 
-fn fishbone(
+def fishbone(
     hhp: UnsafePointer[GPUCACell.Hits],
     cells: UnsafePointer[GPUCACell],
     nCells: UnsafePointer[UInt32],
@@ -12,7 +12,7 @@ fn fishbone(
     nHits: UInt32,
     checkTrack: Bool,
 ):
-    alias maxCellsPerHit = Int(GPUCACell.maxCellsPerHit)
+    comptime maxCellsPerHit = Int(GPUCACell.maxCellsPerHit)
 
     ref hh = hhp[]
 

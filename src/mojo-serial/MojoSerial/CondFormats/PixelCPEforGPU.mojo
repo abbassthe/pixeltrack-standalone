@@ -9,20 +9,19 @@ from MojoSerial.Geometry.Phase1PixelTopology import (
 from MojoSerial.MojoBridge.DTypes import Float, Typeable
 from MojoSerial.MojoBridge.Vector import Vector
 
-alias Frame = SOAFrame[DType.float32]
-alias Rotation = SOARotation[DType.float32]
+comptime Frame = SOAFrame[DType.float32]
+comptime Rotation = SOARotation[DType.float32]
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct CommonParams(Copyable, Defaultable, Movable, Typeable):
+struct CommonParams(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var theThicknessB: Float
     var theThicknessE: Float
     var thePitchX: Float
     var thePitchY: Float
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.theThicknessB = 0.0
         self.theThicknessE = 0.0
         self.thePitchX = 0.0
@@ -30,7 +29,7 @@ struct CommonParams(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "CommonParams"
 
 
@@ -57,7 +56,7 @@ struct DetParams(Copyable, Defaultable, Movable, Typeable):
     var frame: Frame
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.isBarrel = False
         self.isPosZ = False
         self.layer = 0
@@ -80,7 +79,7 @@ struct DetParams(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "DetParams"
 
 
@@ -92,7 +91,7 @@ struct LayerGeometry(Copyable, Defaultable, Movable, Typeable):
     var layer: InlineArray[UInt8, Int(Phase1PixelTopology.layerIndexSize)]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.layerStart = InlineArray[
             UInt32, Int(Phase1PixelTopology.numberOfLayers + 1)
         ](fill=0)
@@ -102,7 +101,7 @@ struct LayerGeometry(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "LayerGeometry"
 
 
@@ -114,98 +113,98 @@ struct ParamsOnGPU(Copyable, Defaultable, Movable, Typeable):
     var m_averageGeometry: UnsafePointer[AverageGeometry]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.m_commonParams = UnsafePointer[CommonParams]()
         self.m_detParams = UnsafePointer[DetParams]()
         self.m_layerGeometry = UnsafePointer[LayerGeometry]()
         self.m_averageGeometry = UnsafePointer[AverageGeometry]()
 
     @always_inline
-    fn commonParams(self) -> CommonParams:
+    def commonParams(self) -> CommonParams:
         return self.m_commonParams[]
 
     @always_inline
-    fn detParams(self, i: Int32) -> ref [self.m_detParams] DetParams:
+    def detParams(self, i: Int32) -> ref [self.m_detParams] DetParams:
         return self.m_detParams[i]
 
     @always_inline
-    fn layerGeometry(self) -> ref [self.m_layerGeometry] LayerGeometry:
+    def layerGeometry(self) -> ref [self.m_layerGeometry] LayerGeometry:
         return self.m_layerGeometry[]
 
     @always_inline
-    fn averageGeometry(self) -> ref [self.m_averageGeometry] AverageGeometry:
+    def averageGeometry(self) -> ref [self.m_averageGeometry] AverageGeometry:
         return self.m_averageGeometry[]
 
     @always_inline
-    fn layer(self, id: UInt16) -> UInt8:
+    def layer(self, id: UInt16) -> UInt8:
         return self.m_layerGeometry[].layer[
             Int(id) // Phase1PixelTopology.maxModuleStride
         ]
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "ParamsOnGPU"
 
 
 @fieldwise_init
 struct ClusParamsT[N: UInt32](Copyable, Defaultable, Movable, Typeable):
-    var minRow: InlineArray[UInt32, Int(N)]
-    var maxRow: InlineArray[UInt32, Int(N)]
-    var minCol: InlineArray[UInt32, Int(N)]
-    var maxCol: InlineArray[UInt32, Int(N)]
+    var minRow: InlineArray[UInt32, Int(Self.N)]
+    var maxRow: InlineArray[UInt32, Int(Self.N)]
+    var minCol: InlineArray[UInt32, Int(Self.N)]
+    var maxCol: InlineArray[UInt32, Int(Self.N)]
 
-    var Q_f_X: InlineArray[Int32, Int(N)]
-    var Q_l_X: InlineArray[Int32, Int(N)]
-    var Q_f_Y: InlineArray[Int32, Int(N)]
-    var Q_l_Y: InlineArray[Int32, Int(N)]
+    var Q_f_X: InlineArray[Int32, Int(Self.N)]
+    var Q_l_X: InlineArray[Int32, Int(Self.N)]
+    var Q_f_Y: InlineArray[Int32, Int(Self.N)]
+    var Q_l_Y: InlineArray[Int32, Int(Self.N)]
 
-    var charge: InlineArray[Int32, Int(N)]
+    var charge: InlineArray[Int32, Int(Self.N)]
 
-    var xpos: InlineArray[Float, Int(N)]
-    var ypos: InlineArray[Float, Int(N)]
+    var xpos: InlineArray[Float, Int(Self.N)]
+    var ypos: InlineArray[Float, Int(Self.N)]
 
-    var xerr: InlineArray[Float, Int(N)]
-    var yerr: InlineArray[Float, Int(N)]
+    var xerr: InlineArray[Float, Int(Self.N)]
+    var yerr: InlineArray[Float, Int(Self.N)]
 
-    var xsize: InlineArray[Int16, Int(N)]  # clipped at 127 if negative is edge
-    var ysize: InlineArray[Int16, Int(N)]
+    var xsize: InlineArray[Int16, Int(Self.N)]  # clipped at 127 if negative is edge
+    var ysize: InlineArray[Int16, Int(Self.N)]
 
     @always_inline
-    fn __init__(out self):
-        self.minRow = InlineArray[UInt32, Int(N)](fill=0)
-        self.maxRow = InlineArray[UInt32, Int(N)](fill=0)
-        self.minCol = InlineArray[UInt32, Int(N)](fill=0)
-        self.maxCol = InlineArray[UInt32, Int(N)](fill=0)
+    def __init__(out self):
+        self.minRow = InlineArray[UInt32, Int(Self.N)](fill=0)
+        self.maxRow = InlineArray[UInt32, Int(Self.N)](fill=0)
+        self.minCol = InlineArray[UInt32, Int(Self.N)](fill=0)
+        self.maxCol = InlineArray[UInt32, Int(Self.N)](fill=0)
 
-        self.Q_f_X = InlineArray[Int32, Int(N)](fill=0)
-        self.Q_l_X = InlineArray[Int32, Int(N)](fill=0)
-        self.Q_f_Y = InlineArray[Int32, Int(N)](fill=0)
-        self.Q_l_Y = InlineArray[Int32, Int(N)](fill=0)
+        self.Q_f_X = InlineArray[Int32, Int(Self.N)](fill=0)
+        self.Q_l_X = InlineArray[Int32, Int(Self.N)](fill=0)
+        self.Q_f_Y = InlineArray[Int32, Int(Self.N)](fill=0)
+        self.Q_l_Y = InlineArray[Int32, Int(Self.N)](fill=0)
 
-        self.charge = InlineArray[Int32, Int(N)](fill=0)
-        self.xpos = InlineArray[Float, Int(N)](0.0)
-        self.ypos = InlineArray[Float, Int(N)](0.0)
+        self.charge = InlineArray[Int32, Int(Self.N)](fill=0)
+        self.xpos = InlineArray[Float, Int(Self.N)](0.0)
+        self.ypos = InlineArray[Float, Int(Self.N)](0.0)
 
-        self.xerr = InlineArray[Float, Int(N)](0.0)
-        self.yerr = InlineArray[Float, Int(N)](0.0)
+        self.xerr = InlineArray[Float, Int(Self.N)](0.0)
+        self.yerr = InlineArray[Float, Int(Self.N)](0.0)
 
-        self.xsize = InlineArray[Int16, Int(N)](fill=0)
-        self.ysize = InlineArray[Int16, Int(N)](fill=0)
+        self.xsize = InlineArray[Int16, Int(Self.N)](fill=0)
+        self.ysize = InlineArray[Int16, Int(Self.N)](fill=0)
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
-        return "ClusParamsT[" + String(N) + "]"
+    def dtype() -> String:
+        return "ClusParamsT[" + String(Self.N) + "]"
 
 
-alias MaxHitsInIter: Int32 = GPUClusteringConstants.maxHitsInIter().cast[
+comptime MaxHitsInIter: Int32 = GPUClusteringConstants.maxHitsInIter().cast[
     DType.int32
 ]()
-alias ClusParams = ClusParamsT[MaxHitsInIter.cast[DType.uint32]()]
+comptime ClusParams = ClusParamsT[MaxHitsInIter.cast[DType.uint32]()]
 
 
-fn computeAnglesFromDet(
+def computeAnglesFromDet(
     ref detParams: DetParams,
     x: Float,
     y: Float,
@@ -222,7 +221,7 @@ fn computeAnglesFromDet(
     cotbeta = gvy * gvz
 
 
-fn correction(
+def correction(
     sizeM1: Int32,
     Q_f: Int32,  # Charge in the first pixel
     Q_l: Int32,  # Charge in the last pixel
@@ -284,7 +283,7 @@ fn correction(
     return 0.5 * (Qdiff / Qsum) * W_eff
 
 
-fn position(
+def position(
     ref comParams: CommonParams,
     ref detParams: DetParams,
     mut cp: ClusParams,
@@ -396,7 +395,7 @@ fn position(
     cp.ypos[ic] = yPos + ycorr
 
 
-fn errorFromSize(
+def errorFromSize(
     ref comParams: CommonParams,
     ref detParams: DetParams,
     mut cp: ClusParams,
@@ -405,9 +404,9 @@ fn errorFromSize(
     cp.xerr[ic] = 0.0050
     cp.yerr[ic] = 0.0085
 
-    alias xerr_barrel_l1 = InlineArray[Float, 3](0.00115, 0.00120, 0.00088)
-    alias xerr_barrel_l1_def: Float = 0.00200  # 0.01030
-    alias yerr_barrel_l1 = InlineArray[Float, 9](
+    comptime xerr_barrel_l1 = InlineArray[Float, 3](0.00115, 0.00120, 0.00088)
+    comptime xerr_barrel_l1_def: Float = 0.00200  # 0.01030
+    comptime yerr_barrel_l1 = InlineArray[Float, 9](
         0.00375,
         0.00230,
         0.00250,
@@ -418,10 +417,10 @@ fn errorFromSize(
         0.00210,
         0.00240,
     )
-    alias yerr_barrel_l1_def: Float = 0.00210
-    alias xerr_barrel_ln = InlineArray[Float, 3](0.00115, 0.00120, 0.00088)
-    alias xerr_barrel_ln_def: Float = 0.00200  # 0.01030
-    alias yerr_barrel_ln = InlineArray[Float, 9](
+    comptime yerr_barrel_l1_def: Float = 0.00210
+    comptime xerr_barrel_ln = InlineArray[Float, 3](0.00115, 0.00120, 0.00088)
+    comptime xerr_barrel_ln_def: Float = 0.00200  # 0.01030
+    comptime yerr_barrel_ln = InlineArray[Float, 9](
         0.00375,
         0.00230,
         0.00250,
@@ -432,11 +431,11 @@ fn errorFromSize(
         0.00210,
         0.00240,
     )
-    alias yerr_barrel_ln_def: Float = 0.00210
-    alias xerr_endcap = InlineArray[Float, 2](0.0020, 0.0020)
-    alias xerr_endcap_def: Float = 0.0020
-    alias yerr_endcap = InlineArray[Float, 1](0.00210)
-    alias yerr_endcap_def: Float = 0.00210
+    comptime yerr_barrel_ln_def: Float = 0.00210
+    comptime xerr_endcap = InlineArray[Float, 2](0.0020, 0.0020)
+    comptime xerr_endcap_def: Float = 0.0020
+    comptime yerr_endcap = InlineArray[Float, 1](0.00210)
+    comptime yerr_endcap_def: Float = 0.00210
 
     var sx = cp.maxRow[ic] - cp.minRow[ic]
     var sy = cp.maxCol[ic] - cp.minCol[ic]
@@ -491,7 +490,7 @@ fn errorFromSize(
             )
 
 
-fn errorFromDB(
+def errorFromDB(
     ref comParams: CommonParams,
     ref detParams: DetParams,
     mut cp: ClusParams,

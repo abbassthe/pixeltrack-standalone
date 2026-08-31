@@ -1,4 +1,4 @@
-from collections import Deque
+from std.collections import Deque
 
 from MojoSerial.Framework.Event import Event
 from MojoSerial.Framework.EventSetup import EventSetup
@@ -15,13 +15,13 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
     var _streamId: Int32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._source = UnsafePointer[Source]()
         self._eventSetup = UnsafePointer[EventSetup]()
         self._path = []
         self._streamId = 0
 
-    fn __init__(
+    def __init__(
         out self,
         mut reg: ProductRegistry,
         source: UnsafePointer[Source],
@@ -88,13 +88,13 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             return Self()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self._source = other._source
         self._eventSetup = other._eventSetup
         self._path = other._path^
         self._streamId = other._streamId
 
-    fn run(mut self, ref reg: ProductRegistry):
+    def run(mut self, ref reg: ProductRegistry):
         var event: Event
         var ptr = self._source[].produce(self._streamId, reg)
         while ptr != UnsafePointer[Event]():
@@ -104,11 +104,11 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
                 self._path[i].produce(event, self._eventSetup[])
             ptr = self._source[].produce(self._streamId, reg)
 
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         for i in range(self._path.__len__()):
             self._path[i].endJob()
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "StreamSchedule"

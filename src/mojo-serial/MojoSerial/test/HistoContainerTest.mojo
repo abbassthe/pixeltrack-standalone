@@ -1,11 +1,11 @@
-import random
-from utils.numerics import min_finite, max_finite
+import std.random as random
+from std.utils.numerics import min_finite, max_finite
 
 from MojoSerial.CUDACore.HistoContainer import HistoContainer
 import MojoSerial.CUDACore.HistoContainer as Histo
 
 
-fn go[T: DType, NBINS: Int = 128, S: Int = 8 * T.sizeof(), DELTA: Int = 1000]():
+def go[T: DType, NBINS: Int = 128, S: Int = 8 * T.size_of(), DELTA: Int = 1000]():
     random.seed()
 
     var rmin = min_finite[T]()
@@ -17,11 +17,11 @@ fn go[T: DType, NBINS: Int = 128, S: Int = 8 * T.sizeof(), DELTA: Int = 1000]():
         rmin = 0
         rmax = NBINS * 2 - 1
 
-    alias N: Int = 12000
+    comptime N: Int = 12000
     var v = InlineArray[Scalar[T], N](uninitialized=True)
 
-    alias Hist = HistoContainer[T, NBINS, N, S]
-    alias Hist4 = HistoContainer[T, NBINS, N, S, DType.uint16, 4]
+    comptime Hist = HistoContainer[T, NBINS, N, S]
+    comptime Hist4 = HistoContainer[T, NBINS, N, S, DType.uint16, 4]
 
     print(
         "HistoContainer ",
@@ -62,7 +62,7 @@ fn go[T: DType, NBINS: Int = 128, S: Int = 8 * T.sizeof(), DELTA: Int = 1000]():
             sep="",
         )
 
-    fn verify(
+    def verify(
         i: UInt32,
         j: UInt32,
         k: UInt32,
@@ -160,7 +160,7 @@ fn go[T: DType, NBINS: Int = 128, S: Int = 8 * T.sizeof(), DELTA: Int = 1000]():
                 verify(i, kh, k, j[], k, v)
                 j += 1
 
-    fn ftest(mut tot: Int, k: UInt32):
+    def ftest(mut tot: Int, k: UInt32):
         debug_assert(k >= 0 and k < N)
         tot += 1
 
@@ -209,7 +209,7 @@ fn go[T: DType, NBINS: Int = 128, S: Int = 8 * T.sizeof(), DELTA: Int = 1000]():
         debug_assert(tot == rtot)
 
 
-fn main() raises:
+def main() raises:
     go[DType.int16]()
     go[DType.uint8, 128, 8, 4]()
     go[DType.uint16, 313 // 2, 9, 4]()

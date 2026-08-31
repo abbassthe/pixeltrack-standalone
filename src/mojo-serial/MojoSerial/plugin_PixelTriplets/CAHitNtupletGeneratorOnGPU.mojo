@@ -1,4 +1,4 @@
-from memory import OwnedPointer
+from std.memory import OwnedPointer
 
 import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 from MojoSerial.plugin_PixelTriplets.CAHitNtupletGeneratorKernels import (
@@ -22,20 +22,20 @@ from MojoSerial.Framework.ProductRegistry import ProductRegistry
 
 
 struct CAHitNtupletGeneratorOnGPU:
-    alias Quality = pixelTrack.Quality
-    alias OutputSoA = pixelTrack.TrackSoA
-    alias HitContainer = pixelTrack.HitContainer
-    alias Tuple = Self.HitContainer
+    comptime Quality = pixelTrack.Quality
+    comptime OutputSoA = pixelTrack.TrackSoA
+    comptime HitContainer = pixelTrack.HitContainer
+    comptime Tuple = Self.HitContainer
 
-    alias QualityCuts = KernelQualityCuts
-    alias Params = KernelParams
-    alias Counters = KernelCounters
+    comptime QualityCuts = KernelQualityCuts
+    comptime Params = KernelParams
+    comptime Counters = KernelCounters
 
     var m_params: Self.Params
     var m_counters: OwnedPointer[Self.Counters]
 
     # C++: CAHitNtupletGeneratorOnGPU::CAHitNtupletGeneratorOnGPU (CAHitNtupletGeneratorOnGPU.cc)
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         self.m_params = Self.Params(
             False,  # onGPU
             3,  # minHitsPerNtuplet,
@@ -60,14 +60,14 @@ struct CAHitNtupletGeneratorOnGPU:
         self.m_counters = OwnedPointer(Self.Counters())
 
     # C++: CAHitNtupletGeneratorOnGPU::~CAHitNtupletGeneratorOnGPU (CAHitNtupletGeneratorOnGPU.cc)
-    fn __del__(owned self):
+    def __deinit__(owned self):
         if self.m_params.doStats:
             CAHitNtupletGeneratorKernelsCPU.print_counters(
                 self.m_counters.unsafe_ptr()
             )
 
     # C++: CAHitNtupletGeneratorOnGPU::makeTuples (CAHitNtupletGeneratorOnGPU.cc)
-    fn make_tuples(
+    def make_tuples(
         self,
         hits_d: TrackingRecHit2DCPU,
         bfield: Float32,

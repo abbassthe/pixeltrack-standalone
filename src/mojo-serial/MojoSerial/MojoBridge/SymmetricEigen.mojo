@@ -1,11 +1,11 @@
-import math
+import std.math as math
 
 from MojoSerial.MojoBridge.Matrix import Matrix
 
 
-from math import sqrt, sin, cos, asin, pi
+from std.math import sqrt, sin, cos, asin, pi
 
-fn min_eigen_2x2(
+def min_eigen_2x2(
     A: Matrix[DType.float64, 2, 2], mut chi2: Float64
 ) -> Matrix[DType.float64, 2, 1]:
     var a = A[0, 0]
@@ -54,7 +54,7 @@ fn min_eigen_2x2(
 # ---------------------------
 
 @always_inline
-fn clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
+def clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
     if x < lo:
         return lo
     if x > hi:
@@ -62,18 +62,18 @@ fn clamp(x: Float64, lo: Float64, hi: Float64) -> Float64:
     return x
 
 @always_inline
-fn norm3(x: Float64, y: Float64, z: Float64) -> Float64:
+def norm3(x: Float64, y: Float64, z: Float64) -> Float64:
     return sqrt(x * x + y * y + z * z)
 
 @always_inline
-fn normalize3(x: Float64, y: Float64, z: Float64) -> (Float64, Float64, Float64):
+def normalize3(x: Float64, y: Float64, z: Float64) -> (Float64, Float64, Float64):
     var n = norm3(x, y, z)
     if n > 0.0:
         return (x / n, y / n, z / n)
     return (1.0, 0.0, 0.0)
 
 @always_inline
-fn cross3(ax: Float64, ay: Float64, az: Float64,
+def cross3(ax: Float64, ay: Float64, az: Float64,
           bx: Float64, by: Float64, bz: Float64) -> (Float64, Float64, Float64):
     return (
         ay * bz - az * by,
@@ -82,7 +82,7 @@ fn cross3(ax: Float64, ay: Float64, az: Float64,
     )
 
 @always_inline
-fn best_of_three_vectors(
+def best_of_three_vectors(
     v0x: Float64, v0y: Float64, v0z: Float64,
     v1x: Float64, v1y: Float64, v1z: Float64,
     v2x: Float64, v2y: Float64, v2z: Float64
@@ -107,7 +107,7 @@ fn best_of_three_vectors(
     return (x, y, z, nmax)
 
 @always_inline
-fn nullvec_from_rows_rank12(
+def nullvec_from_rows_rank12(
     # rows r0,r1,r2 of M (each is 3-vector)
     r0x: Float64, r0y: Float64, r0z: Float64,
     r1x: Float64, r1y: Float64, r1z: Float64,
@@ -173,7 +173,7 @@ fn nullvec_from_rows_rank12(
 # Main: smallest eigenpair of symmetric 3x3 using Brannon invariants / Lode angle
 # ---------------------------
 
-fn min_eigen_3x3(
+def min_eigen_3x3(
     A: Matrix[DType.float64, 3, 3],
     mut chi2: Float64
 ) -> Matrix[DType.float64, 3, 1]:
@@ -317,7 +317,7 @@ fn min_eigen_3x3(
     return vec
 
 
-fn min_eigen_3x3_fast(
+def min_eigen_3x3_fast(
     A: Matrix[DType.float64, 3, 3]
 ) -> Matrix[DType.float64, 3, 1]:
     var chi2: Float64 = 0.0

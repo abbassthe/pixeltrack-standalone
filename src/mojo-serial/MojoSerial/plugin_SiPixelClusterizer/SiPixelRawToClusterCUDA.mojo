@@ -1,4 +1,4 @@
-from memory import OwnedPointer
+from std.memory import OwnedPointer
 
 from MojoSerial.CondFormats.SiPixelFedCablingMapGPUWrapper import (
     SiPixelFedCablingMapGPUWrapper,
@@ -41,7 +41,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
     var _useQuality: Bool
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._rawGetToken = EDGetTokenT[FEDRawDataCollection]()
         self._digiPutToken = EDPutTokenT[SiPixelDigisSoA]()
         self._digiErrorPutToken = EDPutTokenT[SiPixelDigiErrorsSoA]()
@@ -56,7 +56,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
         self._useQuality = False
 
     @always_inline
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         try:
             self._rawGetToken = reg.consumes[FEDRawDataCollection]()
             self._digiPutToken = reg.produces[SiPixelDigisSoA]()
@@ -78,7 +78,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
             print("Handled exception in SiPixelRawToClusterCUDA, ", e)
             return Self()
 
-    fn produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
+    def produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
         try:
             ref hgpuMap = iSetup.get[SiPixelFedCablingMapGPUWrapper]()
             if hgpuMap.hasQuality() != self._useQuality:
@@ -116,7 +116,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
 
                 # GPU specific
                 var nWords: Int32 = (
-                    rawData.size().cast[DType.int32]() / DType.uint64.sizeof()
+                    rawData.size().cast[DType.int32]() / DType.uint64.size_of()
                 )
                 if nWords == 0:
                     continue
@@ -159,7 +159,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
 
                 var bw = (header + 1).bitcast[UInt32]()
                 var ew = trailer.bitcast[UInt32]()
-                var le = (Int(ew) - Int(bw)) // DType.uint32.sizeof()
+                var le = (Int(ew) - Int(bw)) // DType.uint32.size_of()
                 debug_assert(le % 2 == 0)
                 self._wordFedAppender[].initializeWordFed(
                     fedId.cast[DType.int32](),
@@ -197,10 +197,10 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
         except e:
             print("Error during produce in SiPixelRawToClusterCUDA, ", e)
 
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         pass
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelRawToClusterCUDA"

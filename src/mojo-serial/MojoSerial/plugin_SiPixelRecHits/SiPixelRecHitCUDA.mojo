@@ -31,7 +31,7 @@ struct SiPixelRecHitCUDA(Defaultable, EDProducer, Typeable):
 
     var gpuAlgo_: PixelRecHitGPUKernel
 
-    fn __init__(out self):
+    def __init__(out self):
         self.tBeamSpot = EDGetTokenT[BeamSpotPOD]()
         self.token_ = EDGetTokenT[SiPixelClustersSoA]()
         self.tokenDigi_ = EDGetTokenT[SiPixelDigisSoA]()
@@ -39,7 +39,7 @@ struct SiPixelRecHitCUDA(Defaultable, EDProducer, Typeable):
 
         self.gpuAlgo_ = PixelRecHitGPUKernel()
 
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         try:
             self.tBeamSpot = reg.consumes[BeamSpotPOD]()
             self.token_ = reg.consumes[SiPixelClustersSoA]()
@@ -51,7 +51,7 @@ struct SiPixelRecHitCUDA(Defaultable, EDProducer, Typeable):
 
         self.gpuAlgo_ = PixelRecHitGPUKernel()
 
-    fn produce(mut self, mut iEvent: Event, ref es: EventSetup):
+    def produce(mut self, mut iEvent: Event, ref es: EventSetup):
         ref clusters = iEvent.get(self.token_)
         ref digis = iEvent.get(self.tokenDigi_)
         ref bs = iEvent.get(self.tBeamSpot)
@@ -80,9 +80,9 @@ struct SiPixelRecHitCUDA(Defaultable, EDProducer, Typeable):
         except e:
             print("Error during produce in SiPixelRecHitCUDA, ", e)
 
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         pass
 
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelRecHitCUDA"

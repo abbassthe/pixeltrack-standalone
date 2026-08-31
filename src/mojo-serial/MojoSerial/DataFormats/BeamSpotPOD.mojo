@@ -2,8 +2,7 @@ from MojoSerial.MojoBridge.DTypes import Float, Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct BeamSpotPOD(Copyable, Defaultable, Movable, Typeable):
+struct BeamSpotPOD(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var x: Float  # position
     var y: Float
     var z: Float
@@ -22,7 +21,7 @@ struct BeamSpotPOD(Copyable, Defaultable, Movable, Typeable):
     var betaStar: Float
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.x = 0.0
         self.y = 0.0
         self.z = 0.0
@@ -42,5 +41,5 @@ struct BeamSpotPOD(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "BeamSpotPOD"

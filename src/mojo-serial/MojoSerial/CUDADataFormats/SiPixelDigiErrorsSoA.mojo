@@ -1,4 +1,4 @@
-from memory import OwnedPointer
+from std.memory import OwnedPointer
 
 from MojoSerial.CUDACore.SimpleVector import SimpleVector, make_SimpleVector
 from MojoSerial.DataFormats.PixelErrors import (
@@ -9,7 +9,7 @@ from MojoSerial.MojoBridge.DTypes import SizeType, Typeable
 
 
 struct SiPixelDigiErrorsSoA(Defaultable, Movable, Typeable):
-    alias _error_dtype = SimpleVector[
+    comptime _error_dtype = SimpleVector[
         PixelErrorCompact, PixelErrorCompact.dtype()
     ]
     var data_d: OwnedPointer[List[PixelErrorCompact]]
@@ -17,13 +17,13 @@ struct SiPixelDigiErrorsSoA(Defaultable, Movable, Typeable):
     var formatterErrors_h: PixelFormatterErrors
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.data_d = OwnedPointer(List[PixelErrorCompact]())
         self.error_d = OwnedPointer(Self._error_dtype())
         self.formatterErrors_h = PixelFormatterErrors()
 
     @always_inline
-    fn __init__(
+    def __init__(
         out self, maxFedWords: SizeType, var errors: PixelFormatterErrors
     ):
         self.formatterErrors_h = errors^
@@ -41,27 +41,27 @@ struct SiPixelDigiErrorsSoA(Defaultable, Movable, Typeable):
         debug_assert(self.error_d[].capacity() == UInt(maxFedWords))
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self.data_d = other.data_d^
         self.error_d = other.error_d^
         self.formatterErrors_h = other.formatterErrors_h^
 
-    fn formatterErrors(
+    def formatterErrors(
         self,
     ) -> ref [self.formatterErrors_h] PixelFormatterErrors:
         return self.formatterErrors_h
 
-    fn error[
+    def error[
         origin: Origin, //
     ](ref [origin]self) -> UnsafePointer[
         Self._error_dtype, mut = origin.mut, origin=origin
     ]:
         return self.error_d.unsafe_ptr()
 
-    fn c_error(self) -> UnsafePointer[Self._error_dtype, mut=False]:
+    def c_error(self) -> UnsafePointer[Self._error_dtype, mut=False]:
         return self.error_d.unsafe_ptr()
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelDigiErrorsSoA"

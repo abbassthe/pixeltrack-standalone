@@ -1,4 +1,4 @@
-from memory import OwnedPointer
+from std.memory import OwnedPointer
 
 from MojoSerial.CUDACore.CUDACompat import CUDACompat
 from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
@@ -15,15 +15,15 @@ from MojoSerial.plugin_PixelVertexFinding.gpuFitVertices import fitVertices
 from MojoSerial.plugin_PixelVertexFinding.gpuSortByPt2 import sortByPt2
 from MojoSerial.plugin_PixelVertexFinding.gpuSplitVertices import splitVertices
 
-alias ZVertices = ZVertexSoA
-alias TkSoA = pixelTrack.TrackSoA
+comptime ZVertices = ZVertexSoA
+comptime TkSoA = pixelTrack.TrackSoA
 
 
 # workspace used in the vertex reco algos
 @fieldwise_init
 struct WorkSpace(Copyable, Defaultable, Movable, Typeable):
-    alias MAXTRACKS = ZVertexSoA.MAXTRACKS
-    alias MAXVTX = ZVertexSoA.MAXVTX
+    comptime MAXTRACKS = ZVertexSoA.MAXTRACKS
+    comptime MAXVTX = ZVertexSoA.MAXVTX
 
     var ntrks: UInt32  # number of "selected tracks"
     var itrk: InlineArray[UInt16, UInt(Self.MAXTRACKS)]  # index of original track
@@ -40,7 +40,7 @@ struct WorkSpace(Copyable, Defaultable, Movable, Typeable):
     var nvIntermediate: UInt32  # the number of vertices after splitting pruning etc.
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.ntrks = 0
         self.itrk = InlineArray[UInt16, UInt(Self.MAXTRACKS)](fill=0)
         self.zt = InlineArray[Float, UInt(Self.MAXTRACKS)](fill=0.0)
@@ -51,24 +51,24 @@ struct WorkSpace(Copyable, Defaultable, Movable, Typeable):
         self.nvIntermediate = 0
 
     @always_inline
-    fn init(mut self):
+    def init(mut self):
         self.ntrks = 0
         self.nvIntermediate = 0
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "WorkSpace"
 
 
 @always_inline
-fn init(pdata: UnsafePointer[ZVertexSoA], pws: UnsafePointer[WorkSpace]):
+def init(pdata: UnsafePointer[ZVertexSoA], pws: UnsafePointer[WorkSpace]):
     pdata[].init()
     pws[].init()
 
 
 @always_inline
-fn loadTracks(
+def loadTracks(
     ptracks: UnsafePointer[TkSoA],
     soa: UnsafePointer[ZVertexSoA],
     pws: UnsafePointer[WorkSpace],
@@ -109,9 +109,9 @@ fn loadTracks(
 
 
 struct Producer(Typeable):
-    alias ZVertices = ZVertexSoA
-    alias WorkSpace = WorkSpace
-    alias TkSoA = pixelTrack.TrackSoA
+    comptime ZVertices = ZVertexSoA
+    comptime WorkSpace = WorkSpace
+    comptime TkSoA = pixelTrack.TrackSoA
 
     var oneKernel_: Bool
     var useDensity_: Bool
@@ -124,7 +124,7 @@ struct Producer(Typeable):
     var chi2max: Float  # max normalized distance to cluster
 
     @always_inline
-    fn __init__(
+    def __init__(
         out self,
         oneKernel: Bool,
         useDensity: Bool,
@@ -144,7 +144,7 @@ struct Producer(Typeable):
         self.errmax = ierrmax
         self.chi2max = ichi2max
 
-    fn make(
+    def make(
         self, tksoa: UnsafePointer[Self.TkSoA], ptMin: Float
     ) raises -> ZVertexHeterogeneous:
         var vertices: ZVertexHeterogeneous = ZVertexHeterogeneous(ZVertexSoA())
@@ -176,5 +176,5 @@ struct Producer(Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "Producer"

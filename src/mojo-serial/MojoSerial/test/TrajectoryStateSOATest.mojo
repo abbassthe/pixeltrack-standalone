@@ -5,13 +5,13 @@ from MojoSerial.MojoBridge.Matrix import Matrix
 from MojoSerial.CUDACore.EigenSoA import MatrixSoA
 from MojoSerial.CUDADataFormats.TrajectoryStateSoA import TrajectoryStateSoA
 
-from math import sqrt
+from std.math import sqrt
 
-alias Vector5d = Vector[DType.float64, 5]
-alias Matrix5d = Matrix[DType.float64, 5, 5]
+comptime Vector5d = Vector[DType.float64, 5]
+comptime Matrix5d = Matrix[DType.float64, 5, 5]
 
 
-fn loadCov(e: Vector5d) -> Matrix5d:
+def loadCov(e: Vector5d) -> Matrix5d:
     var cov: Matrix5d = Matrix5d()
     for i in range(5):
         cov[i, i] = e[i] * e[i]
@@ -23,10 +23,10 @@ fn loadCov(e: Vector5d) -> Matrix5d:
     return cov
 
 
-alias TS = TrajectoryStateSoA[128]
+comptime TS = TrajectoryStateSoA[128]
 
 
-fn testTSSoA(pts: UnsafePointer[TS], n: Int64):
+def testTSSoA(pts: UnsafePointer[TS], n: Int64):
     debug_assert(n <= 128)
 
     var par0: Vector5d = Vector5d(0.2, 0.1, 3.5, 0.8, 0.1)
@@ -49,6 +49,6 @@ fn testTSSoA(pts: UnsafePointer[TS], n: Int64):
                 debug_assert(abs(delM[k, j]) < 1.0e-5)
 
 
-fn main():
+def main():
     var ts: TS = TS()
     testTSSoA(UnsafePointer(to=ts), 128)

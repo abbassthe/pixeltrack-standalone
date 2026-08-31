@@ -1,4 +1,4 @@
-from sys import is_defined
+from std.sys import is_defined
 
 from MojoSerial.CUDACore.VecArray import VecArray
 from MojoSerial.CUDACore.SimpleVector import SimpleVector
@@ -10,7 +10,7 @@ from MojoSerial.MojoBridge.DTypes import DType
 
 
 @parameter
-fn maxNumberOfTuples() -> UInt32:
+def maxNumberOfTuples() -> UInt32:
     if is_defined["ONLY_PHICUT"]():
         return 48 * 1024
     if is_defined["GPU_SMALL_EVENTS"]():
@@ -19,12 +19,12 @@ fn maxNumberOfTuples() -> UInt32:
 
 
 @parameter
-fn maxNumberOfQuadruplets() -> UInt32:
+def maxNumberOfQuadruplets() -> UInt32:
     return maxNumberOfTuples()
 
 
 @parameter
-fn maxNumberOfDoublets() -> UInt32:
+def maxNumberOfDoublets() -> UInt32:
     if is_defined["ONLY_PHICUT"]():
         return 2 * 1024 * 1024
     if is_defined["GPU_SMALL_EVENTS"]():
@@ -33,7 +33,7 @@ fn maxNumberOfDoublets() -> UInt32:
 
 
 @parameter
-fn maxCellsPerHit() -> UInt32:
+def maxCellsPerHit() -> UInt32:
     if is_defined["ONLY_PHICUT"]():
         return 8 * 128
     if is_defined["GPU_SMALL_EVENTS"]():
@@ -42,52 +42,52 @@ fn maxCellsPerHit() -> UInt32:
 
 
 @parameter
-fn maxNumOfActiveDoublets() -> UInt32:
+def maxNumOfActiveDoublets() -> UInt32:
     return maxNumberOfDoublets() // 8
 
 
 @parameter
-fn maxNumberOfLayerPairs() -> UInt32:
+def maxNumberOfLayerPairs() -> UInt32:
     return 20
 
 
 @parameter
-fn maxNumberOfLayers() -> UInt32:
+def maxNumberOfLayers() -> UInt32:
     return 10
 
 
 @parameter
-fn maxTuples() -> UInt32:
+def maxTuples() -> UInt32:
     return maxNumberOfTuples()
 
 
-alias _MaxCellsPerHit: Int = Int(maxCellsPerHit())
+comptime _MaxCellsPerHit: Int = Int(maxCellsPerHit())
 
-alias _MaxNumberOfTuples: UInt32 = maxNumberOfTuples()
+comptime _MaxNumberOfTuples: UInt32 = maxNumberOfTuples()
 
-alias _CellNeighborsCapacity: Int = (
+comptime _CellNeighborsCapacity: Int = (
     36 if not is_defined["ONLY_PHICUT"]() else 64
 )
 
-alias _CellTracksCapacity: Int = 48 if not is_defined["ONLY_PHICUT"]() else 64
+comptime _CellTracksCapacity: Int = 48 if not is_defined["ONLY_PHICUT"]() else 64
 
-alias hindex_type = UInt16
-alias tindex_type = UInt16
+comptime hindex_type = UInt16
+comptime tindex_type = UInt16
 
 
-alias CellNeighbors = VecArray[UInt32, "CellNeighbors", _CellNeighborsCapacity]
-alias CellTracks = VecArray[tindex_type, "CellTracks", _CellTracksCapacity]
+comptime CellNeighbors = VecArray[UInt32, "CellNeighbors", _CellNeighborsCapacity]
+comptime CellTracks = VecArray[tindex_type, "CellTracks", _CellTracksCapacity]
 
-alias CellNeighborsVector = SimpleVector[CellNeighbors, "CellNeighborsVector"]
-alias CellTracksVector = SimpleVector[CellTracks, "CellTracksVector"]
+comptime CellNeighborsVector = SimpleVector[CellNeighbors, "CellNeighborsVector"]
+comptime CellTracksVector = SimpleVector[CellTracks, "CellTracksVector"]
 
-alias OuterHitOfCell = VecArray[UInt32, "OuterHitOfCell", _MaxCellsPerHit]
-alias TuplesContainer = OneToManyAssoc[
+comptime OuterHitOfCell = VecArray[UInt32, "OuterHitOfCell", _MaxCellsPerHit]
+comptime TuplesContainer = OneToManyAssoc[
     DType.uint16, _MaxNumberOfTuples, 5 * _MaxNumberOfTuples
 ]
-alias HitToTuple = OneToManyAssoc[
+comptime HitToTuple = OneToManyAssoc[
     DType.uint16, GPUClusteringConstants.maxNumberOfHits, 4 * _MaxNumberOfTuples
 ]
-alias TupleMultiplicity = OneToManyAssoc[
+comptime TupleMultiplicity = OneToManyAssoc[
     DType.uint16, 8, _MaxNumberOfTuples
 ]

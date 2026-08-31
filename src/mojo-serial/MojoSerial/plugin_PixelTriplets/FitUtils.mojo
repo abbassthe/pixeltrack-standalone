@@ -1,4 +1,4 @@
-import math
+import std.math as math
 from MojoSerial.MojoBridge.Matrix import Matrix, MatrixLike, MatrixXd, VectorXd
 from MojoSerial.MojoBridge.DTypes import DType
 
@@ -9,7 +9,7 @@ struct _Rfit_circle_fit(Copyable, Defaultable, Movable):
     var q: Int32  # particle charge
     var chi2: Float32
 
-    fn __init__(out self):
+    def __init__(out self):
         self.par = Matrix[DType.float64, 3, 1]()
         self.cov = Matrix[DType.float64, 3, 3]()
         self.q = 0
@@ -22,7 +22,7 @@ struct _Rfit_line_fit(Copyable, Defaultable, Movable):
     var cov: Matrix[DType.float64, 2, 2]
     var chi2: Float64
 
-    fn __init__(out self):
+    def __init__(out self):
         self.par = Matrix[DType.float64, 2, 1]()
         self.cov = Matrix[DType.float64, 2, 2]()
         self.chi2 = 0.0
@@ -36,7 +36,7 @@ struct _Rfit_helix_fit(Copyable, Defaultable, Movable):
     var chi2_line: Float32
     var q: Int32  # particle charge
 
-    fn __init__(out self):
+    def __init__(out self):
         self.par = Matrix[DType.float64, 5, 1]()
         self.cov = Matrix[DType.float64, 5, 5]()
         self.chi2_circle = 0.0
@@ -45,55 +45,54 @@ struct _Rfit_helix_fit(Copyable, Defaultable, Movable):
 
 struct Rfit:
 
-    alias d: Float64 = 1e-4
+    comptime d: Float64 = 1e-4
 
-    alias Vector2d = Matrix[DType.float64, 2, 1]
-    alias Vector3d = Matrix[DType.float64, 3, 1]
-    alias Vector4d = Matrix[DType.float64, 4, 1]
-    alias Vector5d = Matrix[DType.float64, 5, 1]
-    alias Vector6f = Matrix[DType.float64, 6, 1]
+    comptime Vector2d = Matrix[DType.float64, 2, 1]
+    comptime Vector3d = Matrix[DType.float64, 3, 1]
+    comptime Vector4d = Matrix[DType.float64, 4, 1]
+    comptime Vector5d = Matrix[DType.float64, 5, 1]
+    comptime Vector6f = Matrix[DType.float64, 6, 1]
 
-    alias Matrix2d = Matrix[DType.float64, 2, 2]
-    alias Matrix3d = Matrix[DType.float64, 3, 3]
-    alias Matrix4d = Matrix[DType.float64, 4, 4]
-    alias Matrix5d = Matrix[DType.float64, 5, 5]
-    alias Matrix6d = Matrix[DType.float64, 6, 6]
+    comptime Matrix2d = Matrix[DType.float64, 2, 2]
+    comptime Matrix3d = Matrix[DType.float64, 3, 3]
+    comptime Matrix4d = Matrix[DType.float64, 4, 4]
+    comptime Matrix5d = Matrix[DType.float64, 5, 5]
+    comptime Matrix6d = Matrix[DType.float64, 6, 6]
 
-    alias Matrix2x3d = Matrix[DType.float64, 2, 3]
-    alias Matrix3f = Matrix[DType.float64, 3, 3]
-    alias Vector3f = Matrix[DType.float64, 3, 1]
-    alias Vector4f = Matrix[DType.float64, 4, 1]
+    comptime Matrix2x3d = Matrix[DType.float64, 2, 3]
+    comptime Matrix3f = Matrix[DType.float64, 3, 3]
+    comptime Vector3f = Matrix[DType.float64, 3, 1]
+    comptime Vector4f = Matrix[DType.float64, 4, 1]
     
-    alias MatrixXd = MatrixXd
-    alias VectorXd = VectorXd
+    comptime MatrixXd = MatrixXd
+    comptime VectorXd = VectorXd
 
-    alias MatrixNd[N: Int] = Matrix[DType.float64, N, N]
-    alias MatrixNplusONEd[N: Int] = Matrix[DType.float64, N + 1, N + 1]
-    alias ArrayNd[N: Int] = Matrix[DType.float64, N, N]
-    alias Matrix2Nd[N: Int] = Matrix[DType.float64, 2 * N, 2 * N]
-    alias Matrix3Nd[N: Int] = Matrix[DType.float64, 3 * N, 3 * N]
-    alias Matrix2xNd[N: Int] = Matrix[DType.float64, 2, N]
-    alias Matrix3xNd[N: Int] = Matrix[DType.float64, 3, N]
-    alias Array2xNd[N: Int] = Matrix[DType.float64, 2, N]
-    alias MatrixNx3d[N: Int] = Matrix[DType.float64, N, 3]
-    alias MatrixNx5d[N: Int] = Matrix[DType.float64, N, 5]
-    alias VectorNd[N: Int] = Matrix[DType.float64, N, 1]
-    alias VectorNplusONEd[N: Int] = Matrix[DType.float64, N + 1, 1]
-    alias Vector2Nd[N: Int] = Matrix[DType.float64, 2 * N, 1]
-    alias Vector3Nd[N: Int] = Matrix[DType.float64, 3 * N, 1]
-    alias RowVectorNd[N: Int] = Matrix[DType.float64, 1, 1]
-    alias RowVector2Nd[N: Int] = Matrix[DType.float64, 1, 2 * N]
+    comptime MatrixNd[N: Int] = Matrix[DType.float64, N, N]
+    comptime MatrixNplusONEd[N: Int] = Matrix[DType.float64, N + 1, N + 1]
+    comptime ArrayNd[N: Int] = Matrix[DType.float64, N, N]
+    comptime Matrix2Nd[N: Int] = Matrix[DType.float64, 2 * N, 2 * N]
+    comptime Matrix3Nd[N: Int] = Matrix[DType.float64, 3 * N, 3 * N]
+    comptime Matrix2xNd[N: Int] = Matrix[DType.float64, 2, N]
+    comptime Matrix3xNd[N: Int] = Matrix[DType.float64, 3, N]
+    comptime Array2xNd[N: Int] = Matrix[DType.float64, 2, N]
+    comptime MatrixNx3d[N: Int] = Matrix[DType.float64, N, 3]
+    comptime MatrixNx5d[N: Int] = Matrix[DType.float64, N, 5]
+    comptime VectorNd[N: Int] = Matrix[DType.float64, N, 1]
+    comptime VectorNplusONEd[N: Int] = Matrix[DType.float64, N + 1, 1]
+    comptime Vector2Nd[N: Int] = Matrix[DType.float64, 2 * N, 1]
+    comptime Vector3Nd[N: Int] = Matrix[DType.float64, 3 * N, 1]
+    comptime RowVectorNd[N: Int] = Matrix[DType.float64, 1, 1]
+    comptime RowVector2Nd[N: Int] = Matrix[DType.float64, 1, 2 * N]
 
-    alias circle_fit = _Rfit_circle_fit
-    alias line_fit = _Rfit_line_fit
-    alias helix_fit = _Rfit_helix_fit
+    comptime circle_fit = _Rfit_circle_fit
+    comptime line_fit = _Rfit_line_fit
+    comptime helix_fit = _Rfit_helix_fit
 
-    alias u_int = UInt32
+    comptime u_int = UInt32
 
     @staticmethod
-    fn printIt[M: MatrixLike, RFIT_DEBUG: Bool = False](m: UnsafePointer[M], prefix: String = ""):
-        @parameter
-        if RFIT_DEBUG:
+    def printIt[M: MatrixLike, RFIT_DEBUG: Bool = False](m: UnsafePointer[M], prefix: String = ""):
+        comptime if RFIT_DEBUG:
             var r: Int = 0
             while r < m[].num_rows():
                 var c: Int = 0
@@ -103,15 +102,15 @@ struct Rfit:
                 r += 1
 
     @staticmethod
-    fn sqr(a: Float64) -> Float64:
+    def sqr(a: Float64) -> Float64:
         return a * a
 
     @staticmethod
-    fn cross2D(a: Self.Vector2d, b: Self.Vector2d) -> Float64:
+    def cross2D(a: Self.Vector2d, b: Self.Vector2d) -> Float64:
         return a[0] * b[1] - a[1] * b[0]
 
     @staticmethod
-    fn loadCovariance2D[M6xN: MatrixLike, N: Int](ge: M6xN, mut hits_cov: Matrix[DType.float64, 2 * N, 2 * N]):
+    def loadCovariance2D[M6xN: MatrixLike, N: Int](ge: M6xN, mut hits_cov: Matrix[DType.float64, 2 * N, 2 * N]):
         var hits_in_fit: Int = N
         var i: Int = 0
         while i < hits_in_fit:
@@ -131,7 +130,7 @@ struct Rfit:
             i += 1
 
     @staticmethod
-    fn loadCovariance[M6xN: MatrixLike, N: Int](ge: M6xN, mut hits_cov: Matrix[DType.float64, 3 * N, 3 * N]):
+    def loadCovariance[M6xN: MatrixLike, N: Int](ge: M6xN, mut hits_cov: Matrix[DType.float64, 3 * N, 3 * N]):
         var hits_in_fit: Int = N
         var i: Int = 0
         while i < hits_in_fit:
@@ -165,7 +164,7 @@ struct Rfit:
             i += 1
 
     @staticmethod
-    fn par_uvrtopak(mut circle: Self.circle_fit, B: Float64, error: Bool):
+    def par_uvrtopak(mut circle: Self.circle_fit, B: Float64, error: Bool):
         var par_pak = Self.Vector3d()
         var temp0 = circle.par.head[2]().squaredNorm()
         var temp1 = math.sqrt(temp0)
@@ -189,7 +188,7 @@ struct Rfit:
         circle.par = par_pak
 
     @staticmethod
-    fn fromCircleToPerigee(mut circle: Self.circle_fit):
+    def fromCircleToPerigee(mut circle: Self.circle_fit):
         var par_pak = Self.Vector3d()
         var temp0 = circle.par.head[2]().squaredNorm()
         var temp1 = math.sqrt(temp0)
@@ -214,7 +213,7 @@ struct Rfit:
         circle.par = par_pak
 
     @staticmethod
-    fn transformToPerigeePlane(
+    def transformToPerigeePlane(
         ip: Self.Vector5d,
         icov: Self.Matrix5d,
         mut op: Self.Vector5d,

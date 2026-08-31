@@ -8,23 +8,23 @@ struct SimpleVector[T: Movable & Copyable, DT: StaticString](
 ):
     var m_size: Int32
     var m_capacity: Int32
-    var m_data: UnsafePointer[T]
+    var m_data: UnsafePointer[Self.T]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.m_size = 0
         self.m_capacity = 0
         self.m_data = UnsafePointer[T]()
 
     @always_inline
-    fn construct(mut self, var capacity: Int32, var data: UnsafePointer[T]):
+    def construct(mut self, var capacity: Int32, var data: UnsafePointer[Self.T]):
         # ownership of m_data stays within the caller
         self.m_size = 0
         self.m_capacity = capacity
         self.m_data = data
 
     @always_inline
-    fn push_back_unsafe(mut self, ref element: T) -> Int32:
+    def push_back_unsafe(mut self, ref element: Self.T) -> Int32:
         var previousSize = self.m_size
         self.m_size += 1
 
@@ -36,15 +36,15 @@ struct SimpleVector[T: Movable & Copyable, DT: StaticString](
             return -1
 
     @always_inline
-    fn back(ref self) -> ref [self.m_data] T:
+    def back(ref self) -> ref [self.m_data] Self.T:
         if self.m_size > 0:
             return self.m_data[self.m_size - 1]
         return self.m_data[]  # undefined behavior
 
-    fn push_back(mut self, ref element: T) -> Int32:
+    def push_back(mut self, ref element: Self.T) -> Int32:
         return self.push_back_unsafe(element)
 
-    fn extend(mut self, size: Int32 = 1) -> Int32:
+    def extend(mut self, size: Int32 = 1) -> Int32:
         var previousSize = self.m_size
         self.m_size += size
 
@@ -54,7 +54,7 @@ struct SimpleVector[T: Movable & Copyable, DT: StaticString](
             self.m_size -= 1
             return -1
 
-    fn shrink(mut self, size: Int32 = 1) -> Int32:
+    def shrink(mut self, size: Int32 = 1) -> Int32:
         var previousSize = self.m_size
         self.m_size -= size
 
@@ -65,56 +65,56 @@ struct SimpleVector[T: Movable & Copyable, DT: StaticString](
             return -1
 
     @always_inline
-    fn empty(self) -> Bool:
+    def empty(self) -> Bool:
         return self.m_size <= 0
 
     @always_inline
-    fn full(self) -> Bool:
+    def full(self) -> Bool:
         return self.m_size >= self.m_capacity
 
     @always_inline
-    fn __getitem__(ref self, i: Int32) -> ref [self.m_data] T:
+    def __getitem__(ref self, i: Int32) -> ref [self.m_data] Self.T:
         return self.m_data[i]
 
     @always_inline
-    fn __setitem__(mut self, i: Int32, val: T):
+    def __setitem__(mut self, i: Int32, val: Self.T):
         self.m_data[i] = val
 
     @always_inline
-    fn reset(mut self):
+    def reset(mut self):
         self.m_size = 0
 
     @always_inline
-    fn size(self) -> Int32:
+    def size(self) -> Int32:
         return self.m_size
 
     @always_inline
-    fn capacity(self) -> Int32:
+    def capacity(self) -> Int32:
         return self.m_capacity
 
     @always_inline
-    fn data(self) -> UnsafePointer[T, mut=False]:
+    def data(self) -> UnsafePointer[Self.T, mut=False]:
         return self.m_data
 
     @always_inline
-    fn resize(mut self, size: Int32):
+    def resize(mut self, size: Int32):
         self.m_size = size
 
     @always_inline
-    fn set_data(mut self, data: UnsafePointer[T]):
+    def set_data(mut self, data: UnsafePointer[Self.T]):
         self.m_data = data
 
     @always_inline
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         return Int(self.m_size)
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
-        return "SimpleVector[" + DT + "]"
+    def dtype() -> String:
+        return "SimpleVector[" + Self.DT + "]"
 
 
-fn make_SimpleVector[
+def make_SimpleVector[
     T: Movable & Copyable, DT: StaticString
 ](var capacity: Int32, var data: UnsafePointer[T]) -> SimpleVector[T, DT]:
     var ret = SimpleVector[T, DT]()
@@ -122,7 +122,7 @@ fn make_SimpleVector[
     return ret
 
 
-fn make_SimpleVector[
+def make_SimpleVector[
     T: Movable & Copyable & Typeable, //
 ](var capacity: Int32, var data: UnsafePointer[T]) -> SimpleVector[
     T, T.dtype()
@@ -132,7 +132,7 @@ fn make_SimpleVector[
     return ret
 
 
-fn make_SimpleVector[
+def make_SimpleVector[
     T: Movable & Copyable, DT: StaticString, //
 ](
     mut mem: UnsafePointer[SimpleVector[T, DT]],

@@ -1,5 +1,5 @@
-from math import sqrt
-from utils.numerics import max_finite
+from std.math import sqrt
+from std.utils.numerics import max_finite
 
 from MojoSerial.DataFormats.BeamSpotPOD import BeamSpotPOD
 from MojoSerial.DataFormats.ApproxAtan2 import ApproxAtan2
@@ -14,7 +14,7 @@ import MojoSerial.CUDADataFormats.SiPixelClustersSoA as SiPixelClustersSoA
 import MojoSerial.CondFormats.PixelCPEforGPU as PixelCPEforGPU
 
 
-fn getHits(
+def getHits(
     cpeParams: UnsafePointer[PixelCPEforGPU.ParamsOnGPU],
     bs: UnsafePointer[BeamSpotPOD],
     pdigis: UnsafePointer[SiPixelDigisSoA.DeviceConstView],
@@ -54,10 +54,10 @@ fn getHits(
     agc.endCapZ[1] = ag.endCapZ[1] - bs[].z
 
     # to be moved in common namespace...
-    alias InvId: UInt16 = 9999  # must be > MaxNumModules
-    alias MaxHitsInIter = Int(PixelCPEforGPU.MaxHitsInIter)
+    comptime InvId: UInt16 = 9999  # must be > MaxNumModules
+    comptime MaxHitsInIter = Int(PixelCPEforGPU.MaxHitsInIter)
 
-    alias ClusParams = PixelCPEforGPU.ClusParams
+    comptime ClusParams = PixelCPEforGPU.ClusParams
 
     # as usual one block per module
     var clusParams = ClusParams()

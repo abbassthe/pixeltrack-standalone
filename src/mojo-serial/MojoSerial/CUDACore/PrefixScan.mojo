@@ -1,4 +1,4 @@
-fn blockPrefixScan[
+def blockPrefixScan[
     VT: DType
 ](
     ci: UnsafePointer[Scalar[VT]],
@@ -10,7 +10,7 @@ fn blockPrefixScan[
         co[i] = ci[i] + co[i - 1]
 
 
-fn blockPrefixScan[
+def blockPrefixScan[
     VT: DType
 ](c: UnsafePointer[Scalar[VT], mut=True], size: UInt32):
     for i in range(1, size):

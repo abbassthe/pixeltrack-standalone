@@ -7,13 +7,13 @@ struct SiPixelFedIds(Copyable, Defaultable, Movable, Typeable):
 
     var _fedIds: List[UInt32]
 
-    fn __init__(out self):
+    def __init__(out self):
         self._fedIds = []
 
-    fn fedIds(self) -> ref [self._fedIds] List[UInt32]:
+    def fedIds(self) -> ref [self._fedIds] List[UInt32]:
         return self._fedIds
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelFedIds"

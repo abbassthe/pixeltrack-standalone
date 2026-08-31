@@ -1,6 +1,6 @@
-import math
-from sys import argv
-from sys.terminate import exit
+import std.math as math
+from std.sys import argv
+from std.sys.terminate import exit
 
 from MojoSerial.MojoBridge.Matrix import Matrix, MatrixLike
 from MojoSerial.plugin_PixelTriplets.FitUtils import Rfit
@@ -12,12 +12,12 @@ struct FitResult(Copyable):
     var circle: Rfit.circle_fit
     var line: Rfit.line_fit
 
-    fn __init__(out self):
+    def __init__(out self):
         self.fast_fit = Rfit.Vector4d()
         self.circle = Rfit.circle_fit()
         self.line = Rfit.line_fit()
 
-    fn __copyinit__(out self, other: Self):
+    def __copyinit__(out self, other: Self):
         self.fast_fit = other.fast_fit
         self.circle = other.circle
         self.line = other.line
@@ -33,7 +33,7 @@ struct ExpectedResult(Copyable):
     var line_chi2: Float64
     var valid: Bool
 
-    fn __init__(out self):
+    def __init__(out self):
         self.fast_fit = Rfit.Vector4d()
         self.circle_par = Rfit.Vector3d()
         self.circle_cov = Rfit.Matrix3d()
@@ -43,7 +43,7 @@ struct ExpectedResult(Copyable):
         self.line_chi2 = 0.0
         self.valid = False
 
-    fn __copyinit__(out self, other: Self):
+    def __copyinit__(out self, other: Self):
         self.fast_fit = other.fast_fit
         self.circle_par = other.circle_par
         self.circle_cov = other.circle_cov
@@ -54,12 +54,11 @@ struct ExpectedResult(Copyable):
         self.valid = other.valid
 
 
-fn fill_hits_and_hitscov[N: Int](
+def fill_hits_and_hitscov[N: Int](
     mut hits: Rfit.Matrix3xNd[N],
     mut hits_ge: Matrix[DType.float32, 6, N],
 ):
-    @parameter
-    if N == 5:
+    comptime if N == 5:
         var xs = InlineArray[Float64, 5](
             2.934787,
             6.314229,
@@ -118,8 +117,7 @@ fn fill_hits_and_hitscov[N: Int](
         hits_ge[5, 4] = Float32(1.426417e-07)
         return
 
-    @parameter
-    if N > 3:
+    comptime if N > 3:
         var xs = InlineArray[Float64, 4](1.98645, 4.72598, 7.65632, 11.3151)
         var ys = InlineArray[Float64, 4](2.18002, 4.88864, 7.75845, 11.3134)
         var zs = InlineArray[Float64, 4](2.46338, 6.99838, 11.808, 17.793)
@@ -139,33 +137,29 @@ fn fill_hits_and_hitscov[N: Int](
     hits_ge[0, 0] = Float32(7.14652e-06)
     hits_ge[0, 1] = Float32(2.15789e-06)
     hits_ge[0, 2] = Float32(1.63328e-06)
-    @parameter
-    if N > 3:
+    comptime if N > 3:
         hits_ge[0, 3] = Float32(6.27919e-06)
 
     hits_ge[2, 0] = Float32(6.10348e-06)
     hits_ge[2, 1] = Float32(2.08211e-06)
     hits_ge[2, 2] = Float32(1.61672e-06)
-    @parameter
-    if N > 3:
+    comptime if N > 3:
         hits_ge[2, 3] = Float32(6.28081e-06)
 
     hits_ge[5, 0] = Float32(5.184e-05)
     hits_ge[5, 1] = Float32(1.444e-05)
     hits_ge[5, 2] = Float32(6.25e-06)
-    @parameter
-    if N > 3:
+    comptime if N > 3:
         hits_ge[5, 3] = Float32(3.136e-05)
 
     hits_ge[1, 0] = Float32(-5.60077e-06)
     hits_ge[1, 1] = Float32(-1.11936e-06)
     hits_ge[1, 2] = Float32(-6.24945e-07)
-    @parameter
-    if N > 3:
+    comptime if N > 3:
         hits_ge[1, 3] = Float32(-5.28e-06)
 
 
-fn compute_rad[N: Int](hits: Rfit.Matrix3xNd[N]) -> Rfit.VectorNd[N]:
+def compute_rad[N: Int](hits: Rfit.Matrix3xNd[N]) -> Rfit.VectorNd[N]:
     var rad = Rfit.VectorNd[N]()
     for i in range(N):
         var x = hits[0, i]
@@ -174,7 +168,7 @@ fn compute_rad[N: Int](hits: Rfit.Matrix3xNd[N]) -> Rfit.VectorNd[N]:
     return rad
 
 
-fn run_fit[N: Int]() -> FitResult:
+def run_fit[N: Int]() -> FitResult:
     var B: Float64 = 0.0113921
     var hits = Rfit.Matrix3xNd[N]()
     var hits_ge = Matrix[DType.float32, 6, N]()
@@ -204,36 +198,33 @@ fn run_fit[N: Int]() -> FitResult:
 
 
 # Fill expected values from C++ testRiemannFit output and set valid = True.
-fn expected_for[N: Int]() -> ExpectedResult:
+def expected_for[N: Int]() -> ExpectedResult:
     var expected = ExpectedResult()
     expected.valid = False
-    @parameter
-    if N == 4:
+    comptime if N == 4:
         return expected
-    @parameter
-    if N == 3:
+    comptime if N == 3:
         return expected
-    @parameter
-    if N == 5:
+    comptime if N == 5:
         return expected
     return expected
 
 
-fn near(a: Float64, b: Float64, rtol: Float64, atol: Float64) -> Bool:
+def near(a: Float64, b: Float64, rtol: Float64, atol: Float64) -> Bool:
     var diff = abs(a - b)
     var scale = max(abs(a), abs(b))
     return diff <= max(atol, rtol * scale)
 
 
-fn check_matrix[A: MatrixLike, B: MatrixLike](
+def check_matrix[A: MatrixLike, B: MatrixLike](
     name: StringLiteral,
     a: A,
     b: B,
     rtol: Float64,
     atol: Float64,
 ) -> Bool:
-    alias a_cols = A.ColsAtCompileTime()
-    alias b_cols = B.ColsAtCompileTime()
+    comptime a_cols = A.ColsAtCompileTime()
+    comptime b_cols = B.ColsAtCompileTime()
     if a.num_rows() != b.num_rows() or a_cols != b_cols:
         print(name, " shape mismatch: ", a.num_rows(), "x", a_cols, " vs ", b.num_rows(), "x", b_cols)
         return False
@@ -249,7 +240,7 @@ fn check_matrix[A: MatrixLike, B: MatrixLike](
     return ok
 
 
-fn compare_fit[N: Int](res: FitResult, expected: ExpectedResult) -> Bool:
+def compare_fit[N: Int](res: FitResult, expected: ExpectedResult) -> Bool:
     if not expected.valid:
         print("Expected values not set for N=", N)
         return False
@@ -271,7 +262,7 @@ fn compare_fit[N: Int](res: FitResult, expected: ExpectedResult) -> Bool:
     return ok
 
 
-fn dump_fit[N: Int](res: FitResult):
+def dump_fit[N: Int](res: FitResult):
     print("N=", N)
     print("fast_fit=", res.fast_fit)
     print("circle_par=", res.circle.par)
@@ -282,7 +273,7 @@ fn dump_fit[N: Int](res: FitResult):
     print("line_chi2=", res.line.chi2)
 
 
-fn main() raises:
+def main() raises:
     var compare = False
     var args = argv()
     var i = 1

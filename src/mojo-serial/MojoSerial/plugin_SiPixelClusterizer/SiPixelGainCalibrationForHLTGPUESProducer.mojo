@@ -1,4 +1,4 @@
-from pathlib import Path
+from std.pathlib import Path
 
 from MojoSerial.CondFormats.SiPixelGainForHLTonGPU import SiPixelGainForHLTonGPU
 from MojoSerial.CondFormats.SiPixelGainCalibrationForHLTGPU import (
@@ -15,10 +15,10 @@ struct SiPixelGainCalibrationForHLTGPUESProducer(ESProducer):
     var _data: Path
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._data = Path("")
 
-    fn produce(mut self, mut eventSetup: EventSetup):
+    def produce(mut self, mut eventSetup: EventSetup):
         try:
             with open(self._data / "gain.bin", "r") as file:
                 var gain = read_obj[SiPixelGainForHLTonGPU](file)
@@ -42,5 +42,5 @@ struct SiPixelGainCalibrationForHLTGPUESProducer(ESProducer):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelGainCalibrationForHLTGPUESProducer"

@@ -11,7 +11,7 @@ from MojoSerial.plugin_SiPixelClusterizer.SiPixelRawToClusterCUDA import (
 )
 
 
-fn init(
+def init(
     mut esreg: MojoSerial.Framework.ESPluginFactory.Registry,
     mut edreg: MojoSerial.Framework.PluginFactory.Registry,
 ):

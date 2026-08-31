@@ -1,8 +1,5 @@
-from memory.memory import _malloc
-from sys import sizeof
-
-
-@nonmaterializable(NoneType)
+from std.memory.memory import _malloc
+from std.sys import size_of
 @deprecated(
     "This structure does not function correctly except in certain linear code"
     " sequences. Please refrain from using Static"
@@ -24,10 +21,10 @@ struct Static[T: Movable, id: Int = 0]:
 
     @staticmethod
     @always_inline("nodebug")
-    fn __get_backing() -> UnsafePointer[UnsafePointer[T]]:
+    def __get_backing() -> UnsafePointer[UnsafePointer[Self.T]]:
         """This function holds the actual object referenced in this static variable.
         """
-        alias __storage = _malloc[UnsafePointer[T]](sizeof[UnsafePointer[T]]())
+        comptime __storage = _malloc[UnsafePointer[T]](size_of[UnsafePointer[T]]())
         return __storage
 
     @staticmethod
@@ -36,7 +33,7 @@ struct Static[T: Movable, id: Int = 0]:
         "This structure does not function correctly except in certain linear"
         " code sequences. Please refrain from using Static"
     )
-    fn unsafe_ptr() -> UnsafePointer[T]:
+    def unsafe_ptr() -> UnsafePointer[Self.T]:
         """Returns an unsafe pointer to the static object."""
         return Self.__get_backing()[]
 
@@ -46,7 +43,7 @@ struct Static[T: Movable, id: Int = 0]:
         "This structure does not function correctly except in certain linear"
         " code sequences. Please refrain from using Static"
     )
-    fn get() -> ref [MutableOrigin.cast_from[StaticConstantOrigin]] T:
+    def get() -> ref [MutableOrigin.cast_from[StaticConstantOrigin]] Self.T:
         """Returns a mutable reference to the static object."""
         return Self.__get_backing()[][]
 
@@ -56,7 +53,7 @@ struct Static[T: Movable, id: Int = 0]:
         "This structure does not function correctly except in certain linear"
         " code sequences. Please refrain from using Static"
     )
-    fn init(var item: T):
+    def init(var item: Self.T):
         """Initializes the static object with a value. This function must ALWAYS be called before attempting to use the static object.
         """
         Self.__get_backing().init_pointee_move(UnsafePointer[T].alloc(1))

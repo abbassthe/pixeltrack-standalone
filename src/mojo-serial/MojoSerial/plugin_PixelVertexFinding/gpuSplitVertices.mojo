@@ -2,11 +2,11 @@ from MojoSerial.CUDACore.CUDACompat import CUDACompat
 from MojoSerial.MojoBridge.DTypes import Float
 from MojoSerial.plugin_PixelVertexFinding.gpuVertexFinder import ZVertices, WorkSpace
 
-alias verbose: Bool = False  # in principle the compiler should optmize out if false
+comptime verbose: Bool = False  # in principle the compiler should optmize out if false
 
 
 @always_inline
-fn splitVertices(
+def splitVertices(
     pdata: UnsafePointer[ZVertices], pws: UnsafePointer[WorkSpace], maxChi2: Float
 ):
     ref data = pdata[]
@@ -29,7 +29,7 @@ fn splitVertices(
         if chi2[kv] < maxChi2 * Float(nn[kv]):
             continue
 
-        alias MAXTK: Int = 512
+        comptime MAXTK: Int = 512
         debug_assert(nn[kv] < MAXTK)
         if nn[kv] >= MAXTK:
             continue  # too bad FIXME
@@ -95,8 +95,7 @@ fn splitVertices(
 
         var chi2Dist = dist2 / (1.0 / wnew[0] + 1.0 / wnew[1])
 
-        @parameter
-        if verbose:
+        comptime if verbose:
             print("inter", 20 - maxiter, chi2Dist, dist2 * wv[kv])
 
         if chi2Dist < 4:
@@ -114,7 +113,7 @@ fn splitVertices(
 
 
 @always_inline
-fn splitVerticesKernel(
+def splitVerticesKernel(
     pdata: UnsafePointer[ZVertices], pws: UnsafePointer[WorkSpace], maxChi2: Float
 ):
     splitVertices(pdata, pws, maxChi2)

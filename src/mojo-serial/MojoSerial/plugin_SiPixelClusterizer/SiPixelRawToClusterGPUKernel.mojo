@@ -1,4 +1,4 @@
-from memory import OwnedPointer, memcpy, memset
+from std.memory import OwnedPointer, memcpy, memset
 
 from MojoSerial.CondFormats.SiPixelFedCablingMapGPU import (
     SiPixelFedCablingMapGPU,
@@ -23,45 +23,42 @@ from MojoSerial.MojoBridge.DTypes import UChar, Double, Float, Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct DetIdGPU(Copyable, Defaultable, Movable, Typeable):
+struct DetIdGPU(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var RawId: UInt32
     var rocInDet: UInt32
     var moduleId: UInt32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.RawId = 0
         self.rocInDet = 0
         self.moduleId = 0
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "DetIdGPU"
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct Pixel(Copyable, Defaultable, Movable, Typeable):
+struct Pixel(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var row: UInt32
     var col: UInt32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.row = 0
         self.col = 0
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "Pixel"
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct Packing(Copyable, Defaultable, Movable, Typeable):
-    alias PackedDigiType = UInt32
+struct Packing(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
+    comptime PackedDigiType = UInt32
 
     var row_width: UInt32
     var column_width: UInt32
@@ -83,7 +80,7 @@ struct Packing(Copyable, Defaultable, Movable, Typeable):
     var max_adc: UInt32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.row_width = 0
         self.column_width = 0
         self.adc_width = 0
@@ -104,7 +101,7 @@ struct Packing(Copyable, Defaultable, Movable, Typeable):
         self.max_adc = 0
 
     @always_inline
-    fn __init__(
+    def __init__(
         out self,
         var row_w: UInt32,
         var column_w: UInt32,
@@ -129,18 +126,18 @@ struct Packing(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "Packing"
 
 
 @always_inline
-fn packing() -> Packing:
+def packing() -> Packing:
     return Packing(11, 11, 0, 10)
 
 
 @always_inline
-fn pack(var row: UInt32, var col: UInt32, var adc: UInt32) -> UInt32:
-    alias thePacking = packing()
+def pack(var row: UInt32, var col: UInt32, var adc: UInt32) -> UInt32:
+    comptime thePacking = packing()
     adc = min(adc, thePacking.max_adc)
 
     return (
@@ -151,8 +148,8 @@ fn pack(var row: UInt32, var col: UInt32, var adc: UInt32) -> UInt32:
 
 
 @always_inline
-fn pixelToChannel(row: Int32, col: Int32) -> UInt32:
-    alias thePacking = packing()
+def pixelToChannel(row: Int32, col: Int32) -> UInt32:
+    comptime thePacking = packing()
     return ((row << thePacking.column_width.cast[DType.int32]()) | col).cast[
         DType.uint32
     ]()
@@ -163,7 +160,7 @@ struct WordFedAppender(Defaultable, Movable, Typeable):
     var _fedId: OwnedPointer[List[UChar]]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._word = OwnedPointer(
             List[UInt32](length=Int(PixelGPUDetails.MAX_FED_WORDS), fill=0)
         )
@@ -171,7 +168,7 @@ struct WordFedAppender(Defaultable, Movable, Typeable):
             List[UChar](length=Int(PixelGPUDetails.MAX_FED_WORDS), fill=0)
         )
 
-    fn initializeWordFed(
+    def initializeWordFed(
         self,
         var fedId: Int32,
         var wordCounterGPU: UInt32,
@@ -187,16 +184,16 @@ struct WordFedAppender(Defaultable, Movable, Typeable):
         )
 
     @always_inline
-    fn word(self) -> UnsafePointer[UInt32, mut=False]:
+    def word(self) -> UnsafePointer[UInt32, mut=False]:
         return self._word[].unsafe_ptr()
 
     @always_inline
-    fn fedId(self) -> UnsafePointer[UChar, mut=False]:
+    def fedId(self) -> UnsafePointer[UChar, mut=False]:
         return self._fedId[].unsafe_ptr()
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "WordFedAppender"
 
 
@@ -206,27 +203,27 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
     var digiErrors_d: SiPixelDigiErrorsSoA
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.digis_d = SiPixelDigisSoA()
         self.clusters_d = SiPixelClustersSoA()
         self.digiErrors_d = SiPixelDigiErrorsSoA()
 
-    fn getResultsDigis(mut self) -> SiPixelDigisSoA:
+    def getResultsDigis(mut self) -> SiPixelDigisSoA:
         var ret = self.digis_d^
         self.digis_d = SiPixelDigisSoA()
         return ret^
 
-    fn getResultsClusters(mut self) -> SiPixelClustersSoA:
+    def getResultsClusters(mut self) -> SiPixelClustersSoA:
         var ret = self.clusters_d^
         self.clusters_d = SiPixelClustersSoA()
         return ret^
 
-    fn getErrors(mut self) -> SiPixelDigiErrorsSoA:
+    def getErrors(mut self) -> SiPixelDigiErrorsSoA:
         var ret = self.digiErrors_d^
         self.digiErrors_d = SiPixelDigiErrorsSoA()
         return ret^
 
-    fn makeClusters(
+    def makeClusters(
         mut self,
         isRun2: Bool,
         cablingMap: UnsafePointer[SiPixelFedCablingMapGPU],
@@ -280,8 +277,7 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
         # End of Raw2Digi and passing data for clustering
 
         # clusterizer
-        @parameter
-        if True:
+        comptime if True:
             GPUCalibPixel.calibDigis(
                 isRun2,
                 self.digis_d.moduleInd(),
@@ -349,45 +345,42 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelRawToClusterGPUKernel"
-
-
-@nonmaterializable(NoneType)
 struct ADCThreshold:
     # default Pixel threshold in electrons
-    alias thePixelThreshold: Int32 = 1000
+    comptime thePixelThreshold: Int32 = 1000
     # seed threshold in electrons not used in our algo
-    alias theSeedThreshold: Int32 = 1000
+    comptime theSeedThreshold: Int32 = 1000
     # cluster threshold in electron
-    alias theClusterThreshold: Float = 4000
+    comptime theClusterThreshold: Float = 4000
     # adc to electron conversion factor
-    alias ConversionFactor: Int32 = 65
+    comptime ConversionFactor: Int32 = 65
     # the maximum adc count for stack layer
-    alias _theStackADC: Int32 = 255
+    comptime _theStackADC: Int32 = 255
     # the index of the fits stack layer
-    alias _theFirstStack: Int32 = 5
+    comptime _theFirstStack: Int32 = 5
     # ADC to electron conversion
-    alias _theElectronPerADCGain: Double = 600
+    comptime _theElectronPerADCGain: Double = 600
 
 
-fn getLink(ww: UInt32) -> UInt32:
+def getLink(ww: UInt32) -> UInt32:
     return (ww >> PixelGPUDetails.LINK_shift) & PixelGPUDetails.LINK_mask
 
 
-fn getRoc(ww: UInt32) -> UInt32:
+def getRoc(ww: UInt32) -> UInt32:
     return (ww >> PixelGPUDetails.ROC_shift) & PixelGPUDetails.ROC_mask
 
 
-fn getADC(ww: UInt32) -> UInt32:
+def getADC(ww: UInt32) -> UInt32:
     return (ww >> PixelGPUDetails.ADC_shift) & PixelGPUDetails.ADC_mask
 
 
-fn isBarrel(rawId: UInt32) -> Bool:
+def isBarrel(rawId: UInt32) -> Bool:
     return UInt32(1) == ((rawId >> 25) & 0x7)
 
 
-fn getRawId(
+def getRawId(
     cablingMap: UnsafePointer[SiPixelFedCablingMapGPU],
     var fed: UInt8,
     var link: UInt32,
@@ -409,7 +402,7 @@ fn getRawId(
     return detId
 
 
-fn frameConversion(
+def frameConversion(
     bpix: Bool, side: Int32, layer: UInt32, rocIdInDetUnit: UInt32, local: Pixel
 ) -> Pixel:
     var slopeRow: Int32
@@ -504,7 +497,7 @@ fn frameConversion(
     return gl
 
 
-fn conversionError(
+def conversionError(
     var fedId: UInt8, var status: UInt8, var debug: Bool
 ) -> UInt8:
     var errorType: UInt8 = 0
@@ -544,19 +537,19 @@ fn conversionError(
     return errorType
 
 
-fn rocRowColIsValid(var rocRow: UInt32, var rocCol: UInt32) -> Bool:
-    alias numRowsInRoc: UInt32 = 80
-    alias numColsInRoc: UInt32 = 52
+def rocRowColIsValid(var rocRow: UInt32, var rocCol: UInt32) -> Bool:
+    comptime numRowsInRoc: UInt32 = 80
+    comptime numColsInRoc: UInt32 = 52
 
     # row and column in ROC representation
     return (rocRow < numRowsInRoc) & (rocCol < numColsInRoc)
 
 
-fn dcolIsValid(var dcol: UInt32, var pxid: UInt32) -> Bool:
+def dcolIsValid(var dcol: UInt32, var pxid: UInt32) -> Bool:
     return (dcol < 26) and (pxid >= 2) and (pxid < 162)
 
 
-fn checkROC(
+def checkROC(
     var errorWord: UInt32,
     var fedId: UInt8,
     var link: UInt32,
@@ -612,9 +605,9 @@ fn checkROC(
     elif errorType == 30:
         if debug:
             print("TBM error trailer (errorType = 30)")
-        alias StateMatch_bits = 4
-        alias StateMatch_shift = 8
-        alias StateMatch_mask: UInt32 = ~(~UInt32(0) << StateMatch_bits)
+        comptime StateMatch_bits = 4
+        comptime StateMatch_shift = 8
+        comptime StateMatch_mask: UInt32 = ~(~UInt32(0) << StateMatch_bits)
         var StateMatch: Int32 = (
             (errorWord >> StateMatch_shift) & StateMatch_mask
         ).cast[DType.int32]()
@@ -633,7 +626,7 @@ fn checkROC(
     return errorType if errorFound else 0
 
 
-fn getErrRawID(
+def getErrRawID(
     var fedId: UInt8,
     var errWord: UInt32,
     var errorType: UInt32,
@@ -658,12 +651,12 @@ fn getErrRawID(
             rID = rID_temp
     elif errorType == 29:
         var chanNmbr: Int32
-        alias DB0_shift = 0
-        alias DB1_shift = DB0_shift + 1
-        alias DB2_shift = DB1_shift + 1
-        alias DB3_shift = DB2_shift + 1
-        alias DB4_shift = DB3_shift + 1
-        alias DataBit_mask = ~(~UInt32(0) << 1)
+        comptime DB0_shift = 0
+        comptime DB1_shift = DB0_shift + 1
+        comptime DB2_shift = DB1_shift + 1
+        comptime DB3_shift = DB2_shift + 1
+        comptime DB4_shift = DB3_shift + 1
+        comptime DataBit_mask = ~(~UInt32(0) << 1)
 
         var CH1: Int32 = ((errWord >> DB0_shift) & DataBit_mask).cast[
             DType.int32
@@ -680,9 +673,9 @@ fn getErrRawID(
         var CH5: Int32 = ((errWord >> DB4_shift) & DataBit_mask).cast[
             DType.int32
         ]()
-        alias BLOCK_bits = 3
-        alias BLOCK_shift = 8
-        alias BLOCK_mask = ~(~UInt32(0) << BLOCK_bits)
+        comptime BLOCK_bits = 3
+        comptime BLOCK_shift = 8
+        comptime BLOCK_mask = ~(~UInt32(0) << BLOCK_bits)
         var BLOCK: Int32 = ((errWord >> BLOCK_shift) & BLOCK_mask).cast[
             DType.int32
         ]()
@@ -711,7 +704,7 @@ fn getErrRawID(
     return rID
 
 
-fn RawToDigi_kernel(
+def RawToDigi_kernel(
     cablingMap: UnsafePointer[SiPixelFedCablingMapGPU],
     modToUnp: UnsafePointer[UChar],
     wordCounter: UInt32,
@@ -863,7 +856,7 @@ fn RawToDigi_kernel(
         rawIdArr[gindex] = rawId
 
 
-fn fillHitsModuleStart(
+def fillHitsModuleStart(
     cluStart: UnsafePointer[UInt32],
     moduleStart: UnsafePointer[UInt32, mut=True],
     debug: Bool = False,
@@ -909,7 +902,7 @@ fn fillHitsModuleStart(
                 or i == Int(GPUClusteringConstants.MaxNumModules)
             ):
                 print("moduleStart", i, moduleStart[i])
-    alias MAX_HITS: UInt32 = GPUClusteringConstants.MaxNumClusters
+    comptime MAX_HITS: UInt32 = GPUClusteringConstants.MaxNumClusters
 
     for i in range(0, GPUClusteringConstants.MaxNumModules + 1):
         if moduleStart[i] > GPUClusteringConstants.MaxNumClusters:

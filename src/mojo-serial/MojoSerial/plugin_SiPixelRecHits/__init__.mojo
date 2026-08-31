@@ -9,7 +9,7 @@ from MojoSerial.plugin_SiPixelRecHits.SiPixelRecHitCUDA import (
 )
 
 
-fn init(
+def init(
     mut esreg: MojoSerial.Framework.ESPluginFactory.Registry,
     mut edreg: MojoSerial.Framework.PluginFactory.Registry,
 ):

@@ -1,4 +1,4 @@
-from sys import is_defined
+from std.sys import is_defined
 
 from MojoSerial.MojoBridge.DTypes import Float
 from MojoSerial.plugin_PixelVertexFinding.gpuClusterTracksByDensity import (
@@ -13,7 +13,7 @@ from MojoSerial.plugin_PixelVertexFinding.gpuVertexFinder import ZVertices, Work
 
 
 @always_inline
-fn vertexFinderOneKernel(
+def vertexFinderOneKernel(
     pdata: UnsafePointer[ZVertices],
     pws: UnsafePointer[WorkSpace],
     minT: Int32,  # min number of neighbours to be "seed"
@@ -21,8 +21,7 @@ fn vertexFinderOneKernel(
     errmax: Float,  # max error to be "seed"
     chi2max: Float,  # max normalized distance to cluster,
 ) raises:
-    @parameter
-    if not is_defined["THREE_KERNELS"]():
+    comptime if not is_defined["THREE_KERNELS"]():
         clusterTracksByDensity(pdata, pws, minT, eps, errmax, chi2max)
 
         fitVertices(pdata, pws, 50.0)
@@ -37,7 +36,7 @@ fn vertexFinderOneKernel(
 
 
 @always_inline
-fn vertexFinderKernel1(
+def vertexFinderKernel1(
     pdata: UnsafePointer[ZVertices],
     pws: UnsafePointer[WorkSpace],
     minT: Int32,  # min number of neighbours to be "seed"
@@ -45,8 +44,7 @@ fn vertexFinderKernel1(
     errmax: Float,  # max error to be "seed"
     chi2max: Float,  # max normalized distance to cluster,
 ) raises:
-    @parameter
-    if is_defined["THREE_KERNELS"]():
+    comptime if is_defined["THREE_KERNELS"]():
         clusterTracksByDensity(pdata, pws, minT, eps, errmax, chi2max)
 
         fitVertices(pdata, pws, 50.0)
@@ -55,11 +53,10 @@ fn vertexFinderKernel1(
 
 
 @always_inline
-fn vertexFinderKernel2(
+def vertexFinderKernel2(
     pdata: UnsafePointer[ZVertices], pws: UnsafePointer[WorkSpace]
 ) raises:
-    @parameter
-    if is_defined["THREE_KERNELS"]():
+    comptime if is_defined["THREE_KERNELS"]():
         fitVertices(pdata, pws, 5000.0)
 
         sortByPt2(pdata, pws)

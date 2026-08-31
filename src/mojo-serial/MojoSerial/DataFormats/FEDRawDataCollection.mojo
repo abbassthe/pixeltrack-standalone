@@ -7,30 +7,30 @@ struct FEDRawDataCollection(Copyable, Defaultable, Movable, Typeable):
     var _data: List[FEDRawData]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._data = List[FEDRawData](
             length=FEDNumbering.lastFEDId() + 1, fill=FEDRawData()
         )
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self._data = other._data^
 
     @always_inline
-    fn __copyinit__(out self, other: Self):
+    def __copyinit__(out self, other: Self):
         self._data = other._data
 
     @always_inline
-    fn FEDData(ref self, fedid: Int) -> ref [self._data] FEDRawData:
+    def FEDData(ref self, fedid: Int) -> ref [self._data] FEDRawData:
         return self._data[fedid]
 
     @always_inline
-    fn swap(mut self, mut other: Self):
+    def swap(mut self, mut other: Self):
         swap(self._data, other._data)
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "FEDRawDataCollection"
 
 

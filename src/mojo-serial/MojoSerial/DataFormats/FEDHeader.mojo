@@ -1,146 +1,144 @@
-from sys import sizeof
+from std.sys import size_of
 
 from MojoSerial.MojoBridge.DTypes import Typeable, UChar
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct FedhStruct(Copyable, Defaultable, Movable, Typeable):
+struct FedhStruct(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var sourceid: UInt32
     var eventid: UInt32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.sourceid = 0
         self.eventid = 0
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "FedhStruct"
 
 
-alias FedhType = FedhStruct
+comptime FedhType = FedhStruct
 
-alias FED_SLINK_START_MARKER = 0x5
+comptime FED_SLINK_START_MARKER = 0x5
 
-alias FED_HCTRLID_WIDTH = 0x0000000F
-alias FED_HCTRLID_SHIFT = 28
-alias FED_HCTRLID_MASK = (FED_HCTRLID_WIDTH << FED_HCTRLID_SHIFT)
+comptime FED_HCTRLID_WIDTH = 0x0000000F
+comptime FED_HCTRLID_SHIFT = 28
+comptime FED_HCTRLID_MASK = (FED_HCTRLID_WIDTH << FED_HCTRLID_SHIFT)
 
 
 @always_inline
-fn FED_HCTRLID_EXTRACT(a: Int) -> Int:
+def FED_HCTRLID_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_HCTRLID_SHIFT) & FED_HCTRLID_WIDTH
 
 
-alias FED_EVTY_WIDTH = 0x0000000F
-alias FED_EVTY_SHIFT = 24
-alias FED_EVTY_MASK = (FED_EVTY_WIDTH << FED_EVTY_SHIFT)
+comptime FED_EVTY_WIDTH = 0x0000000F
+comptime FED_EVTY_SHIFT = 24
+comptime FED_EVTY_MASK = (FED_EVTY_WIDTH << FED_EVTY_SHIFT)
 
 
 @always_inline
-fn FED_EVTY_EXTRACT(a: Int) -> Int:
+def FED_EVTY_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_EVTY_SHIFT) & FED_EVTY_WIDTH
 
 
-alias FED_LVL1_WIDTH = 0x00FFFFFF
-alias FED_LVL1_SHIFT = 0
-alias FED_LVL1_MASK = (FED_LVL1_WIDTH << FED_LVL1_SHIFT)
+comptime FED_LVL1_WIDTH = 0x00FFFFFF
+comptime FED_LVL1_SHIFT = 0
+comptime FED_LVL1_MASK = (FED_LVL1_WIDTH << FED_LVL1_SHIFT)
 
 
 @always_inline
-fn FED_LVL1_EXTRACT(a: Int) -> Int:
+def FED_LVL1_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_LVL1_SHIFT) & FED_LVL1_WIDTH
 
 
-alias FED_BXID_WIDTH = 0x00000FFF
-alias FED_BXID_SHIFT = 20
-alias FED_BXID_MASK = (FED_BXID_WIDTH << FED_BXID_SHIFT)
+comptime FED_BXID_WIDTH = 0x00000FFF
+comptime FED_BXID_SHIFT = 20
+comptime FED_BXID_MASK = (FED_BXID_WIDTH << FED_BXID_SHIFT)
 
 
 @always_inline
-fn FED_BXID_EXTRACT(a: Int) -> Int:
+def FED_BXID_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_BXID_SHIFT) & FED_BXID_WIDTH
 
 
-alias FED_SOID_WIDTH = 0x00000FFF
-alias FED_SOID_SHIFT = 8
-alias FED_SOID_MASK = (FED_SOID_WIDTH << FED_SOID_SHIFT)
+comptime FED_SOID_WIDTH = 0x00000FFF
+comptime FED_SOID_SHIFT = 8
+comptime FED_SOID_MASK = (FED_SOID_WIDTH << FED_SOID_SHIFT)
 
 
 @always_inline
-fn FED_SOID_EXTRACT(a: Int) -> Int:
+def FED_SOID_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_SOID_SHIFT) & FED_SOID_WIDTH
 
 
-alias FED_VERSION_WIDTH = 0x0000000F
-alias FED_VERSION_SHIFT = 4
-alias FED_VERSION_MASK = (FED_VERSION_WIDTH << FED_VERSION_SHIFT)
+comptime FED_VERSION_WIDTH = 0x0000000F
+comptime FED_VERSION_SHIFT = 4
+comptime FED_VERSION_MASK = (FED_VERSION_WIDTH << FED_VERSION_SHIFT)
 
 
 @always_inline
-fn FED_VERSION_EXTRACT(a: Int) -> Int:
+def FED_VERSION_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_VERSION_SHIFT) & FED_VERSION_WIDTH
 
 
-alias FED_MORE_HEADERS_WIDTH = 0x00000001
-alias FED_MORE_HEADERS_SHIFT = 3
-alias FED_MORE_HEADERS_MASK = (FED_MORE_HEADERS_WIDTH << FED_MORE_HEADERS_SHIFT)
+comptime FED_MORE_HEADERS_WIDTH = 0x00000001
+comptime FED_MORE_HEADERS_SHIFT = 3
+comptime FED_MORE_HEADERS_MASK = (FED_MORE_HEADERS_WIDTH << FED_MORE_HEADERS_SHIFT)
 
 
 @always_inline
-fn FED_MORE_HEADERS_EXTRACT(a: Int) -> Int:
+def FED_MORE_HEADERS_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_MORE_HEADERS_SHIFT) & FED_MORE_HEADERS_WIDTH
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct FEDHeader(Copyable, Defaultable, Movable, Typeable):
-    alias length: UInt32 = sizeof[FedhType]()
+struct FEDHeader(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
+    comptime length: UInt32 = size_of[FedhType]()
     var theHeader: UnsafePointer[FedhType]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.theHeader = UnsafePointer[FedhType]()
 
     @always_inline
-    fn __init__(out self, header: UnsafePointer[UChar]):
+    def __init__(out self, header: UnsafePointer[UChar]):
         self.theHeader = header.bitcast[FedhType]()
 
     @always_inline
-    fn triggerType(self) -> UInt8:
+    def triggerType(self) -> UInt8:
         return FED_EVTY_EXTRACT(Int(self.theHeader[].eventid))
 
     @always_inline
-    fn lvl1ID(self) -> UInt32:
+    def lvl1ID(self) -> UInt32:
         return FED_LVL1_EXTRACT(Int(self.theHeader[].eventid))
 
     @always_inline
-    fn bxID(self) -> UInt16:
+    def bxID(self) -> UInt16:
         return FED_BXID_EXTRACT(Int(self.theHeader[].sourceid))
 
     @always_inline
-    fn sourceID(self) -> UInt16:
+    def sourceID(self) -> UInt16:
         return FED_SOID_EXTRACT(Int(self.theHeader[].sourceid))
 
     @always_inline
-    fn version(self) -> UInt8:
+    def version(self) -> UInt8:
         return FED_VERSION_EXTRACT(Int(self.theHeader[].sourceid))
 
     @always_inline
-    fn moreHeaders(self) -> Bool:
+    def moreHeaders(self) -> Bool:
         return FED_MORE_HEADERS_EXTRACT(Int(self.theHeader[].sourceid)) != 0
 
     @always_inline
-    fn check(self) -> Bool:
+    def check(self) -> Bool:
         return (
             FED_HCTRLID_EXTRACT(Int(self.theHeader[].eventid))
             == FED_SLINK_START_MARKER
         )
 
     @staticmethod
-    fn set(
+    def set(
         header: UnsafePointer[UChar, mut=True],
         triggerType: UInt8,
         lvl1ID: UInt32,
@@ -165,5 +163,5 @@ struct FEDHeader(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "FEDHeader"

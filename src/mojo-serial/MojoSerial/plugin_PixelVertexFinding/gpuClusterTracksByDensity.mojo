@@ -1,15 +1,15 @@
-from sys import is_defined
+from std.sys import is_defined
 
 from MojoSerial.CUDACore.CUDACompat import CUDACompat
 from MojoSerial.CUDACore.HistoContainer import HistoContainer, forEachInBins
 from MojoSerial.MojoBridge.DTypes import Float
 from MojoSerial.plugin_PixelVertexFinding.gpuVertexFinder import ZVertices, WorkSpace
 
-alias verbose: Bool = False  # in principle the compiler should optmize out if false
+comptime verbose: Bool = False  # in principle the compiler should optmize out if false
 
 
 @always_inline
-fn clusterTracksByDensity(
+def clusterTracksByDensity(
     pdata: UnsafePointer[ZVertices],
     pws: UnsafePointer[WorkSpace],
     minT: Int32,  # min number of neighbours to be "seed"
@@ -17,8 +17,7 @@ fn clusterTracksByDensity(
     errmax: Float,  # max error to be "seed"
     chi2max: Float,  # max normalized distance to cluster
 ):
-    @parameter
-    if verbose:
+    comptime if verbose:
         print("params", minT, eps, errmax, chi2max)
 
     var er2mx = errmax * errmax
@@ -36,14 +35,13 @@ fn clusterTracksByDensity(
     ref nn: InlineArray[Int32, UInt(ZVertices.MAXTRACKS)] = data.ndof
     ref iv: InlineArray[Int32, UInt(WorkSpace.MAXTRACKS)] = ws.iv
 
-    alias Hist = HistoContainer[DType.uint8, 256, 16000, 8, DType.uint16, 1]
+    comptime Hist = HistoContainer[DType.uint8, 256, 16000, 8, DType.uint16, 1]
     var hist: Hist = Hist()
 
     for j in range(Hist.totbins()):
         hist.off[j] = 0
 
-    @parameter
-    if verbose:
+    comptime if verbose:
         print(
             "booked hist with",
             Hist.nbins(),
@@ -80,7 +78,7 @@ fn clusterTracksByDensity(
             continue
 
         @parameter
-        fn countNeighbor(j: UInt16):
+        def countNeighbor(j: UInt16):
             if i == Int(j):
                 return
             var dist = abs(zt[i] - zt[Int(j)])
@@ -97,7 +95,7 @@ fn clusterTracksByDensity(
         var mdist: Float = eps
 
         @parameter
-        fn closestAbove(j: UInt16):
+        def closestAbove(j: UInt16):
             if nn[Int(j)] < nn[i]:
                 return
             if nn[Int(j)] == nn[i] and zt[Int(j)] >= zt[i]:
@@ -112,8 +110,7 @@ fn clusterTracksByDensity(
 
         forEachInBins[func=closestAbove](hist, izt[i], 1)
 
-    @parameter
-    if is_defined["GPU_DEBUG"]():
+    comptime if is_defined["GPU_DEBUG"]():
         #  mini verification
         for i in range(nt):
             if iv[i] != Int32(i):
@@ -126,22 +123,20 @@ fn clusterTracksByDensity(
             m = iv[Int(m)]
         iv[i] = m
 
-    @parameter
-    if is_defined["GPU_DEBUG"]():
+    comptime if is_defined["GPU_DEBUG"]():
         #  mini verification
         for i in range(nt):
             if iv[i] != Int32(i):
                 debug_assert(iv[Int(iv[i])] != Int32(i))
 
-    @parameter
-    if is_defined["GPU_DEBUG"]():
+    comptime if is_defined["GPU_DEBUG"]():
         # and verify that we did not spit any cluster...
         for i in range(nt):
             var minJ = i
             var mdist = eps
 
             @parameter
-            fn debugClosest(j: UInt16):
+            def debugClosest(j: UInt16):
                 if nn[Int(j)] < nn[i]:
                     return
                 if nn[Int(j)] == nn[i] and zt[Int(j)] >= zt[i]:
@@ -188,13 +183,12 @@ fn clusterTracksByDensity(
     nvIntermediate = foundClusters
     nvFinal = foundClusters
 
-    @parameter
-    if verbose:
+    comptime if verbose:
         print("found", foundClusters, "proto vertices")
 
 
 @always_inline
-fn clusterTracksByDensityKernel(
+def clusterTracksByDensityKernel(
     pdata: UnsafePointer[ZVertices],
     pws: UnsafePointer[WorkSpace],
     minT: Int32,  # min number of neighbours to be "seed"

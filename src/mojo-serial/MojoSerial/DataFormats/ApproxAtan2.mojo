@@ -1,17 +1,15 @@
-from memory import bitcast
-from math import pi
+from std.memory import bitcast
+from std.math import pi
 
 from MojoSerial.MojoBridge.DTypes import Short, Float, Double, hex_to_float
-
-
-@nonmaterializable(NoneType)
+from std.builtin import constrained
 struct ApproxAtan2:
     """
     Approximate atan2 evaluations. Polynomials were obtained using Sollya scripts.
     """
 
     @staticmethod
-    fn approx_atan2f_P[DEGREE: Int](x: Float) -> Float:
+    def approx_atan2f_P[DEGREE: Int](x: Float) -> Float:
         constrained[
             DEGREE == 3
             or DEGREE == 5
@@ -27,8 +25,7 @@ struct ApproxAtan2:
         ]()
         var z = x * x
 
-        @parameter
-        if DEGREE == 3:
+        comptime if DEGREE == 3:
             # degree =  3   => absolute accuracy is  7 bits
             return x * (
                 hex_to_float[0xBF78EED2]() + z * hex_to_float[0x3E448E00]()
@@ -155,9 +152,9 @@ struct ApproxAtan2:
             return 0
 
     @staticmethod
-    fn unsafe_atan2f_impl[DEGREE: Int](y: Float, x: Float) -> Float:
-        alias pi4f: Float = 3.1415926535897932384626434 / 4
-        alias pi34f: Float = 3.1415926535897932384626434 * 3 / 4
+    def unsafe_atan2f_impl[DEGREE: Int](y: Float, x: Float) -> Float:
+        comptime pi4f: Float = 3.1415926535897932384626434 / 4
+        comptime pi34f: Float = 3.1415926535897932384626434 * 3 / 4
 
         var r: Float = (abs(x) - abs(y)) / (abs(x) + abs(y))
         if x < 0.0:
@@ -169,17 +166,17 @@ struct ApproxAtan2:
         return -angle if y < 0.0 else angle
 
     @staticmethod
-    fn unsafe_atan2f[DEGREE: Int](y: Float, x: Float) -> Float:
+    def unsafe_atan2f[DEGREE: Int](y: Float, x: Float) -> Float:
         return Self.unsafe_atan2f_impl[DEGREE](y, x)
 
     @staticmethod
-    fn safe_atan2f[DEGREE: Int](y: Float, x: Float) -> Float:
+    def safe_atan2f[DEGREE: Int](y: Float, x: Float) -> Float:
         return Self.unsafe_atan2f[DEGREE](
             y, 0.2 if y == 0.0 and x == 0.0 else x
         )
 
     @staticmethod
-    fn approx_atan2i_P[DEGREE: Int](x: Float) -> Float:
+    def approx_atan2i_P[DEGREE: Int](x: Float) -> Float:
         constrained[
             DEGREE == 3
             or DEGREE == 5
@@ -195,8 +192,7 @@ struct ApproxAtan2:
         ]()
         var z = x * x
 
-        @parameter
-        if DEGREE == 3:
+        comptime if DEGREE == 3:
             # degree =  3   => absolute accuracy is  6*10^6
             return x * (-664694912.0 + z * 131209024.0)
         elif DEGREE == 5:
@@ -280,9 +276,9 @@ struct ApproxAtan2:
             return 0
 
     @staticmethod
-    fn unsafe_atan2i_impl[DEGREE: Int](y: Float, x: Float) -> Int:
-        alias pi4: Int = Int((Int32.MAX.cast[DType.int64]() + 1) // 4)
-        alias pi34: Int = Int(3 * (Int32.MAX.cast[DType.int64]() + 1) // 4)
+    def unsafe_atan2i_impl[DEGREE: Int](y: Float, x: Float) -> Int:
+        comptime pi4: Int = Int((Int32.MAX.cast[DType.int64]() + 1) // 4)
+        comptime pi34: Int = Int(3 * (Int32.MAX.cast[DType.int64]() + 1) // 4)
 
         var r: Float = (abs(x) - abs(y)) / (abs(x) + abs(y))
         if x < 0:
@@ -294,11 +290,11 @@ struct ApproxAtan2:
         return -angle if y < 0.0 else angle
 
     @staticmethod
-    fn unsafe_atan2i[DEGREE: Int](y: Float, x: Float) -> Int:
+    def unsafe_atan2i[DEGREE: Int](y: Float, x: Float) -> Int:
         return Self.unsafe_atan2i_impl[DEGREE](y, x)
 
     @staticmethod
-    fn approx_atan2s_P[DEGREE: Int](x: Float) -> Float:
+    def approx_atan2s_P[DEGREE: Int](x: Float) -> Float:
         constrained[
             DEGREE == 3 or DEGREE == 5 or DEGREE == 7 or DEGREE == 9,
             (
@@ -308,8 +304,7 @@ struct ApproxAtan2:
         ]()
         var z = x * x
 
-        @parameter
-        if DEGREE == 3:
+        comptime if DEGREE == 3:
             # degree =  3   => absolute accuracy is  53
             return x * ((-10142.439453125) + z * 2002.0908203125)
         elif DEGREE == 5:
@@ -347,11 +342,11 @@ struct ApproxAtan2:
             return 0
 
     @staticmethod
-    fn unsafe_atan2s_impl[DEGREE: Int](y: Float, x: Float) -> Short:
-        alias pi4: Short = ((Int16.MAX.cast[DType.int64]() + 1) // 4).cast[
+    def unsafe_atan2s_impl[DEGREE: Int](y: Float, x: Float) -> Short:
+        comptime pi4: Short = ((Int16.MAX.cast[DType.int64]() + 1) // 4).cast[
             DType.int16
         ]()
-        alias pi34: Short = (3 * (Int16.MAX.cast[DType.int64]() + 1) // 4).cast[
+        comptime pi34: Short = (3 * (Int16.MAX.cast[DType.int64]() + 1) // 4).cast[
             DType.int16
         ]()
 
@@ -365,40 +360,40 @@ struct ApproxAtan2:
         return -angle if y < 0.0 else angle
 
     @staticmethod
-    fn unsafe_atan2s[DEGREE: Int](y: Float, x: Float) -> Short:
+    def unsafe_atan2s[DEGREE: Int](y: Float, x: Float) -> Short:
         return Self.unsafe_atan2s_impl[DEGREE](y, x)
 
     @staticmethod
-    fn phi2int(x: Float) -> Int:
-        alias p2i: Float = (
+    def phi2int(x: Float) -> Int:
+        comptime p2i: Float = (
             (Int32.MAX.cast[DType.int64]() + 1).cast[DType.float32]() / pi
         )
         return Int(round(x * p2i))
 
     @staticmethod
-    fn int2phi(x: Int) -> Float:
-        alias i2p: Float = (
+    def int2phi(x: Int) -> Float:
+        comptime i2p: Float = (
             pi / (Int32.MAX.cast[DType.int64]() + 1).cast[DType.float32]()
         )
         return Float(x) * i2p
 
     @staticmethod
-    fn int2dphi(x: Int) -> Double:
-        alias i2p: Double = (
+    def int2dphi(x: Int) -> Double:
+        comptime i2p: Double = (
             pi / (Int32.MAX.cast[DType.int64]() + 1).cast[DType.float64]()
         )
         return Double(x) * i2p
 
     @staticmethod
-    fn phi2short(x: Float) -> Short:
-        alias p2i: Float = (
+    def phi2short(x: Float) -> Short:
+        comptime p2i: Float = (
             (Int16.MAX.cast[DType.int32]() + 1).cast[DType.float32]() / pi
         )
         return Short(round(x * p2i))
 
     @staticmethod
-    fn short2phi(x: Short) -> Float:
-        alias i2p: Float = (
+    def short2phi(x: Short) -> Float:
+        comptime i2p: Float = (
             pi / (Int16.MAX.cast[DType.int32]() + 1).cast[DType.float32]()
         )
         return Float(x) * i2p

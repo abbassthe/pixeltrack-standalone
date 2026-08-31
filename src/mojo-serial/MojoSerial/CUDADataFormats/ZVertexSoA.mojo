@@ -3,8 +3,8 @@ from MojoSerial.MojoBridge.DTypes import Float, Typeable
 
 @fieldwise_init
 struct ZVertexSoA(Copyable, Defaultable, Movable, Typeable):
-    alias MAXTRACKS: UInt32 = 32 * 1024
-    alias MAXVTX: UInt32 = 1024
+    comptime MAXTRACKS: UInt32 = 32 * 1024
+    comptime MAXVTX: UInt32 = 1024
 
     var idv: InlineArray[
         Int16, UInt(Self.MAXTRACKS)
@@ -24,7 +24,7 @@ struct ZVertexSoA(Copyable, Defaultable, Movable, Typeable):
     var nvFinal: UInt32  # the number of vertices
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.idv = InlineArray[Int16, UInt(Self.MAXTRACKS)](fill=0)
         self.zv = InlineArray[Float, UInt(Self.MAXVTX)](fill=0.0)
         self.wv = InlineArray[Float, UInt(Self.MAXVTX)](fill=0.0)
@@ -35,10 +35,10 @@ struct ZVertexSoA(Copyable, Defaultable, Movable, Typeable):
         self.nvFinal = 0
 
     @always_inline
-    fn init(mut self):
+    def init(mut self):
         self.nvFinal = 0
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "ZVertexSoA"

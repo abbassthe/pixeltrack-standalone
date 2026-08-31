@@ -21,7 +21,7 @@ struct SiPixelRawDataError(
     var _errorMessage: String
 
     # default constructor
-    fn __init__(out self):
+    def __init__(out self):
         self._errorWord32 = 0
         self._errorWord64 = 0
         self._errorType = 0
@@ -29,7 +29,7 @@ struct SiPixelRawDataError(
         self._errorMessage = ""
 
     # constructor for 32-bit error word
-    fn __init__(
+    def __init__(
         out self,
         var errorWord32: UInt32,
         var errorType: Int32,
@@ -45,7 +45,7 @@ struct SiPixelRawDataError(
         self.setMessage()
 
     # constructor for 64-bit error word and type included (header or trailer word)
-    fn __init__(
+    def __init__(
         out self,
         var errorWord64: UInt64,
         var errorType: Int32,
@@ -60,54 +60,54 @@ struct SiPixelRawDataError(
 
         self.setMessage()
 
-    fn __moveinit__(out self, var existing: Self):
+    def __moveinit__(out self, var existing: Self):
         self._errorWord32 = existing._errorWord32
         self._errorWord64 = existing._errorWord64
         self._errorType = existing._errorType
         self._fedId = existing._fedId
         self._errorMessage = existing._errorMessage^
 
-    fn __copyinit__(out self, existing: Self):
+    def __copyinit__(out self, existing: Self):
         self._errorWord32 = existing._errorWord32
         self._errorWord64 = existing._errorWord64
         self._errorType = existing._errorType
         self._fedId = existing._fedId
         self._errorMessage = existing._errorMessage
 
-    fn setWord32(mut self, var errorWord32: UInt32):
+    def setWord32(mut self, var errorWord32: UInt32):
         self._errorWord32 = errorWord32
 
-    fn setWord64(mut self, var errorWord64: UInt64):
+    def setWord64(mut self, var errorWord64: UInt64):
         self._errorWord64 = errorWord64
 
-    fn setType(mut self, var errorType: Int32):
+    def setType(mut self, var errorType: Int32):
         self._errorType = errorType
         self.setMessage()
 
-    fn setFedId(mut self, var fedId: Int32):
+    def setFedId(mut self, var fedId: Int32):
         self._fedId = fedId
 
     @always_inline
-    fn getWord32(self) -> UInt32:
+    def getWord32(self) -> UInt32:
         return self._errorWord32
 
     @always_inline
-    fn getWord64(self) -> UInt64:
+    def getWord64(self) -> UInt64:
         return self._errorWord64
 
     @always_inline
-    fn getType(self) -> Int32:
+    def getType(self) -> Int32:
         return self._errorType
 
     @always_inline
-    fn getFedId(self) -> Int32:
+    def getFedId(self) -> Int32:
         return self._fedId
 
     @always_inline
-    fn getMessage(self) -> String:
+    def getMessage(self) -> String:
         return self._errorMessage
 
-    fn setMessage(mut self):
+    def setMessage(mut self):
         if self._errorType == 25:
             self._errorMessage = "Error: Disabled FED channel (ROC=25)"
         elif self._errorType == 26:
@@ -138,30 +138,30 @@ struct SiPixelRawDataError(
             self._errorMessage = "Error: Unknown error type"
 
     @always_inline
-    fn __eq__(self, rhs: Self) -> Bool:
+    def __eq__(self, rhs: Self) -> Bool:
         return self._fedId == rhs._fedId
 
     @always_inline
-    fn __ne__(self, rhs: Self) -> Bool:
+    def __ne__(self, rhs: Self) -> Bool:
         return self._fedId != rhs._fedId
 
     @always_inline
-    fn __lt__(self, rhs: Self) -> Bool:
+    def __lt__(self, rhs: Self) -> Bool:
         return self._fedId < rhs._fedId
 
     @always_inline
-    fn __le__(self, rhs: Self) -> Bool:
+    def __le__(self, rhs: Self) -> Bool:
         return self._fedId <= rhs._fedId
 
     @always_inline
-    fn __gt__(self, rhs: Self) -> Bool:
+    def __gt__(self, rhs: Self) -> Bool:
         return self._fedId > rhs._fedId
 
     @always_inline
-    fn __ge__(self, rhs: Self) -> Bool:
+    def __ge__(self, rhs: Self) -> Bool:
         return self._fedId >= rhs._fedId
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelRawDataError"

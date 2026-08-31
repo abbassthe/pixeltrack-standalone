@@ -11,13 +11,13 @@ struct SiPixelFedCablingMapGPUWrapper(Defaultable, Movable, Typeable):
     var cablingMapHost: SiPixelFedCablingMapGPU
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.modToUnpDefault = []
         self._hasQuality = False
         self.cablingMapHost = SiPixelFedCablingMapGPU()
 
     @always_inline
-    fn __init__(
+    def __init__(
         out self,
         var cablingMap: SiPixelFedCablingMapGPU,
         var modToUnp: List[UChar],
@@ -27,21 +27,21 @@ struct SiPixelFedCablingMapGPUWrapper(Defaultable, Movable, Typeable):
         self.cablingMapHost = cablingMap^
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self.modToUnpDefault = other.modToUnpDefault^
         self._hasQuality = other._hasQuality
         self.cablingMapHost = other.cablingMapHost^
 
-    fn hasQuality(self) -> Bool:
+    def hasQuality(self) -> Bool:
         return self._hasQuality
 
-    fn getCPUProduct(self) -> UnsafePointer[SiPixelFedCablingMapGPU, mut=False]:
+    def getCPUProduct(self) -> UnsafePointer[SiPixelFedCablingMapGPU, mut=False]:
         return UnsafePointer(to=self.cablingMapHost)
 
-    fn getModToUnpAll(self) -> UnsafePointer[UChar, mut=False]:
+    def getModToUnpAll(self) -> UnsafePointer[UChar, mut=False]:
         return self.modToUnpDefault.unsafe_ptr()
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelFedCablingMapGPUWrapper"

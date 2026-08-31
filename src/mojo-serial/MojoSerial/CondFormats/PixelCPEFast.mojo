@@ -1,4 +1,4 @@
-from pathlib import Path
+from std.pathlib import Path
 
 
 from MojoSerial.CondFormats.PixelCPEforGPU import (
@@ -11,7 +11,7 @@ from MojoSerial.CondFormats.PixelCPEforGPU import (
 from MojoSerial.MojoBridge.DTypes import Float, Typeable
 from MojoSerial.MojoBridge.File import read_simd, read_obj, read_list
 
-alias micronsToCm: Float = 1.0e-4
+comptime micronsToCm: Float = 1.0e-4
 
 
 struct PixelCPEFast(Defaultable, Movable, Typeable):
@@ -23,7 +23,7 @@ struct PixelCPEFast(Defaultable, Movable, Typeable):
     var _cpuData: ParamsOnGPU
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.m_detParamsGPU = []
         self.m_commonParamsGPU = CommonParams()
         self.m_layerGeometry = LayerGeometry()
@@ -36,7 +36,7 @@ struct PixelCPEFast(Defaultable, Movable, Typeable):
             UnsafePointer(to=self.m_averageGeometry),
         )
 
-    fn __init__(out self, path: Path):
+    def __init__(out self, path: Path):
         try:
             with open(path, "r") as file:
                 self.m_commonParamsGPU = read_obj[CommonParams](file)
@@ -60,7 +60,7 @@ struct PixelCPEFast(Defaultable, Movable, Typeable):
             UnsafePointer(to=self.m_averageGeometry),
         )
 
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self.m_detParamsGPU = other.m_detParamsGPU^
         self.m_commonParamsGPU = other.m_commonParamsGPU
         self.m_layerGeometry = other.m_layerGeometry^
@@ -74,10 +74,10 @@ struct PixelCPEFast(Defaultable, Movable, Typeable):
         )
 
     @always_inline
-    fn getCPUProduct(self) -> ref [self._cpuData] ParamsOnGPU:
+    def getCPUProduct(self) -> ref [self._cpuData] ParamsOnGPU:
         return self._cpuData
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "PixelCPEFast"

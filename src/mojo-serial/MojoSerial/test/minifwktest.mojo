@@ -1,4 +1,4 @@
-from pathlib import Path
+from std.pathlib import Path
 
 from MojoSerial.plugin_SiPixelClusterizer.SiPixelFedCablingMapGPUWrapperESProducer import (
     SiPixelFedCablingMapGPUWrapperESProducer,
@@ -10,7 +10,7 @@ from MojoSerial.Framework.ESProducer import ESProducer
 from MojoSerial.MojoBridge.DTypes import Typeable
 
 
-fn main() raises:
+def main() raises:
     var _esreg = MojoSerial.Framework.ESPluginFactory.Registry()
     var _edreg = MojoSerial.Framework.PluginFactory.Registry()
     MojoSerial.plugin_SiPixelClusterizer.init(_esreg, _edreg)

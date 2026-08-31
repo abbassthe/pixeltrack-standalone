@@ -2,28 +2,28 @@ from MojoSerial.MojoBridge.DTypes import Float, Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
 struct SiPixelGainForHLTonGPU_DecodingStructure(
-    Copyable, Defaultable, Movable, Typeable
+    Copyable, Defaultable, Movable, Typeable,
+    TrivialRegisterPassable,
 ):
     var gain: UInt8
     var ped: UInt8
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.gain = 0
         self.ped = 0
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelGainForHLTonGPU_DecodingStructure"
 
 
 @fieldwise_init
 struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
-    alias DecodingStructure = SiPixelGainForHLTonGPU_DecodingStructure
-    alias Range = Tuple[UInt32, UInt32]
+    comptime DecodingStructure = SiPixelGainForHLTonGPU_DecodingStructure
+    comptime Range = Tuple[UInt32, UInt32]
 
     var v_pedestals: UnsafePointer[Self.DecodingStructure]
     var rangeAndCols: InlineArray[Tuple[Self.Range, Int32], 2000]
@@ -41,7 +41,7 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
     var _noisyFlag: UInt32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.v_pedestals = UnsafePointer[Self.DecodingStructure]()
         self.rangeAndCols = InlineArray[Tuple[Self.Range, Int32], 2000](
             fill=Tuple[Self.Range, Int32](Self.Range(0, 0), 0)
@@ -60,7 +60,7 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
         self._noisyFlag = 0
 
     @always_inline
-    fn getPedAndGain(
+    def getPedAndGain(
         self,
         moduleInd: UInt32,
         col: Int32,
@@ -101,14 +101,14 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
         )
 
     @always_inline
-    fn decodeGain(self, gain: UInt32) -> Float:
+    def decodeGain(self, gain: UInt32) -> Float:
         return gain.cast[DType.float32]() * self.gainPrecision + self._minGain
 
     @always_inline
-    fn decodePed(self, ped: UInt32) -> Float:
+    def decodePed(self, ped: UInt32) -> Float:
         return ped.cast[DType.float32]() * self.pedPrecision + self._minPed
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelGainForHLTonGPU"

@@ -1,17 +1,17 @@
-from sys import is_defined
+from std.sys import is_defined
 
 from MojoSerial.CUDACore.CUDACompat import CUDACompat
 from MojoSerial.CUDACore.HistoContainer import HistoContainer, forEachInBins
 from MojoSerial.MojoBridge.DTypes import Float
 from MojoSerial.plugin_PixelVertexFinding.gpuVertexFinder import ZVertices, WorkSpace
 
-alias verbose: Bool = False  # in principle the compiler should optmize out if false
+comptime verbose: Bool = False  # in principle the compiler should optmize out if false
 
 
 # this algo does not really scale as it works in a single block...
 # enough for <10K tracks we have
 @always_inline
-fn clusterTracksDBSCAN(
+def clusterTracksDBSCAN(
     pdata: UnsafePointer[ZVertices],
     pws: UnsafePointer[WorkSpace],
     minT: Int32,  # min number of neighbours to be "core"
@@ -19,8 +19,7 @@ fn clusterTracksDBSCAN(
     errmax: Float,  # max error to be "seed"
     chi2max: Float,  # max normalized distance to cluster
 ):
-    @parameter
-    if verbose:
+    comptime if verbose:
         print("params", minT, eps, errmax, chi2max)
 
     var er2mx = errmax * errmax
@@ -38,14 +37,13 @@ fn clusterTracksDBSCAN(
     ref nn: InlineArray[Int32, UInt(ZVertices.MAXTRACKS)] = data.ndof
     ref iv: InlineArray[Int32, UInt(WorkSpace.MAXTRACKS)] = ws.iv
 
-    alias Hist = HistoContainer[DType.uint8, 256, 16000, 8, DType.uint16, 1]
+    comptime Hist = HistoContainer[DType.uint8, 256, 16000, 8, DType.uint16, 1]
     var hist: Hist = Hist()
 
     for j in range(Hist.totbins()):
         hist.off[j] = 0
 
-    @parameter
-    if verbose:
+    comptime if verbose:
         print(
             "booked hist with",
             Hist.nbins(),
@@ -82,7 +80,7 @@ fn clusterTracksDBSCAN(
             continue
 
         @parameter
-        fn countNeighbor(j: UInt16):
+        def countNeighbor(j: UInt16):
             if i == Int(j):
                 return
             var dist = abs(zt[i] - zt[Int(j)])
@@ -100,7 +98,7 @@ fn clusterTracksDBSCAN(
         var mz: Float = zt[i]
 
         @parameter
-        fn closestSmallerZ(j: UInt16):
+        def closestSmallerZ(j: UInt16):
             if zt[Int(j)] >= mz:
                 return
             if nn[Int(j)] < minT:
@@ -114,8 +112,7 @@ fn clusterTracksDBSCAN(
 
         forEachInBins[func=closestSmallerZ](hist, izt[i], 1)
 
-    @parameter
-    if is_defined["GPU_DEBUG"]():
+    comptime if is_defined["GPU_DEBUG"]():
         #  mini verification
         for i in range(nt):
             if iv[i] != Int32(i):
@@ -128,15 +125,13 @@ fn clusterTracksDBSCAN(
             m = iv[Int(m)]
         iv[i] = m
 
-    @parameter
-    if is_defined["GPU_DEBUG"]():
+    comptime if is_defined["GPU_DEBUG"]():
         #  mini verification
         for i in range(nt):
             if iv[i] != Int32(i):
                 debug_assert(iv[Int(iv[i])] != Int32(i))
 
-    @parameter
-    if is_defined["GPU_DEBUG"]():
+    comptime if is_defined["GPU_DEBUG"]():
         # and verify that we did not spit any cluster...
         for i in range(nt):
             if nn[i] < minT:
@@ -144,7 +139,7 @@ fn clusterTracksDBSCAN(
             debug_assert(zt[Int(iv[i])] <= zt[i])
 
             @parameter
-            fn debugSameCluster(j: UInt16):
+            def debugSameCluster(j: UInt16):
                 if nn[Int(j)] < minT:
                     return  # DBSCAN core rule
                 var dist = abs(zt[i] - zt[Int(j)])
@@ -174,7 +169,7 @@ fn clusterTracksDBSCAN(
         var mdist: Float = eps
 
         @parameter
-        fn closestCore(j: UInt16):
+        def closestCore(j: UInt16):
             if nn[Int(j)] < minT:
                 return  # DBSCAN core rule
             var dist = abs(zt[i] - zt[Int(j)])
@@ -216,6 +211,5 @@ fn clusterTracksDBSCAN(
     nvIntermediate = foundClusters
     nvFinal = foundClusters
 
-    @parameter
-    if verbose:
+    comptime if verbose:
         print("found", foundClusters, "proto vertices")

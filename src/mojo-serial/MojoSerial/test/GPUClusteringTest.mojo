@@ -1,15 +1,15 @@
-from collections import Set
-from memory import memset
+from std.collections import Set
+from std.memory import memset
 
 from MojoSerial.CUDADataFormats.GPUClusteringConstants import (
     GPUClusteringConstants,
 )
 from MojoSerial.plugin_SiPixelClusterizer.GPUClustering import GPUClustering
 
-alias numElements = 256 * 2000
+comptime numElements = 256 * 2000
 
 
-fn generate_clusters(
+def generate_clusters(
     kn: Int,
     mut h_id: InlineArray[UInt16, numElements],
     mut h_x: InlineArray[UInt16, numElements],
@@ -22,8 +22,8 @@ fn generate_clusters(
     var add_big_noise = kn % 2 == 1
 
     if add_big_noise:
-        alias MaxPixels = 1000
-        alias id = 666
+        comptime MaxPixels = 1000
+        comptime id = 666
 
         for x in range(0, 140, 3):
             for y in range(0, 400, 3):
@@ -41,8 +41,7 @@ fn generate_clusters(
             if MaxPixels <= ncl:
                 break
 
-    @parameter
-    if True:  # Isolated
+    comptime if True:  # Isolated
         var id = 42
         var x = 10
 
@@ -98,8 +97,7 @@ fn generate_clusters(
         # diagonal
         ncl += 1
 
-        @parameter
-        for x in range(20, 25):
+        comptime for x in range(20, 25):
             h_id[n] = id
             h_x[n] = x
             h_y[n] = x
@@ -109,8 +107,7 @@ fn generate_clusters(
         # reversed
         ncl += 1
 
-        @parameter
-        for x in range(45, 40, -1):
+        comptime for x in range(45, 40, -1):
             h_id[n] = id
             h_x[n] = x
             h_y[n] = x
@@ -124,8 +121,7 @@ fn generate_clusters(
         # messy
         var xx = InlineArray[Int, 5](21, 25, 23, 24, 22)
 
-        @parameter
-        for k in range(5):
+        comptime for k in range(5):
             h_id[n] = id
             h_x[n] = xx[k]
             h_y[n] = 20 + xx[k]
@@ -135,8 +131,7 @@ fn generate_clusters(
         # holes
         ncl += 1
 
-        @parameter
-        for k in range(5):
+        comptime for k in range(5):
             h_id[n] = id
             h_x[n] = xx[k]
             h_y[n] = 100
@@ -150,8 +145,7 @@ fn generate_clusters(
                 h_adc[n] = 1000
                 n += 1
 
-    @parameter
-    if True:
+    comptime if True:
         var id = 0
         var x = 10
 
@@ -168,13 +162,11 @@ fn generate_clusters(
             h_id[n] = GPUClusteringConstants.InvId  # error
             n += 1
 
-        @parameter
-        for x in range(0, 40, 4):
+        comptime for x in range(0, 40, 4):
             ncl += 1
             if (id // 10) % 2 == 1:
 
-                @parameter
-                for k in range(10):
+                comptime for k in range(10):
                     h_id[n] = id
                     h_x[n] = x
                     h_y[n] = x + y[k]
@@ -187,8 +179,7 @@ fn generate_clusters(
                     n += 1
             else:
 
-                @parameter
-                for k in range(10):
+                comptime for k in range(10):
                     h_id[n] = id
                     h_x[n] = x
                     h_y[n] = x + y[9 - k]
@@ -208,7 +199,7 @@ fn generate_clusters(
                     n += 1
 
 
-fn main() raises:
+def main() raises:
     var h_id = InlineArray[UInt16, numElements](fill=0)
     var h_x = InlineArray[UInt16, numElements](fill=0)
     var h_y = InlineArray[UInt16, numElements](fill=0)
@@ -229,8 +220,7 @@ fn main() raises:
     var ncl: Int
     var y = InlineArray[Int, 10](5, 7, 9, 1, 3, 0, 4, 8, 2, 6)
 
-    @parameter
-    for kkk in range(5):
+    comptime for kkk in range(5):
         n = 0
         ncl = 0
         generate_clusters(kkk, h_id, h_x, h_y, h_adc, y, n, ncl)

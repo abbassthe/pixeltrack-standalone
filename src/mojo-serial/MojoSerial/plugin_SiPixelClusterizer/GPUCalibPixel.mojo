@@ -1,24 +1,21 @@
-from memory import memset
+from std.memory import memset
 
 from MojoSerial.CondFormats.SiPixelGainForHLTonGPU import SiPixelGainForHLTonGPU
 from MojoSerial.CUDADataFormats.GPUClusteringConstants import (
     GPUClusteringConstants,
 )
 from MojoSerial.MojoBridge.DTypes import Float
-
-
-@nonmaterializable(NoneType)
 struct GPUCalibPixel:
-    alias InvId: UInt16 = 9999  # must be > MaxNumModules
+    comptime InvId: UInt16 = 9999  # must be > MaxNumModules
 
     # valid for run2
-    alias VCaltoElectronGain: Float = 47  # L2-4: 47 +- 4.7
-    alias VCaltoElectronGain_L1: Float = 50  # L1:   49.6 +- 2.6
-    alias VCaltoElectronOffset: Float = -60  # L2-4: -60 +- 130
-    alias VCaltoElectronOffset_L1: Float = -670  # L1:   -670 +- 220
+    comptime VCaltoElectronGain: Float = 47  # L2-4: 47 +- 4.7
+    comptime VCaltoElectronGain_L1: Float = 50  # L1:   49.6 +- 2.6
+    comptime VCaltoElectronOffset: Float = -60  # L2-4: -60 +- 130
+    comptime VCaltoElectronOffset_L1: Float = -670  # L1:   -670 +- 220
 
     @staticmethod
-    fn calibDigis(
+    def calibDigis(
         isRun2: Bool,
         id: UnsafePointer[UInt16, mut=True],
         x: UnsafePointer[UInt16],

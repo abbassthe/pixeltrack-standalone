@@ -1,5 +1,5 @@
-from math import sqrt
-from sys import is_defined
+from std.math import sqrt
+from std.sys import is_defined
 
 from MojoSerial.plugin_PixelTriplets import CAConstants
 from MojoSerial.plugin_PixelTriplets.CirclEq import CircleEq
@@ -17,23 +17,23 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
 
 @fieldwise_init
 struct GPUCACell(Copyable, Defaultable, Movable):
-    alias ptrAsInt = UInt64
+    comptime ptrAsInt = UInt64
 
-    alias maxCellsPerHit = CAConstants.maxCellsPerHit()
-    alias OuterHitOfCell = CAConstants.OuterHitOfCell
-    alias CellNeighbors = CAConstants.CellNeighbors
-    alias CellTracks = CAConstants.CellTracks
-    alias CellNeighborsVector = CAConstants.CellNeighborsVector
-    alias CellTracksVector = CAConstants.CellTracksVector
+    comptime maxCellsPerHit = CAConstants.maxCellsPerHit()
+    comptime OuterHitOfCell = CAConstants.OuterHitOfCell
+    comptime CellNeighbors = CAConstants.CellNeighbors
+    comptime CellTracks = CAConstants.CellTracks
+    comptime CellNeighborsVector = CAConstants.CellNeighborsVector
+    comptime CellTracksVector = CAConstants.CellTracksVector
 
-    alias Hits = TrackingRecHit2DSOAView
-    alias hindex_type = Self.Hits.HIndexType
+    comptime Hits = TrackingRecHit2DSOAView
+    comptime hindex_type = Self.Hits.HIndexType
 
-    alias TmpTuple = VecArray[UInt32, "TmpTuple", 6]
+    comptime TmpTuple = VecArray[UInt32, "TmpTuple", 6]
 
-    alias HitContainer = pixelTrack.HitContainer
-    alias Quality = pixelTrack.Quality
-    alias bad = trackQuality.bad
+    comptime HitContainer = pixelTrack.HitContainer
+    comptime Quality = pixelTrack.Quality
+    comptime bad = trackQuality.bad
 
     var theOuterNeighbors: UnsafePointer[Self.CellNeighbors]
     var theTracks: UnsafePointer[Self.CellTracks]
@@ -47,7 +47,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
     var theInnerHitId: Self.hindex_type
     var theOuterHitId: Self.hindex_type
 
-    fn __init__(out self):
+    def __init__(out self):
         self.theOuterNeighbors = UnsafePointer[Self.CellNeighbors]()
         self.theTracks = UnsafePointer[Self.CellTracks]()
 
@@ -60,7 +60,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         self.theInnerHitId = 0
         self.theOuterHitId = 0
 
-    fn init(
+    def init(
         mut self,
         mut cellNeighbors: Self.CellNeighborsVector,
         mut cellTracks: Self.CellTracksVector,
@@ -87,7 +87,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         debug_assert(self.tracks().empty())
 
     @always_inline
-    fn addOuterNeighbor(
+    def addOuterNeighbor(
         mut self,
         t: UInt32,
         mut cellNeighbors: Self.CellNeighborsVector,
@@ -98,8 +98,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
             if i > 0:
                 cellNeighbors[i].reset()
 
-                @parameter
-                if is_defined["__CUDACC__"]():
+                comptime if is_defined["__CUDACC__"]():
                     var zero = UInt64(
                         Int(UnsafePointer(to=cellNeighbors[0]))
                     )
@@ -118,7 +117,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         return self.outerNeighbors().push_back(t)
 
     @always_inline
-    fn addTrack(
+    def addTrack(
         mut self,
         t: UInt16,
         mut cellTracks: Self.CellTracksVector,
@@ -128,8 +127,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
             if i > 0:
                 cellTracks[i].reset()
 
-                @parameter
-                if is_defined["__CUDACC__"]():
+                comptime if is_defined["__CUDACC__"]():
                     var zero = UInt64(Int(UnsafePointer(to=cellTracks[0])))
                     _ = CUDACompat.atomicCAS(
                         UnsafePointer(to=self.theTracks).bitcast[UInt64](),
@@ -144,70 +142,70 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         return self.tracks().push_back(t)
 
     @always_inline
-    fn tracks(ref self) -> ref [self.theTracks] Self.CellTracks:
+    def tracks(ref self) -> ref [self.theTracks] Self.CellTracks:
         return self.theTracks[]
 
     @always_inline
-    fn outerNeighbors(ref self) -> ref [self.theOuterNeighbors] Self.CellNeighbors:
+    def outerNeighbors(ref self) -> ref [self.theOuterNeighbors] Self.CellNeighbors:
         return self.theOuterNeighbors[]
 
     @always_inline
-    fn get_inner_x(self, hh: Self.Hits) -> Float32:
+    def get_inner_x(self, hh: Self.Hits) -> Float32:
         return hh.xGlobal(Int(self.theInnerHitId))
 
     @always_inline
-    fn get_outer_x(self, hh: Self.Hits) -> Float32:
+    def get_outer_x(self, hh: Self.Hits) -> Float32:
         return hh.xGlobal(Int(self.theOuterHitId))
 
     @always_inline
-    fn get_inner_y(self, hh: Self.Hits) -> Float32:
+    def get_inner_y(self, hh: Self.Hits) -> Float32:
         return hh.yGlobal(Int(self.theInnerHitId))
 
     @always_inline
-    fn get_outer_y(self, hh: Self.Hits) -> Float32:
+    def get_outer_y(self, hh: Self.Hits) -> Float32:
         return hh.yGlobal(Int(self.theOuterHitId))
 
     @always_inline
-    fn get_inner_z(self, hh: Self.Hits) -> Float32:
+    def get_inner_z(self, hh: Self.Hits) -> Float32:
         return self.theInnerZ
 
     # { return hh.zGlobal(theInnerHitId); } # { return theInnerZ; }
     @always_inline
-    fn get_outer_z(self, hh: Self.Hits) -> Float32:
+    def get_outer_z(self, hh: Self.Hits) -> Float32:
         return hh.zGlobal(Int(self.theOuterHitId))
 
     @always_inline
-    fn get_inner_r(self, hh: Self.Hits) -> Float32:
+    def get_inner_r(self, hh: Self.Hits) -> Float32:
         return self.theInnerR
 
     # { return hh.rGlobal(theInnerHitId); } # { return theInnerR; }
     @always_inline
-    fn get_outer_r(self, hh: Self.Hits) -> Float32:
+    def get_outer_r(self, hh: Self.Hits) -> Float32:
         return hh.rGlobal(Int(self.theOuterHitId))
 
     @always_inline
-    fn get_inner_iphi(self, hh: Self.Hits) -> Int16:
+    def get_inner_iphi(self, hh: Self.Hits) -> Int16:
         return hh.iphi(Int(self.theInnerHitId))
 
     @always_inline
-    fn get_outer_iphi(self, hh: Self.Hits) -> Int16:
+    def get_outer_iphi(self, hh: Self.Hits) -> Int16:
         return hh.iphi(Int(self.theOuterHitId))
 
     @always_inline
-    fn get_inner_detIndex(self, hh: Self.Hits) -> Float32:
+    def get_inner_detIndex(self, hh: Self.Hits) -> Float32:
         return Float32(hh.detectorIndex(Int(self.theInnerHitId)))
 
     @always_inline
-    fn get_outer_detIndex(self, hh: Self.Hits) -> Float32:
+    def get_outer_detIndex(self, hh: Self.Hits) -> Float32:
         return Float32(hh.detectorIndex(Int(self.theOuterHitId)))
 
-    fn get_inner_hit_id(self) -> Self.hindex_type:
+    def get_inner_hit_id(self) -> Self.hindex_type:
         return self.theInnerHitId
 
-    fn get_outer_hit_id(self) -> Self.hindex_type:
+    def get_outer_hit_id(self) -> Self.hindex_type:
         return self.theOuterHitId
 
-    fn print_cell(self):
+    def print_cell(self):
         print(
             "printing cell: ",
             self.theDoubletId,
@@ -219,7 +217,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
             self.theOuterHitId,
         )
 
-    fn check_alignment(
+    def check_alignment(
         self,
         hh: Self.Hits,
         otherCell: GPUCACell,
@@ -233,8 +231,8 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         # detIndex of the layerStart for the Phase1 Pixel Detector:
         # [BPX1, BPX2, BPX3, BPX4,  FP1,  FP2,  FP3,  FN1,  FN2,  FN3, LAST_VALID]
         # [   0,   96,  320,  672, 1184, 1296, 1408, 1520, 1632, 1744,       1856]
-        alias last_bpix1_detIndex: UInt32 = 96
-        alias last_barrel_detIndex: UInt32 = 1184
+        comptime last_bpix1_detIndex: UInt32 = 96
+        comptime last_barrel_detIndex: UInt32 = 1184
         var ri = self.get_inner_r(hh)
         var zi = self.get_inner_z(hh)
 
@@ -267,7 +265,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         )  # FIXME tune cuts
 
     @staticmethod
-    fn areAlignedRZ(
+    def areAlignedRZ(
         r1: Float32,
         z1: Float32,
         ri: Float32,
@@ -294,7 +292,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
             <= thetaCut * distance_13_squared * radius_diff
         )
 
-    fn dcaCut(
+    def dcaCut(
         self,
         hh: Self.Hits,
         otherCell: GPUCACell,
@@ -320,7 +318,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         )
 
     @staticmethod
-    fn dcaCutH(
+    def dcaCutH(
         x1: Float32,
         y1: Float32,
         x2: Float32,
@@ -339,12 +337,12 @@ struct GPUCACell(Copyable, Defaultable, Movable):
             eq.curvature()
         )
 
-    fn hole0(self, hh: Self.Hits, innerCell: GPUCACell) -> Bool:
-        alias max_ladder_bpx0: UInt32 = 12
-        alias first_ladder_bpx0: UInt32 = 0
-        alias module_length: Float32 = 6.7
-        alias module_tolerance: Float32 = 0.4  # projection to cylinder is inaccurate on BPIX1
-        alias max_ushort: Int = 65535
+    def hole0(self, hh: Self.Hits, innerCell: GPUCACell) -> Bool:
+        comptime max_ladder_bpx0: UInt32 = 12
+        comptime first_ladder_bpx0: UInt32 = 0
+        comptime module_length: Float32 = 6.7
+        comptime module_tolerance: Float32 = 0.4  # projection to cylinder is inaccurate on BPIX1
+        comptime max_ushort: Int = 65535
 
         var p: Int = Int(innerCell.get_inner_iphi(hh))
         if p < 0:
@@ -369,12 +367,12 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         return gap
 
     @always_inline
-    fn hole4(self, hh: Self.Hits, innerCell: GPUCACell) -> Bool:
-        alias max_ladder_bpx4: UInt32 = 64
-        alias first_ladder_bpx4: UInt32 = 84
-        alias module_length: Float32 = 6.7
-        alias module_tolerance: Float32 = 0.2
-        alias max_ushort: Int = 65535
+    def hole4(self, hh: Self.Hits, innerCell: GPUCACell) -> Bool:
+        comptime max_ladder_bpx4: UInt32 = 64
+        comptime first_ladder_bpx4: UInt32 = 84
+        comptime module_length: Float32 = 6.7
+        comptime module_tolerance: Float32 = 0.2
+        comptime max_ushort: Int = 65535
 
         var p: Int = Int(self.get_outer_iphi(hh))
         if p < 0:
@@ -402,7 +400,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
 
     # trying to free the track building process from hardcoded layers, leaving
     # the visit of the graph based on the neighborhood connections between cells.
-    fn find_ntuplets[
+    def find_ntuplets[
         origin: MutableOrigin, //, DEPTH: Int
     ](
         self,
@@ -422,8 +420,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         # the ntuplets is then saved if the number of hits it contains is greater
         # than a threshold
 
-        @parameter
-        if DEPTH <= 0:
+        comptime if DEPTH <= 0:
             # mirrors the C++ find_ntuplets<0> specialization: no recursive call
             # is elaborated here, terminating the compile-time instantiation chain
             print("ERROR: GPUCACell::find_ntuplets reached full depth!")
@@ -462,8 +459,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
                 if UInt32(len(tmpNtuplet)) >= minHitsPerNtuplet - 1:
                     var accept = True
 
-                    @parameter
-                    if is_defined["ONLY_TRIPLETS_IN_HOLE"]():
+                    comptime if is_defined["ONLY_TRIPLETS_IN_HOLE"]():
                         # triplets accepted only pointing to the hole
                         var firstCell = tmpNtuplet[0]
                         var inner = (cells + Int(firstCell))[]
@@ -505,5 +501,5 @@ struct GPUCACell(Copyable, Defaultable, Movable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "GPUCACell"

@@ -8,4 +8,6 @@ version = "0.1.0"
 [tasks]
 
 [dependencies]
-mojo = "25.5.*"
+mojo = "==1.0.0"
+# provides `layout` (LayoutTensor); not part of the stdlib, so imported unprefixed
+max = "==26.5.0"

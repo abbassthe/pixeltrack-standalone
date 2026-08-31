@@ -1,23 +1,23 @@
-import math
+import std.math as math
 import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 import MojoSerial.plugin_PixelTriplets.BrokenLine as BrokenLine
 from MojoSerial.plugin_PixelTriplets.HelixFitOnGPU import Rfit
 from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import TrackingRecHit2DSOAView
 from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import PixelTrack as pixelTrack
-from os.atomic import Atomic
+from std.atomic import Atomic
 from MojoSerial.MojoBridge.Matrix import to_layout_tensor
 
 
-alias HitsOnGPU = TrackingRecHit2DSOAView
-alias Tuples = pixelTrack.HitContainer
-alias OutputSoA = pixelTrack.TrackSoA
+comptime HitsOnGPU = TrackingRecHit2DSOAView
+comptime Tuples = pixelTrack.HitContainer
+comptime OutputSoA = pixelTrack.TrackSoA
 
-alias BROKENLINE_DEBUG = False
+comptime BROKENLINE_DEBUG = False
 
-alias BL_DUMP_HITS = False
+comptime BL_DUMP_HITS = False
 
 
-fn kernelBLFastFit[N: Int](
+def kernelBLFastFit[N: Int](
     foundNtuplets: UnsafePointer[Tuples],
     tupleMultiplicity: UnsafePointer[CAConstants.TupleMultiplicity],
     hhp: UnsafePointer[HitsOnGPU],
@@ -37,8 +37,7 @@ fn kernelBLFastFit[N: Int](
 
     var local_start = 0
 
-    @parameter
-    if BROKENLINE_DEBUG:
+    comptime if BROKENLINE_DEBUG:
         if local_start == 0:
             var nbins_val = foundNtuplets[].nbins()
             print(nbins_val, "total Ntuple")
@@ -65,8 +64,7 @@ fn kernelBLFastFit[N: Int](
 
         var dump: Bool = False
 
-        @parameter
-        if BL_DUMP_HITS:
+        comptime if BL_DUMP_HITS:
             var done = Atomic[DType.int64](0)
             dump = (
                 foundNtuplets[].size(tkid) == 5 and done.fetch_add(1) == 0
@@ -85,8 +83,7 @@ fn kernelBLFastFit[N: Int](
                 ge.unsafe_ptr(),
             )
 
-            @parameter
-            if BL_DUMP_HITS:
+            comptime if BL_DUMP_HITS:
                 if dump:
                     var det_idx = hhp[].detectorIndex(hit)
                     var xg = hhp[].xGlobal(hit)
@@ -123,7 +120,7 @@ fn kernelBLFastFit[N: Int](
         local_idx += 1
 
 
-fn kernelBLFit[N: Int](
+def kernelBLFit[N: Int](
     tupleMultiplicity: UnsafePointer[CAConstants.TupleMultiplicity],
     B: Float64,
     results: UnsafePointer[OutputSoA],
@@ -182,8 +179,7 @@ fn kernelBLFit[N: Int](
             chi2 / Float64(2 * N - 5)
         )
 
-        @parameter
-        if BROKENLINE_DEBUG:
+        comptime if BROKENLINE_DEBUG:
             if not (circle.chi2 >= 0) or not (line.chi2 >= 0):
                 print("kernelBLFit failed!", circle.chi2, "/", line.chi2)
             print(

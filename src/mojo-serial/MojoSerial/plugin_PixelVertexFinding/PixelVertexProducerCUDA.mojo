@@ -22,7 +22,7 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
     var _ptMin: Float
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._tokenCPUTrack = EDGetTokenT[PixelTrackHeterogeneous]()
         self._tokenCPUVertex = EDPutTokenT[ZVertexHeterogeneous]()
         self._gpuAlgo = Producer(
@@ -38,7 +38,7 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
         self._ptMin = 0.5  # 0.5 GeV
 
     @always_inline
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         try:
             self._tokenCPUTrack = reg.consumes[PixelTrackHeterogeneous]()
             self._tokenCPUVertex = reg.produces[ZVertexHeterogeneous]()
@@ -58,7 +58,7 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
             print("Handled exception in PixelVertexProducerCUDA, ", e)
             return Self()
 
-    fn produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
+    def produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
         try:
             ref tracks = iEvent.get[PixelTrackHeterogeneous](
                 self._tokenCPUTrack
@@ -71,10 +71,10 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
         except e:
             print("Error during produce in PixelVertexProducerCUDA, ", e)
 
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         pass
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "PixelVertexProducerCUDA"

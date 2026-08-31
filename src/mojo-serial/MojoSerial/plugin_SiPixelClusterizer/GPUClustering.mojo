@@ -5,12 +5,9 @@ from MojoSerial.CUDACore.PrefixScan import blockPrefixScan
 from MojoSerial.CUDADataFormats.GPUClusteringConstants import (
     GPUClusteringConstants,
 )
-
-
-@nonmaterializable(NoneType)
 struct GPUClustering:
     @staticmethod
-    fn countModules(
+    def countModules(
         id: UnsafePointer[UInt16],
         moduleStart: UnsafePointer[UInt32, mut=True],
         clusterId: UnsafePointer[Int32, mut=True],
@@ -31,7 +28,7 @@ struct GPUClustering:
                 moduleStart[loc + 1] = i.cast[DType.uint32]()
 
     @staticmethod
-    fn findClus(
+    def findClus(
         id: UnsafePointer[UInt16],  # module id of each pixel
         x: UnsafePointer[UInt16],  # local coordinates of each pixel
         y: UnsafePointer[UInt16],  #
@@ -76,11 +73,11 @@ struct GPUClustering:
                     break
 
             # init hist  (ymax=416 < 512 : 9bits)
-            alias maxPixInModule: UInt32 = 4000
-            alias nbins = Phase1PixelTopology.numColsInModule.cast[
+            comptime maxPixInModule: UInt32 = 4000
+            comptime nbins = Phase1PixelTopology.numColsInModule.cast[
                 DType.uint32
             ]() + 2
-            alias Hist = HistoContainer[
+            comptime Hist = HistoContainer[
                 DType.uint16,
                 nbins,
                 maxPixInModule,
@@ -133,7 +130,7 @@ struct GPUClustering:
 
             var maxiter = hist.size()
             # allocate space for duplicate pixels: a pixel can appear more than once with different charge in the same event
-            alias maxNeighbours = 10
+            comptime maxNeighbours = 10
             debug_assert((Int(hist.size()) // 1) <= Int(maxiter))
             # nearest neighbour
             var nn = List[List[UInt16]](
@@ -243,7 +240,7 @@ struct GPUClustering:
             moduleId[module] = thisModuleId.cast[DType.uint32]()
 
     @staticmethod
-    fn clusterChargeCut(
+    def clusterChargeCut(
         id: UnsafePointer[
             UInt16, mut=True
         ],  # module id of each pixel (modified if bad cluster)

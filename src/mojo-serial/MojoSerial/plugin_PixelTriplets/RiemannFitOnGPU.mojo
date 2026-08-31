@@ -1,4 +1,4 @@
-import math
+import std.math as math
 
 import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 import MojoSerial.plugin_PixelTriplets.RiemannFit as RiemannFit
@@ -13,16 +13,16 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
 from MojoSerial.MojoBridge.Matrix import to_layout_tensor
 
 
-alias RIEMANN_DEBUG = False
+comptime RIEMANN_DEBUG = False
 
 
-alias HitsOnGPU = TrackingRecHit2DSOAView
-alias Tuples = pixelTrack.HitContainer
-alias OutputSoA = pixelTrack.TrackSoA
-alias CircleFit = FitRfit.circle_fit
-alias LineFit = FitRfit.line_fit
+comptime HitsOnGPU = TrackingRecHit2DSOAView
+comptime Tuples = pixelTrack.HitContainer
+comptime OutputSoA = pixelTrack.TrackSoA
+comptime CircleFit = FitRfit.circle_fit
+comptime LineFit = FitRfit.line_fit
 
-fn kernelFastFit[N: Int](
+def kernelFastFit[N: Int](
     foundNtuplets: UnsafePointer[Tuples],
     tupleMultiplicity: UnsafePointer[CAConstants.TupleMultiplicity],
     nHits: UInt32,
@@ -32,7 +32,7 @@ fn kernelFastFit[N: Int](
     pfast_fit: UnsafePointer[Float64],
     offset: UInt32,
 ):
-    alias hitsInFit: UInt32 = N
+    comptime hitsInFit: UInt32 = N
 
     debug_assert(hitsInFit <= nHits)
 
@@ -42,8 +42,7 @@ fn kernelFastFit[N: Int](
 
     var local_start = 0
 
-    @parameter
-    if RIEMANN_DEBUG:
+    comptime if RIEMANN_DEBUG:
         if local_start == 0:
             var tsize_val = tupleMultiplicity[].size(nHits)
             print(
@@ -98,7 +97,7 @@ fn kernelFastFit[N: Int](
 
         local_idx += 1
 
-fn kernelCircleFit[N: Int](
+def kernelCircleFit[N: Int](
     tupleMultiplicity: UnsafePointer[CAConstants.TupleMultiplicity],
     nHits: UInt32,
     B: Float64,
@@ -143,8 +142,7 @@ fn kernelCircleFit[N: Int](
             True,
         )
 
-        @parameter
-        if RIEMANN_DEBUG:
+        comptime if RIEMANN_DEBUG:
             pass
             # let tkid = (tupleMultiplicity[].begin(nHits) + tuple_idx)[]
             # print(
@@ -154,7 +152,7 @@ fn kernelCircleFit[N: Int](
         local_idx += 1
 
 
-fn kernelLineFit[N: Int](
+def kernelLineFit[N: Int](
     tupleMultiplicity: UnsafePointer[CAConstants.TupleMultiplicity],
     nHits: UInt32,
     B: Float64,
@@ -217,8 +215,7 @@ fn kernelLineFit[N: Int](
             chi2 / Float64(2 * N - 5)
         )
 
-        @parameter
-        if RIEMANN_DEBUG:
+        comptime if RIEMANN_DEBUG:
             print(
                 "kernelLineFit size", N, "for", nHits,
                 "hits circle.par(0,1,2):", tkid,

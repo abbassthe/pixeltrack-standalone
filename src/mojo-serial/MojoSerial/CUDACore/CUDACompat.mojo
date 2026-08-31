@@ -1,8 +1,5 @@
-alias CUDAStreamType = OpaquePointer
-alias cudaStreamDefault: OpaquePointer = OpaquePointer()
-
-
-@nonmaterializable(NoneType)
+comptime CUDAStreamType = OpaquePointer
+comptime cudaStreamDefault: OpaquePointer = OpaquePointer()
 @deprecated(
     "Any methods using CUDACompat should be redirected to perform the regular"
     " operations since we are not in a CUDA environment."
@@ -13,7 +10,7 @@ struct CUDACompat:
         "Any methods using CUDACompat should be redirected to perform the"
         " regular operations since we are not in a CUDA environment."
     )
-    fn atomicCAS[
+    def atomicCAS[
         T1: DType, //
     ](
         address: UnsafePointer[Scalar[T1], mut=True],
@@ -29,7 +26,7 @@ struct CUDACompat:
         "Any methods using CUDACompat should be redirected to perform the"
         " regular operations since we are not in a CUDA environment."
     )
-    fn atomicInc[
+    def atomicInc[
         T1: DType, //
     ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
         var ret = a[]
@@ -42,7 +39,7 @@ struct CUDACompat:
         "Any methods using CUDACompat should be redirected to perform the"
         " regular operations since we are not in a CUDA environment."
     )
-    fn atomicAdd[
+    def atomicAdd[
         T1: DType, //
     ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
         var ret = a[]
@@ -54,7 +51,7 @@ struct CUDACompat:
         "Any methods using CUDACompat should be redirected to perform the"
         " regular operations since we are not in a CUDA environment."
     )
-    fn atomicSub[
+    def atomicSub[
         T1: DType, //
     ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
         var ret = a[]
@@ -66,7 +63,7 @@ struct CUDACompat:
         "Any methods using CUDACompat should be redirected to perform the"
         " regular operations since we are not in a CUDA environment."
     )
-    fn atomicMin[
+    def atomicMin[
         T1: DType, //
     ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
         var ret = a[]
@@ -78,7 +75,7 @@ struct CUDACompat:
         "Any methods using CUDACompat should be redirected to perform the"
         " regular operations since we are not in a CUDA environment."
     )
-    fn atomicMax[
+    def atomicMax[
         T1: DType, //
     ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
         var ret = a[]

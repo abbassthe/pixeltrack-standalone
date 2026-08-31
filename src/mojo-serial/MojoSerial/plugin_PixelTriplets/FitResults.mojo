@@ -42,18 +42,18 @@ struct _Rfit_helix_fit:
     var q : UInt32;  #//!< particle charge
 
 struct Rfit:
-    alias Vector2d = Matrix[DType.float64, 2, 1]
-    alias Vector3d = Matrix[DType.float64, 3, 1]
-    alias Vector4d = Matrix[DType.float64, 4, 1]
-    alias Vector5d = Matrix[DType.float64, 5, 1]
-    alias Matrix2d = Matrix[DType.float64, 2, 2]
-    alias Matrix3d = Matrix[DType.float64, 3, 3]
-    alias Matrix4d = Matrix[DType.float64, 4, 4]
-    alias Matrix5d = Matrix[DType.float64, 5, 5]
-    alias Matrix6d = Matrix[DType.float64, 6, 6]
+    comptime Vector2d = Matrix[DType.float64, 2, 1]
+    comptime Vector3d = Matrix[DType.float64, 3, 1]
+    comptime Vector4d = Matrix[DType.float64, 4, 1]
+    comptime Vector5d = Matrix[DType.float64, 5, 1]
+    comptime Matrix2d = Matrix[DType.float64, 2, 2]
+    comptime Matrix3d = Matrix[DType.float64, 3, 3]
+    comptime Matrix4d = Matrix[DType.float64, 4, 4]
+    comptime Matrix5d = Matrix[DType.float64, 5, 5]
+    comptime Matrix6d = Matrix[DType.float64, 6, 6]
 
-    alias Matrix3xNd[N: Int] = Matrix[DType.float64, 3, N]
+    comptime Matrix3xNd[N: Int] = Matrix[DType.float64, 3, N]
 
-    alias circle_fit = _Rfit_circle_fit
-    alias line_fit = _Rfit_line_fit
-    alias helix_fit = _Rfit_helix_fit
+    comptime circle_fit = _Rfit_circle_fit
+    comptime line_fit = _Rfit_line_fit
+    comptime helix_fit = _Rfit_helix_fit

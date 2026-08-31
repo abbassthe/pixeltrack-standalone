@@ -1,7 +1,7 @@
 # Translated from pixeltrack-standalone/src/serial/plugin-PixelTriplets/choleskyInversion.h
 # Explicit Cholesky-based inverses for small positive-definite matrices.
 
-import math
+import std.math as math
 from MojoSerial.MojoBridge.Matrix import Matrix
 from MojoSerial.MojoBridge.DTypes import DType
 
@@ -22,13 +22,13 @@ from MojoSerial.MojoBridge.DTypes import DType
 #
 #
 
-fn invert11[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
+def invert11[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var inv = 1.0 / src[0, 0]
     dst[0, 0] = inv
 
 
 
-fn invert22[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
+def invert22[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0] * src[1, 0] * luc0
     var luc2 = 1.0 / (src[1, 1] - luc1)
@@ -41,7 +41,7 @@ fn invert22[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
-fn invert33[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
+def invert33[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
     var luc2 = 1.0 / (src[1, 1] - luc0 * luc1 * luc1)
@@ -62,7 +62,7 @@ fn invert33[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
-fn invert44[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
+def invert44[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
     var luc2 = 1.0 / (src[1, 1] - luc0 * luc1 * luc1)
@@ -94,7 +94,7 @@ fn invert44[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
-fn invert55[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
+def invert55[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
     var luc2 = 1.0 / (src[1, 1] - luc0 * luc1 * luc1)
@@ -152,7 +152,7 @@ fn invert55[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
-fn invert66[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
+def invert66[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
     var luc0 = 1.0 / src[0, 0]
     var luc1 = src[1, 0]
     var luc2 = 1.0 / (src[1, 1] - luc0 * luc1 * luc1)
@@ -265,24 +265,24 @@ fn invert66[T: DType, rows: Int, cols: Int](src: Matrix[T, rows, cols], mut dst:
 
 
 
-fn symmetrize11[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
+def symmetrize11[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     pass
 
 
 
-fn symmetrize22[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
+def symmetrize22[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     dst[0, 1] = dst[1, 0]
 
 
 
-fn symmetrize33[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
+def symmetrize33[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     symmetrize22(dst)
     dst[0, 2] = dst[2, 0]
     dst[1, 2] = dst[2, 1]
 
 
 
-fn symmetrize44[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
+def symmetrize44[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     symmetrize33(dst)
     dst[0, 3] = dst[3, 0]
     dst[1, 3] = dst[3, 1]
@@ -290,7 +290,7 @@ fn symmetrize44[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
 
 
 
-fn symmetrize55[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
+def symmetrize55[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     symmetrize44(dst)
     dst[0, 4] = dst[4, 0]
     dst[1, 4] = dst[4, 1]
@@ -299,7 +299,7 @@ fn symmetrize55[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
 
 
 
-fn symmetrize66[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
+def symmetrize66[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
     symmetrize55(dst)
     dst[0, 5] = dst[5, 0]
     dst[1, 5] = dst[5, 1]
@@ -311,9 +311,8 @@ fn symmetrize66[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols]):
 struct Inverter[T: DType, rows: Int, cols: Int, N: Int]:
     @staticmethod
     @always_inline
-    fn eval(src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
-        @parameter
-        if N == 1:
+    def eval(src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
+        comptime if N == 1:
             invert11(src, dst)
         elif N == 2:
             invert22(src, dst)
@@ -335,7 +334,7 @@ struct Inverter[T: DType, rows: Int, cols: Int, N: Int]:
 
 
 
-fn invert[T: DType, rows: Int, cols: Int](
+def invert[T: DType, rows: Int, cols: Int](
     src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]
 ):
     Inverter[

@@ -1,18 +1,18 @@
 # Translated from pixeltrack-standalone/src/serial/plugin-PixelTriplets/BrokenLine.h
 
-import math
+import std.math as math
 from MojoSerial.MojoBridge.Matrix import Matrix, MatrixLike
 from MojoSerial.plugin_PixelTriplets.FitUtils import Rfit
 import MojoSerial.plugin_PixelTriplets.choleskyInversion as choleskyInversion
 
-alias CPP_DUMP = False
+comptime CPP_DUMP = False
 
 #< Karimäki's parameters: (phi, d, k=1/R)
 #< covariance matrix: \n
 #  |cov(phi,phi)|cov( d ,phi)|cov( k ,phi)| \n
 #  |cov(phi, d )|cov( d , d )|cov( k , d )| \n
 #  |cov(phi, k )|cov( d , k )|cov( k , k )|
-alias karimaki_circle_fit = Rfit.circle_fit
+comptime karimaki_circle_fit = Rfit.circle_fit
 
 #!
 #\brief data needed for the Broken Line fit procedure.
@@ -25,7 +25,7 @@ struct PreparedBrokenLineData[N: Int]:
     var Z: Rfit.VectorNd[N]        #!< orthogonal coordinate to the pre-fitted line in the sz plane
     var VarBeta: Rfit.VectorNd[N]  #!< kink angles in the SZ plane
 
-    fn __init__(out self):
+    def __init__(out self):
         self.q = 0
         self.radii = Rfit.Matrix2xNd[N]()
         self.s = Rfit.VectorNd[N]()
@@ -47,7 +47,7 @@ struct PreparedBrokenLineData[N: Int]:
 #\warning the formula used here assumes beta=1, and so neglects the dependence of theta_0 on the mass of the particle at fixed momentum.
 #
 #\return the variance of the planar angle ((theta_0)^2 /3).
-fn MultScatt(length: Float64, B: Float64, R: Float64, Layer: Int, slope: Float64) -> Float64:
+def MultScatt(length: Float64, B: Float64, R: Float64, Layer: Int, slope: Float64) -> Float64:
     # limit R to 20GeV...
     var _ = Layer
     var pt2 = min(20.0, B * R)
@@ -64,7 +64,7 @@ fn MultScatt(length: Float64, B: Float64, R: Float64, Layer: Int, slope: Float64
 #\param slope tangent of the angle of rotation.
 #
 #\return 2D rotation matrix.
-fn RotationMatrix(slope: Float64) -> Rfit.Matrix2d:
+def RotationMatrix(slope: Float64) -> Rfit.Matrix2d:
     var Rot = Rfit.Matrix2d()
     Rot[0, 0] = 1.0 / math.sqrt(1.0 + Rfit.sqr(slope))
     Rot[0, 1] = slope * Rot[0, 0]
@@ -80,7 +80,7 @@ fn RotationMatrix(slope: Float64) -> Rfit.Matrix2d:
 #\param x0 x coordinate of the translation vector.
 #\param y0 y coordinate of the translation vector.
 #\param jacobian passed by reference in order to save stack.
-fn TranslateKarimaki(mut circle: karimaki_circle_fit, x0: Float64, y0: Float64, mut jacobian: Rfit.Matrix3d):
+def TranslateKarimaki(mut circle: karimaki_circle_fit, x0: Float64, y0: Float64, mut jacobian: Rfit.Matrix3d):
     var A: Float64 = 0.0
     var U: Float64 = 0.0
     var BB: Float64 = 0.0
@@ -130,7 +130,7 @@ fn TranslateKarimaki(mut circle: karimaki_circle_fit, x0: Float64, y0: Float64, 
 #\param fast_fit pre-fit result in the form (X0,Y0,R,tan(theta)).
 #\param B magnetic field in Gev/cm/c.
 #\param results PreparedBrokenLineData to be filled (see description of PreparedBrokenLineData).
-fn prepareBrokenLineData[M3xN: MatrixLike, V4: MatrixLike, N: Int](
+def prepareBrokenLineData[M3xN: MatrixLike, V4: MatrixLike, N: Int](
     hits: M3xN, fast_fit: V4, B: Float64, mut results: PreparedBrokenLineData[N]
 ):
     var n = N
@@ -184,7 +184,7 @@ fn prepareBrokenLineData[M3xN: MatrixLike, V4: MatrixLike, N: Int](
 #\param VarBeta kink angles' variance.
 #
 #\return the n-by-n matrix of the linear system
-fn MatrixC_u[N: Int](w: Rfit.VectorNd[N], S: Rfit.VectorNd[N], VarBeta: Rfit.VectorNd[N]) -> Rfit.MatrixNd[N]:
+def MatrixC_u[N: Int](w: Rfit.VectorNd[N], S: Rfit.VectorNd[N], VarBeta: Rfit.VectorNd[N]) -> Rfit.MatrixNd[N]:
     var n: Int = N
     var i: Int = 0
 
@@ -220,7 +220,7 @@ fn MatrixC_u[N: Int](w: Rfit.VectorNd[N], S: Rfit.VectorNd[N], VarBeta: Rfit.Vec
 #\return (X0,Y0,R,tan(theta)).
 #
 #\warning sign of theta is (intentionally, for now) mistaken for negative charges.
-fn BL_Fast_fit[M3xN: MatrixLike, V4: MatrixLike](hits: M3xN, mut result: V4):
+def BL_Fast_fit[M3xN: MatrixLike, V4: MatrixLike](hits: M3xN, mut result: V4):
     var N = M3xN.ColsAtCompileTime()
     var n = N
 
@@ -256,7 +256,7 @@ fn BL_Fast_fit[M3xN: MatrixLike, V4: MatrixLike](hits: M3xN, mut result: V4):
 #\details The function implements the steps 2 and 3 of the Broken Line fit with the curvature correction.\n
 #The step 2 is the least square fit, done by imposing the minimum constraint on the cost function and solving the consequent linear system. It determines the fitted parameters u and \Delta\kappa and their covariance matrix.
 #The step 3 is the correction of the fast pre-fitted parameters for the innermost part of the track. It is first done in a comfortable coordinate system (the one in which the first hit is the origin) and then the parameters and their covariance matrix are transformed to the original coordinate system.
-fn BL_Circle_fit[M3xN: MatrixLike, M6xN: MatrixLike, V4: MatrixLike, N: Int](
+def BL_Circle_fit[M3xN: MatrixLike, M6xN: MatrixLike, V4: MatrixLike, N: Int](
     hits: M3xN, hits_ge: M6xN, fast_fit: V4, B: Float64, mut data: PreparedBrokenLineData[N], mut circle_results: karimaki_circle_fit
 ):
     var n: Int = N
@@ -413,7 +413,7 @@ fn BL_Circle_fit[M3xN: MatrixLike, M6xN: MatrixLike, V4: MatrixLike, N: Int](
 #\details The function implements the steps 2 and 3 of the Broken Line fit without the curvature correction.\n
 #The step 2 is the least square fit, done by imposing the minimum constraint on the cost function and solving the consequent linear system. It determines the fitted parameters u and their covariance matrix.
 #The step 3 is the correction of the fast pre-fitted parameters for the innermost part of the track. It is first done in a comfortable coordinate system (the one in which the first hit is the origin) and then the parameters and their covariance matrix are transformed to the original coordinate system.
-fn BL_Line_fit[V4: MatrixLike, M6xN: MatrixLike, N: Int](
+def BL_Line_fit[V4: MatrixLike, M6xN: MatrixLike, N: Int](
     hits_ge: M6xN, fast_fit: V4, B: Float64, data: PreparedBrokenLineData[N], mut line_results: Rfit.line_fit
 ):
     var n: Int = N
@@ -555,7 +555,7 @@ fn BL_Line_fit[V4: MatrixLike, M6xN: MatrixLike, N: Int](
 #\bug see BL_Circle_fit(), BL_Line_fit() and Fast_fit() bugs.
 #
 #\return (phi,Tip,p_t,cot(theta)),Zip), their covariance matrix and the chi2's of the circle and line fits.
-fn BL_Helix_fit[N: Int](
+def BL_Helix_fit[N: Int](
     hits: Rfit.Matrix3xNd[N],
     hits_ge: Matrix[DType.float32, 6, N],
     B: Float64,

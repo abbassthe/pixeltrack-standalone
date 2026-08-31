@@ -1,5 +1,5 @@
-from memory import OwnedPointer
-from sys import sizeof
+from std.memory import OwnedPointer
+from std.sys import size_of
 
 from MojoSerial.CondFormats.PixelCPEforGPU import ParamsOnGPU
 from MojoSerial.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
@@ -15,11 +15,11 @@ from MojoSerial.MojoBridge.DTypes import Float, Typeable
 
 
 struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
-    alias n16: UInt32 = 4
-    alias n32: UInt32 = 9
+    comptime n16: UInt32 = 4
+    comptime n32: UInt32 = 9
 
-    alias __d = debug_assert(
-        sizeof[UInt32]() == sizeof[Float]()
+    comptime __d = debug_assert(
+        size_of[UInt32]() == size_of[Float]()
     )  # just stating the obvious
 
     var m_store16: OwnedPointer[List[UInt16]]
@@ -41,7 +41,7 @@ struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
     var m_iphi: UnsafePointer[Int16]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.m_store16 = OwnedPointer(List[UInt16]())
         self.m_store32 = OwnedPointer(List[Float]())
         self.m_HistStore = OwnedPointer(Hist())
@@ -55,7 +55,7 @@ struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
         self.m_hitsLayerStart = UnsafePointer[UInt32]()
         self.m_iphi = UnsafePointer[Int16]()
 
-    fn __init__(
+    def __init__(
         out self,
         nHits: UInt32,
         cpeParams: UnsafePointer[ParamsOnGPU],
@@ -102,11 +102,11 @@ struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
 
         # fyi: @parameter captures by reference
         @parameter
-        fn get16(i: Int) -> UnsafePointer[UInt16]:
+        def get16(i: Int) -> UnsafePointer[UInt16]:
             return self.m_store16[].unsafe_ptr() + i * nHits
 
         @parameter
-        fn get32(i: Int) -> UnsafePointer[Float]:
+        def get32(i: Int) -> UnsafePointer[Float]:
             return self.m_store32[].unsafe_ptr() + i * nHits
 
         # copy all the pointers
@@ -133,7 +133,7 @@ struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
         self.m_view[].m_hitsLayerStart = self.m_hitsLayerStart
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self.m_store16 = other.m_store16^
         self.m_store32 = other.m_store32^
         self.m_HistStore = other.m_HistStore^
@@ -148,7 +148,7 @@ struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
         self.m_iphi = other.m_iphi
 
     @always_inline
-    fn view[
+    def view[
         origin: Origin, //
     ](ref [origin]self) -> UnsafePointer[
         TrackingRecHit2DSOAView, mut = origin.mut, origin=origin
@@ -156,29 +156,29 @@ struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
         return self.m_view.unsafe_ptr()
 
     @always_inline
-    fn nHits(self) -> UInt32:
+    def nHits(self) -> UInt32:
         return self.m_nHits
 
     @always_inline
-    fn hitsModuleStart(self) -> UnsafePointer[UInt32, mut=False]:
+    def hitsModuleStart(self) -> UnsafePointer[UInt32, mut=False]:
         return self.m_hitsModuleStart
 
     @always_inline
-    fn hitsLayerStart(mut self) -> UnsafePointer[UInt32, mut=True]:
+    def hitsLayerStart(mut self) -> UnsafePointer[UInt32, mut=True]:
         return self.m_hitsLayerStart
 
     @always_inline
-    fn phiBinner(mut self) -> UnsafePointer[Hist, mut=True]:
+    def phiBinner(mut self) -> UnsafePointer[Hist, mut=True]:
         return self.m_hist
 
     @always_inline
-    fn iphi(mut self) -> UnsafePointer[Int16, mut=True]:
+    def iphi(mut self) -> UnsafePointer[Int16, mut=True]:
         return self.m_iphi
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "TrackingRecHit2DHeterogeneous"
 
 
-alias TrackingRecHit2DCPU = TrackingRecHit2DHeterogeneous
+comptime TrackingRecHit2DCPU = TrackingRecHit2DHeterogeneous

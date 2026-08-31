@@ -16,29 +16,29 @@ from MojoSerial.plugin_PixelTriplets.BrokenLineFitOnGPU import (
     kernelBLFit,
 )
 
-alias cudaStream_t = CUDAStreamType
+comptime cudaStream_t = CUDAStreamType
 
 struct Rfit:
     # in case of memory issue can be made smaller
     @staticmethod
     @parameter
-    fn maxNumberOfConcurrentFits() -> UInt32:
+    def maxNumberOfConcurrentFits() -> UInt32:
         return CAConstants.maxNumberOfTuples()
 
     @staticmethod
     @parameter
-    fn stride() -> UInt32:
+    def stride() -> UInt32:
         return Rfit.maxNumberOfConcurrentFits()
 
-    alias Matrix3x4d = Matrix[DType.float64, 3, 4]
-    alias Map3x4d = Map[
+    comptime Matrix3x4d = Matrix[DType.float64, 3, 4]
+    comptime Map3x4d = Map[
         DType.float64,
         3,
         4,
         Int(Self.stride()),
     ]
-    alias Matrix6x4f = Matrix[DType.float32, 6, 4]
-    alias Map6x4f = Map[
+    comptime Matrix6x4f = Matrix[DType.float32, 6, 4]
+    comptime Map6x4f = Map[
         DType.float32,
         6,
         4,
@@ -46,8 +46,8 @@ struct Rfit:
     ]
 
     # hits
-    alias Matrix3xNd[N: Int] = Matrix[DType.float64, 3, N]
-    alias Map3xNd[N: Int] = Map[
+    comptime Matrix3xNd[N: Int] = Matrix[DType.float64, 3, N]
+    comptime Map3xNd[N: Int] = Map[
         DType.float64,
         3,
         N,
@@ -55,8 +55,8 @@ struct Rfit:
     ]
 
     # errors
-    alias Matrix6xNf[N: Int] = Matrix[DType.float32, 6, N]
-    alias Map6xNf[N: Int] = Map[
+    comptime Matrix6xNf[N: Int] = Matrix[DType.float32, 6, N]
+    comptime Map6xNf[N: Int] = Map[
         DType.float32,
         6,
         N,
@@ -64,11 +64,11 @@ struct Rfit:
     ]
 
     # fast fit
-    alias Vector4d = Matrix[DType.float64, 4, 1]
-    alias Map4d = Map[DType.float64, 4, 1, Int(Self.stride())]
+    comptime Vector4d = Matrix[DType.float64, 4, 1]
+    comptime Map4d = Map[DType.float64, 4, 1, Int(Self.stride())]
 
-    alias Matrix3d = Matrix[DType.float64, 3, 3]
-    alias line_fit = FitUtilsRfit.line_fit
+    comptime Matrix3d = Matrix[DType.float64, 3, 3]
+    comptime line_fit = FitUtilsRfit.line_fit
 
 
 # C++: HelixFitOnGPU is a plain (non-template) class -- ported directly as a
@@ -76,14 +76,14 @@ struct Rfit:
 # (a `trait` with `var` fields is invalid Mojo: "fields in traits are not
 # supported yet").
 struct HelixFitOnGPU:
-    alias HitsView = TrackingRecHit2DSOAView
+    comptime HitsView = TrackingRecHit2DSOAView
 
-    alias Tuples = pixelTrack.HitContainer
-    alias OutputSoA = pixelTrack.TrackSoA
+    comptime Tuples = pixelTrack.HitContainer
+    comptime OutputSoA = pixelTrack.TrackSoA
 
-    alias TupleMultiplicity = CAConstants.TupleMultiplicity
+    comptime TupleMultiplicity = CAConstants.TupleMultiplicity
 
-    alias maxNumberOfConcurrentFits_ = Rfit.maxNumberOfConcurrentFits()
+    comptime maxNumberOfConcurrentFits_ = Rfit.maxNumberOfConcurrentFits()
 
     var tuples_d: UnsafePointer[Self.Tuples]
     var tupleMultiplicity_d: UnsafePointer[Self.TupleMultiplicity]
@@ -92,20 +92,20 @@ struct HelixFitOnGPU:
     var bField_: Float32
     var fit5as4_: Bool
 
-    fn __init__(out self, bf: Float32, fit5as4: Bool):
+    def __init__(out self, bf: Float32, fit5as4: Bool):
         self.bField_ = bf
         self.fit5as4_ = fit5as4
         self.tuples_d = UnsafePointer[Self.Tuples]()
         self.tupleMultiplicity_d = UnsafePointer[Self.TupleMultiplicity]()
         self.outputSoa_d = UnsafePointer[Self.OutputSoA]()
 
-    fn setBField(mut self, bField: Float64):
+    def setBField(mut self, bField: Float64):
         self.bField_ = Float32(bField)
 
     # C++ only declares these (GPU-kernel-launch wrappers); no .cc anywhere in
     # the serial backend ever defines them -- the CPU backend always calls
     # the *OnCPU variants below instead (see CAHitNtupletGeneratorOnGPU.cc).
-    fn launchRiemannKernels(
+    def launchRiemannKernels(
         self,
         hv: UnsafePointer[Self.HitsView],
         nhits: UInt32,
@@ -114,7 +114,7 @@ struct HelixFitOnGPU:
     ):
         pass
 
-    fn launchBrokenLineKernels(
+    def launchBrokenLineKernels(
         self,
         hv: UnsafePointer[Self.HitsView],
         nhits: UInt32,
@@ -124,7 +124,7 @@ struct HelixFitOnGPU:
         pass
 
     # C++: HelixFitOnGPU::launchRiemannKernelsOnCPU (RiemannFitOnGPU.cc)
-    fn launchRiemannKernelsOnCPU(
+    def launchRiemannKernelsOnCPU(
         self,
         hv: UnsafePointer[Self.HitsView],
         nhits: UInt32,
@@ -228,7 +228,7 @@ struct HelixFitOnGPU:
             offset += Self.maxNumberOfConcurrentFits_
 
     # C++: HelixFitOnGPU::launchBrokenLineKernelsOnCPU (BrokenLineFitOnGPU.cc)
-    fn launchBrokenLineKernelsOnCPU(
+    def launchBrokenLineKernelsOnCPU(
         self,
         hv: UnsafePointer[Self.HitsView],
         nhits: UInt32,
@@ -298,7 +298,7 @@ struct HelixFitOnGPU:
 
             offset += Self.maxNumberOfConcurrentFits_
 
-    fn allocateOnGPU(
+    def allocateOnGPU(
         mut self,
         tuples: UnsafePointer[Self.Tuples],
         tupleMultiplicity: UnsafePointer[Self.TupleMultiplicity],
@@ -311,5 +311,5 @@ struct HelixFitOnGPU:
         debug_assert(Bool(self.tupleMultiplicity_d))
         debug_assert(Bool(self.outputSoa_d))
 
-    fn deallocateOnGPU(mut self):
+    def deallocateOnGPU(mut self):
         pass

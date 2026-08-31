@@ -1,17 +1,14 @@
-from sys import sizeof
-
-
-@nonmaterializable(NoneType)
+from std.sys import size_of
 struct CUDAStdAlgorithm:
     @staticmethod
-    fn lower_bound[
+    def lower_bound[
         T: DType, //
     ](
         var first: UnsafePointer[Scalar[T]],
         var last: UnsafePointer[Scalar[T]],
         var value: Scalar[T],
     ) -> UnsafePointer[Scalar[T]]:
-        var count = (Int(last) - Int(first)) // sizeof[Scalar[T]]()
+        var count = (Int(last) - Int(first)) // size_of[Scalar[T]]()
 
         while count > 0:
             var it = first
@@ -28,14 +25,14 @@ struct CUDAStdAlgorithm:
         return first
 
     @staticmethod
-    fn upper_bound[
+    def upper_bound[
         T: DType, //
     ](
         var first: UnsafePointer[Scalar[T]],
         var last: UnsafePointer[Scalar[T]],
         var value: Scalar[T],
     ) -> UnsafePointer[Scalar[T]]:
-        var count = (Int(last) - Int(first)) // sizeof[Scalar[T]]()
+        var count = (Int(last) - Int(first)) // size_of[Scalar[T]]()
 
         while count > 0:
             var it = first
@@ -52,7 +49,7 @@ struct CUDAStdAlgorithm:
         return first
 
     @staticmethod
-    fn binary_find[
+    def binary_find[
         T: DType, //
     ](
         var first: UnsafePointer[Scalar[T]],

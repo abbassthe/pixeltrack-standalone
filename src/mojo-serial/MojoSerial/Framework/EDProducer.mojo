@@ -5,11 +5,11 @@ from MojoSerial.Framework.ProductRegistry import ProductRegistry
 
 trait EDProducer(Defaultable):
     # this cannot raise
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         ...
 
-    fn produce(mut self, mut event: Event, ref eventSetup: EventSetup):
+    def produce(mut self, mut event: Event, ref eventSetup: EventSetup):
         ...
 
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         ...

@@ -23,13 +23,13 @@ struct CAHitNtupletCUDA(Defaultable, EDProducer, Typeable):
 
     var gpuAlgo_: CAHitNtupletGeneratorOnGPU
 
-    fn __init__(out self):
+    def __init__(out self):
         self.tokenHitCPU_ = EDGetTokenT[TrackingRecHit2DCPU]()
         self.tokenTrackCPU_ = EDPutTokenT[PixelTrackHeterogeneous]()
         var dummy_reg = ProductRegistry()
         self.gpuAlgo_ = CAHitNtupletGeneratorOnGPU(dummy_reg)
 
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         try:
             self.tokenHitCPU_ = reg.consumes[TrackingRecHit2DCPU]()
             self.tokenTrackCPU_ = reg.produces[PixelTrackHeterogeneous]()
@@ -40,7 +40,7 @@ struct CAHitNtupletCUDA(Defaultable, EDProducer, Typeable):
 
         self.gpuAlgo_ = CAHitNtupletGeneratorOnGPU(reg)
 
-    fn produce(mut self, mut iEvent: Event, ref es: EventSetup):
+    def produce(mut self, mut iEvent: Event, ref es: EventSetup):
         var bf: Float32 = 0.0114256972711507  # 1/fieldInGeV
         ref hits = iEvent.get(self.tokenHitCPU_)
 
@@ -49,9 +49,9 @@ struct CAHitNtupletCUDA(Defaultable, EDProducer, Typeable):
         except e:
             print("Error during produce in CAHitNtupletCUDA, ", e)
 
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         pass
 
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "CAHitNtupletCUDA"

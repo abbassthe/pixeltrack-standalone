@@ -1,6 +1,6 @@
-from pathlib import Path
-from sys.info import sizeof
-from memory import memcpy
+from std.pathlib import Path
+from std.sys.info import size_of
+from std.memory import memcpy
 
 from MojoSerial.Framework.EDProducer import EDProducer
 from MojoSerial.Framework.ProductRegistry import ProductRegistry
@@ -41,7 +41,7 @@ struct CountValidator (
     var sumTrackDifference_: Float32
     var sumVertexDifference_: Int32
 
-    fn __init__(out self):
+    def __init__(out self):
         self.digiClusterCountToken_ = EDGetTokenT[DigiClusterCount]()
         self.trackCountToken_ = EDGetTokenT[TrackCount]()
         self.vertexCountToken_ = EDGetTokenT[VertexCount]()
@@ -56,7 +56,7 @@ struct CountValidator (
         self.sumTrackDifference_ = 0.0
         self.sumVertexDifference_ = 0
 
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         self.allEvents_ = 0
         self.goodEvents_ = 0
         self.sumTrackDifference_ = 0.0
@@ -73,20 +73,20 @@ struct CountValidator (
             print("Handled exception in CountValidator: ", e)
             return Self()
 
-    fn addTrackDifference(mut self, diff: Float32):
+    def addTrackDifference(mut self, diff: Float32):
         self.sumTrackDifference_ += diff
 
-    fn addVertexDifference(mut self, diff: Int32):
+    def addVertexDifference(mut self, diff: Int32):
         self.sumVertexDifference_ += diff
 
-    fn incAllEvents(mut self):
+    def incAllEvents(mut self):
         self.allEvents_ += 1
 
-    fn incGoodEvents(mut self):
+    def incGoodEvents(mut self):
         self.goodEvents_ += 1
 
     @staticmethod
-    fn strformat[Ty: Stringable & Representable](str: StringSlice, arg: Ty) -> String:
+    def strformat[Ty: Stringable & Representable](str: StringSlice, arg: Ty) -> String:
         # Simple implementation of format function
         try:
             return str.format(arg)
@@ -94,14 +94,14 @@ struct CountValidator (
             return str + " <== Format error: " + String(e)
 
     @staticmethod
-    fn strformat[Ty: Stringable & Representable](str: StringSlice, arg: Ty, arg1: Ty) -> String:
+    def strformat[Ty: Stringable & Representable](str: StringSlice, arg: Ty, arg1: Ty) -> String:
         # Simple implementation of format function
         try:
             return str.format(arg, arg1)
         except e:
             return str + " <== Format error: " + String(e)
 
-    fn produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
+    def produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
         var trackTolerance: Float32 = 0.012  # in 200 runs of 1k events all events are withing this tolerance
         var vertexTolerance: Int32 = 1
 
@@ -169,7 +169,7 @@ struct CountValidator (
         else:
             print(errorMsg)
 
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         var all = self.allEvents_
         var good = self.goodEvents_
         if all == good:
@@ -198,5 +198,5 @@ struct CountValidator (
             raise Error("CountValidator failed")
 
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "CountValidator"

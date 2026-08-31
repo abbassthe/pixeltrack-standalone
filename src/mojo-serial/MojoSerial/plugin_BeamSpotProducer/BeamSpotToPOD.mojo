@@ -11,17 +11,17 @@ from MojoSerial.MojoBridge.DTypes import Typeable
 struct BeamSpotToPOD(Defaultable, EDProducer, Typeable):
     var bsPutToken_: EDPutTokenT[BeamSpotPOD]
 
-    fn __init__(out self):
+    def __init__(out self):
         self.bsPutToken_ = EDPutTokenT[BeamSpotPOD]()
 
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         try:
             self.bsPutToken_ = reg.produces[BeamSpotPOD]()
         except e:
             print("Handled exception in BeamSpotToPOD, ", e)
             return Self()
 
-    fn produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
+    def produce(mut self, mut iEvent: Event, ref iSetup: EventSetup):
         try:
             iEvent.put[BeamSpotPOD](
                 self.bsPutToken_,
@@ -30,9 +30,9 @@ struct BeamSpotToPOD(Defaultable, EDProducer, Typeable):
         except e:
             print("Error during produce in BeamSpotToPOD, ", e)
 
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         pass
 
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "BeamSpotToPOD"

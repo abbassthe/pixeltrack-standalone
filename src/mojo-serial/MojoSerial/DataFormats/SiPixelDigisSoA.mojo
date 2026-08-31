@@ -10,14 +10,14 @@ struct SiPixelDigisSoA(Copyable, Defaultable, Movable, Sized, Typeable):
 
     # default constructor
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._pdigi = List[UInt32]()
         self._rawIdArr = List[UInt32]()
         self._adc = List[UInt16]()
         self._clus = List[Int32]()
 
     # unsafe constructor for constructing the SoA object from C-style arrays
-    fn __init__(
+    def __init__(
         out self,
         var nDigis: SizeType,
         pdigi: UnsafePointer[UInt32],
@@ -37,42 +37,42 @@ struct SiPixelDigisSoA(Copyable, Defaultable, Movable, Sized, Typeable):
         debug_assert(self._pdigi.__len__() == UInt(nDigis))
 
     @always_inline
-    fn __len__(self) -> Int:
+    def __len__(self) -> Int:
         return self._pdigi.__len__()
 
     @always_inline
-    fn pdigi(self, var i: SizeType) -> UInt32:
+    def pdigi(self, var i: SizeType) -> UInt32:
         return self._pdigi[i]
 
     @always_inline
-    fn rawIdArr(self, var i: SizeType) -> UInt32:
+    def rawIdArr(self, var i: SizeType) -> UInt32:
         return self._rawIdArr[i]
 
     @always_inline
-    fn adc(self, var i: SizeType) -> UInt16:
+    def adc(self, var i: SizeType) -> UInt16:
         return self._adc[i]
 
     @always_inline
-    fn clus(self, var i: SizeType) -> Int32:
+    def clus(self, var i: SizeType) -> Int32:
         return self._clus[i]
 
     @always_inline
-    fn pdigiList(self) -> ref [self._pdigi] List[UInt32]:
+    def pdigiList(self) -> ref [self._pdigi] List[UInt32]:
         return self._pdigi
 
     @always_inline
-    fn rawIdArrList(self) -> ref [self._rawIdArr] List[UInt32]:
+    def rawIdArrList(self) -> ref [self._rawIdArr] List[UInt32]:
         return self._rawIdArr
 
     @always_inline
-    fn adcList(self) -> ref [self._adc] List[UInt16]:
+    def adcList(self) -> ref [self._adc] List[UInt16]:
         return self._adc
 
     @always_inline
-    fn clusList(self) -> ref [self._clus] List[Int32]:
+    def clusList(self) -> ref [self._clus] List[Int32]:
         return self._clus
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelDigisSoA"

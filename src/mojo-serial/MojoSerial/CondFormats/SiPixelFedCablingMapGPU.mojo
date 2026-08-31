@@ -1,4 +1,4 @@
-from sys import sizeof
+from std.sys import size_of
 
 from MojoSerial.CondFormats.PixelCPEforGPU import (
     CommonParams,
@@ -13,10 +13,10 @@ from MojoSerial.CondFormats.PixelGPUDetails import PixelGPUDetails
 
 # WARNING: THIS STRUCT IS 128-ALIGNED
 struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
-    alias _U = InlineArray[UInt32, Int(PixelGPUDetails.MAX_SIZE)]
-    alias _UD = Self._U(uninitialized=True)
-    alias _C = InlineArray[UChar, Int(PixelGPUDetails.MAX_SIZE)]
-    alias _CD = Self._C(uninitialized=True)
+    comptime _U = InlineArray[UInt32, Int(PixelGPUDetails.MAX_SIZE)]
+    comptime _UD = Self._U(uninitialized=True)
+    comptime _C = InlineArray[UChar, Int(PixelGPUDetails.MAX_SIZE)]
+    comptime _CD = Self._C(uninitialized=True)
     var fed: Self._U
     var link: Self._U
     var roc: Self._U
@@ -28,7 +28,7 @@ struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
     var __padding: InlineArray[UInt8, 124]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.fed = Self._U(fill=0)
         self.link = Self._U(fill=0)
         self.roc = Self._U(fill=0)
@@ -41,7 +41,7 @@ struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
         self.__padding = InlineArray[UInt8, 124](fill=0)
 
     @always_inline
-    fn __init__(
+    def __init__(
         out self,
         var fed: Self._U,
         var link: Self._U,
@@ -63,7 +63,7 @@ struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
         self.__padding = InlineArray[UInt8, 124](fill=0)
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self.fed = other.fed^
         self.link = other.link^
         self.roc = other.roc^
@@ -77,5 +77,5 @@ struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "SiPixelFedCablingMapGPU"

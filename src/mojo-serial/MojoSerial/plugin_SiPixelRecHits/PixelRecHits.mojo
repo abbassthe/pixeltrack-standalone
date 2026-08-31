@@ -10,7 +10,7 @@ from MojoSerial.CUDACore.HistoContainer import fillManyFromVector
 import MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous as TrackingRecHit2DHeterogeneous
 
 
-fn setHitsLayerStart(
+def setHitsLayerStart(
     hitsModuleStart: UnsafePointer[UInt32],
     cpeParams: UnsafePointer[ParamsOnGPU],
     hitsLayerStart: UnsafePointer[UInt32],
@@ -25,7 +25,7 @@ fn setHitsLayerStart(
 
 @fieldwise_init
 struct PixelRecHitGPUKernel(Defaultable, Typeable):
-    fn makeHits(
+    def makeHits(
         self,
         ref digis_d: SiPixelDigisSoA,
         ref clusters_d: SiPixelClustersSoA,
@@ -66,5 +66,5 @@ struct PixelRecHitGPUKernel(Defaultable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "PixelRecHitGPUKernel"

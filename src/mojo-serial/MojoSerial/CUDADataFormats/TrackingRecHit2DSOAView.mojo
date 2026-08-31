@@ -1,4 +1,4 @@
-from sys import sizeof
+from std.sys import size_of
 
 from MojoSerial.CondFormats.PixelCPEforGPU import ParamsOnGPU
 from MojoSerial.CUDACore.HistoContainer import HistoContainer
@@ -11,11 +11,11 @@ from MojoSerial.Geometry.Phase1PixelTopology import (
 )
 from MojoSerial.MojoBridge.DTypes import Float, Typeable
 
-alias Hist = HistoContainer[
+comptime Hist = HistoContainer[
     DType.int16,
     128,
     GPUClusteringConstants.MaxNumClusters,
-    8 * sizeof[UInt16](),
+    8 * size_of[UInt16](),
     DType.int16,
     10,
 ]
@@ -25,10 +25,10 @@ alias Hist = HistoContainer[
 struct TrackingRecHit2DSOAView(Defaultable, Movable, Typeable):
     @staticmethod
     @always_inline
-    fn maxHits() -> UInt32:
+    def maxHits() -> UInt32:
         return GPUClusteringConstants.MaxNumClusters
 
-    alias HIndexType = UInt16  # if above is <=2^16
+    comptime HIndexType = UInt16  # if above is <=2^16
 
     # local coord
     var m_xl: UnsafePointer[Float]
@@ -62,7 +62,7 @@ struct TrackingRecHit2DSOAView(Defaultable, Movable, Typeable):
     var m_hist: UnsafePointer[Hist]
     var m_nHits: UInt32
 
-    fn __init__(out self):
+    def __init__(out self):
         self.m_xl = UnsafePointer[Float]()
         self.m_yl = UnsafePointer[Float]()
         self.m_xerr = UnsafePointer[Float]()
@@ -88,71 +88,71 @@ struct TrackingRecHit2DSOAView(Defaultable, Movable, Typeable):
         self.m_nHits = 0
 
     @always_inline
-    fn nHits(self) -> UInt32:
+    def nHits(self) -> UInt32:
         return self.m_nHits
 
     @always_inline
-    fn xLocal(ref self, i: Int) -> ref [self.m_xl] Float:
+    def xLocal(ref self, i: Int) -> ref [self.m_xl] Float:
         return self.m_xl[i]
 
     @always_inline
-    fn yLocal(ref self, i: Int) -> ref [self.m_yl] Float:
+    def yLocal(ref self, i: Int) -> ref [self.m_yl] Float:
         return self.m_yl[i]
 
     @always_inline
-    fn xerrLocal(ref self, i: Int) -> ref [self.m_xerr] Float:
+    def xerrLocal(ref self, i: Int) -> ref [self.m_xerr] Float:
         return self.m_xerr[i]
 
     @always_inline
-    fn yerrLocal(ref self, i: Int) -> ref [self.m_yerr] Float:
+    def yerrLocal(ref self, i: Int) -> ref [self.m_yerr] Float:
         return self.m_yerr[i]
 
     @always_inline
-    fn xGlobal(ref self, i: Int) -> ref [self.m_xg] Float:
+    def xGlobal(ref self, i: Int) -> ref [self.m_xg] Float:
         return self.m_xg[i]
 
     @always_inline
-    fn yGlobal(ref self, i: Int) -> ref [self.m_yg] Float:
+    def yGlobal(ref self, i: Int) -> ref [self.m_yg] Float:
         return self.m_yg[i]
 
     @always_inline
-    fn zGlobal(ref self, i: Int) -> ref [self.m_zg] Float:
+    def zGlobal(ref self, i: Int) -> ref [self.m_zg] Float:
         return self.m_zg[i]
 
     @always_inline
-    fn rGlobal(ref self, i: Int) -> ref [self.m_rg] Float:
+    def rGlobal(ref self, i: Int) -> ref [self.m_rg] Float:
         return self.m_rg[i]
 
     @always_inline
-    fn iphi(ref self, i: Int) -> ref [self.m_iphi] Int16:
+    def iphi(ref self, i: Int) -> ref [self.m_iphi] Int16:
         return self.m_iphi[i]
 
     @always_inline
-    fn charge(ref self, i: Int) -> ref [self.m_charge] Int32:
+    def charge(ref self, i: Int) -> ref [self.m_charge] Int32:
         return self.m_charge[i]
 
     @always_inline
-    fn clusterSizeX(ref self, i: Int) -> ref [self.m_xsize] Int16:
+    def clusterSizeX(ref self, i: Int) -> ref [self.m_xsize] Int16:
         return self.m_xsize[i]
 
     @always_inline
-    fn clusterSizeY(ref self, i: Int) -> ref [self.m_ysize] Int16:
+    def clusterSizeY(ref self, i: Int) -> ref [self.m_ysize] Int16:
         return self.m_ysize[i]
 
     @always_inline
-    fn detectorIndex(ref self, i: Int) -> ref [self.m_detInd] UInt16:
+    def detectorIndex(ref self, i: Int) -> ref [self.m_detInd] UInt16:
         return self.m_detInd[i]
 
     @always_inline
-    fn cpeParams(self) -> ref [self.m_cpeParams] ParamsOnGPU:
+    def cpeParams(self) -> ref [self.m_cpeParams] ParamsOnGPU:
         return self.m_cpeParams[]
 
     @always_inline
-    fn hitsModuleStart(self, i: Int) -> UInt32:
+    def hitsModuleStart(self, i: Int) -> UInt32:
         return self.m_hitsModuleStart[i]
 
     @always_inline
-    fn hitsLayerStart[
+    def hitsLayerStart[
         origin: Origin, //
     ](ref [origin]self) -> UnsafePointer[
         UInt32, mut = origin.mut, origin=origin
@@ -160,16 +160,16 @@ struct TrackingRecHit2DSOAView(Defaultable, Movable, Typeable):
         return self.m_hitsLayerStart
 
     @always_inline
-    fn phiBinner(ref self) -> ref [self.m_hist] Hist:
+    def phiBinner(ref self) -> ref [self.m_hist] Hist:
         return self.m_hist[]
 
     @always_inline
-    fn averageGeometry(
+    def averageGeometry(
         ref self,
     ) -> ref [self.m_averageGeometry] AverageGeometry:
         return self.m_averageGeometry[]
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "TrackingRecHit2DSOAView"

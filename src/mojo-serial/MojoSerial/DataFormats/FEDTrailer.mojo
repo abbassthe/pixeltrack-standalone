@@ -1,180 +1,178 @@
-from sys import sizeof
+from std.sys import size_of
 
 from MojoSerial.MojoBridge.DTypes import Typeable, UChar
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct FedtStruct(Copyable, Defaultable, Movable, Typeable):
+struct FedtStruct(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var conscheck: UInt32
     var eventsize: UInt32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.conscheck = 0
         self.eventsize = 0
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "FedtStruct"
 
 
-alias FedtType = FedtStruct
+comptime FedtType = FedtStruct
 
-alias FED_SLINK_END_MARKER = 0xA
+comptime FED_SLINK_END_MARKER = 0xA
 
-alias FED_TCTRLID_WIDTH = 0x0000000F
-alias FED_TCTRLID_SHIFT = 28
-alias FED_TCTRLID_MASK = (FED_TCTRLID_WIDTH << FED_TCTRLID_SHIFT)
+comptime FED_TCTRLID_WIDTH = 0x0000000F
+comptime FED_TCTRLID_SHIFT = 28
+comptime FED_TCTRLID_MASK = (FED_TCTRLID_WIDTH << FED_TCTRLID_SHIFT)
 
 
 @always_inline
-fn FED_TCTRLID_EXTRACT(a: Int) -> Int:
+def FED_TCTRLID_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_TCTRLID_SHIFT) & FED_TCTRLID_WIDTH
 
 
-alias FED_EVSZ_WIDTH = 0x00FFFFFF
-alias FED_EVSZ_SHIFT = 0
-alias FED_EVSZ_MASK = (FED_EVSZ_WIDTH << FED_EVSZ_SHIFT)
+comptime FED_EVSZ_WIDTH = 0x00FFFFFF
+comptime FED_EVSZ_SHIFT = 0
+comptime FED_EVSZ_MASK = (FED_EVSZ_WIDTH << FED_EVSZ_SHIFT)
 
 
 @always_inline
-fn FED_EVSZ_EXTRACT(a: Int) -> Int:
+def FED_EVSZ_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_EVSZ_SHIFT) & FED_EVSZ_WIDTH
 
 
-alias FED_CRCS_WIDTH = 0x0000FFFF
-alias FED_CRCS_SHIFT = 16
-alias FED_CRCS_MASK = (FED_CRCS_WIDTH << FED_CRCS_SHIFT)
+comptime FED_CRCS_WIDTH = 0x0000FFFF
+comptime FED_CRCS_SHIFT = 16
+comptime FED_CRCS_MASK = (FED_CRCS_WIDTH << FED_CRCS_SHIFT)
 
 
 @always_inline
-fn FED_CRCS_EXTRACT(a: Int) -> Int:
+def FED_CRCS_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_CRCS_SHIFT) & FED_CRCS_WIDTH
 
 
-alias FED_STAT_WIDTH = 0x0000000F
-alias FED_STAT_SHIFT = 8
-alias FED_STAT_MASK = (FED_STAT_WIDTH << FED_STAT_SHIFT)
+comptime FED_STAT_WIDTH = 0x0000000F
+comptime FED_STAT_SHIFT = 8
+comptime FED_STAT_MASK = (FED_STAT_WIDTH << FED_STAT_SHIFT)
 
 
 @always_inline
-fn FED_STAT_EXTRACT(a: Int) -> Int:
+def FED_STAT_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_STAT_SHIFT) & FED_STAT_WIDTH
 
 
-alias FED_TTSI_WIDTH = 0x0000000F
-alias FED_TTSI_SHIFT = 4
-alias FED_TTSI_MASK = (FED_TTSI_WIDTH << FED_TTSI_SHIFT)
+comptime FED_TTSI_WIDTH = 0x0000000F
+comptime FED_TTSI_SHIFT = 4
+comptime FED_TTSI_MASK = (FED_TTSI_WIDTH << FED_TTSI_SHIFT)
 
 
 @always_inline
-fn FED_TTSI_EXTRACT(a: Int) -> Int:
+def FED_TTSI_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_TTSI_SHIFT) & FED_TTSI_WIDTH
 
 
-alias FED_MORE_TRAILERS_WIDTH = 0x00000001
-alias FED_MORE_TRAILERS_SHIFT = 3
-alias FED_MORE_TRAILERS_MASK = (
+comptime FED_MORE_TRAILERS_WIDTH = 0x00000001
+comptime FED_MORE_TRAILERS_SHIFT = 3
+comptime FED_MORE_TRAILERS_MASK = (
     FED_MORE_TRAILERS_WIDTH << FED_MORE_TRAILERS_SHIFT
 )
 
 
 @always_inline
-fn FED_MORE_TRAILERS_EXTRACT(a: Int) -> Int:
+def FED_MORE_TRAILERS_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_MORE_TRAILERS_SHIFT) & FED_MORE_TRAILERS_WIDTH
 
 
-alias FED_CRC_MODIFIED_WIDTH = 0x00000001
-alias FED_CRC_MODIFIED_SHIFT = 2
-alias FED_CRC_MODIFIED_MASK = (FED_CRC_MODIFIED_WIDTH << FED_CRC_MODIFIED_SHIFT)
+comptime FED_CRC_MODIFIED_WIDTH = 0x00000001
+comptime FED_CRC_MODIFIED_SHIFT = 2
+comptime FED_CRC_MODIFIED_MASK = (FED_CRC_MODIFIED_WIDTH << FED_CRC_MODIFIED_SHIFT)
 
 
 @always_inline
-fn FED_CRC_MODIFIED_EXTRACT(a: Int) -> Int:
+def FED_CRC_MODIFIED_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_CRC_MODIFIED_SHIFT) & FED_CRC_MODIFIED_WIDTH
 
 
-alias FED_SLINK_ERROR_WIDTH = 0x00000001
-alias FED_SLINK_ERROR_SHIFT = 14
-alias FED_SLINK_ERROR_MASK = (FED_SLINK_ERROR_WIDTH << FED_SLINK_ERROR_SHIFT)
+comptime FED_SLINK_ERROR_WIDTH = 0x00000001
+comptime FED_SLINK_ERROR_SHIFT = 14
+comptime FED_SLINK_ERROR_MASK = (FED_SLINK_ERROR_WIDTH << FED_SLINK_ERROR_SHIFT)
 
 
 @always_inline
-fn FED_SLINK_ERROR_EXTRACT(a: Int) -> Int:
+def FED_SLINK_ERROR_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_SLINK_ERROR_SHIFT) & FED_SLINK_ERROR_WIDTH
 
 
-alias FED_WRONG_FEDID_WIDTH = 0x00000001
-alias FED_WRONG_FEDID_SHIFT = 15
-alias FED_WRONG_FEDID_MASK = (FED_WRONG_FEDID_WIDTH << FED_WRONG_FEDID_SHIFT)
+comptime FED_WRONG_FEDID_WIDTH = 0x00000001
+comptime FED_WRONG_FEDID_SHIFT = 15
+comptime FED_WRONG_FEDID_MASK = (FED_WRONG_FEDID_WIDTH << FED_WRONG_FEDID_SHIFT)
 
 
 @always_inline
-fn FED_WRONG_FEDID_EXTRACT(a: Int) -> Int:
+def FED_WRONG_FEDID_EXTRACT(a: Int) -> Int:
     return ((a) >> FED_WRONG_FEDID_SHIFT) & FED_WRONG_FEDID_WIDTH
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct FEDTrailer(Copyable, Defaultable, Movable, Typeable):
-    alias length: UInt32 = sizeof[FedtType]()
+struct FEDTrailer(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
+    comptime length: UInt32 = size_of[FedtType]()
     var theTrailer: UnsafePointer[FedtType]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.theTrailer = UnsafePointer[FedtType]()
 
     @always_inline
-    fn __init__(out self, trailer: UnsafePointer[UChar]):
+    def __init__(out self, trailer: UnsafePointer[UChar]):
         self.theTrailer = trailer.bitcast[FedtType]()
 
     @always_inline
-    fn fragmentLength(self) -> UInt32:
+    def fragmentLength(self) -> UInt32:
         return FED_EVSZ_EXTRACT(Int(self.theTrailer[].eventsize))
 
     @always_inline
-    fn crc(self) -> UInt16:
+    def crc(self) -> UInt16:
         return FED_CRCS_EXTRACT(Int(self.theTrailer[].conscheck))
 
     @always_inline
-    fn evtStatus(self) -> UInt8:
+    def evtStatus(self) -> UInt8:
         return FED_STAT_EXTRACT(Int(self.theTrailer[].conscheck))
 
     @always_inline
-    fn ttsBits(self) -> UInt8:
+    def ttsBits(self) -> UInt8:
         return FED_TTSI_EXTRACT(Int(self.theTrailer[].conscheck))
 
     @always_inline
-    fn moreTrailers(self) -> Bool:
+    def moreTrailers(self) -> Bool:
         return FED_MORE_TRAILERS_EXTRACT(Int(self.theTrailer[].conscheck)) != 0
 
     @always_inline
-    fn crcModified(self) -> Bool:
+    def crcModified(self) -> Bool:
         return FED_CRC_MODIFIED_EXTRACT(Int(self.theTrailer[].conscheck)) != 0
 
     @always_inline
-    fn slinkError(self) -> Bool:
+    def slinkError(self) -> Bool:
         return FED_SLINK_ERROR_EXTRACT(Int(self.theTrailer[].conscheck)) != 0
 
     @always_inline
-    fn wrongFedId(self) -> Bool:
+    def wrongFedId(self) -> Bool:
         return FED_WRONG_FEDID_EXTRACT(Int(self.theTrailer[].conscheck)) != 0
 
     @always_inline
-    fn check(self) -> Bool:
+    def check(self) -> Bool:
         return (
             FED_TCTRLID_EXTRACT(Int(self.theTrailer[].eventsize))
             == FED_SLINK_END_MARKER
         )
 
     @always_inline
-    fn conscheck(self) -> UInt32:
+    def conscheck(self) -> UInt32:
         return self.theTrailer[].conscheck
 
     @staticmethod
-    fn set(
+    def set(
         trailer: UnsafePointer[UChar, mut=True],
         var length: UInt32,
         var crc: UInt16,
@@ -199,5 +197,5 @@ struct FEDTrailer(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "FEDTrailer"

@@ -2,11 +2,11 @@ from MojoSerial.CUDACore.CUDACompat import CUDACompat
 from MojoSerial.MojoBridge.DTypes import Float
 from MojoSerial.plugin_PixelVertexFinding.gpuVertexFinder import ZVertices, WorkSpace
 
-alias verbose: Bool = False  # in principle the compiler should optmize out if false
+comptime verbose: Bool = False  # in principle the compiler should optmize out if false
 
 
 @always_inline
-fn fitVertices(
+def fitVertices(
     pdata: UnsafePointer[ZVertices],
     pws: UnsafePointer[WorkSpace],
     chi2Max: Float,  # for outlier rejection
@@ -38,16 +38,14 @@ fn fitVertices(
     # only for test
     var noise: Int32 = 0
 
-    @parameter
-    if verbose:
+    comptime if verbose:
         noise = 0
 
     # compute cluster location
     for i in range(nt):
         if iv[i] > 9990:
 
-            @parameter
-            if verbose:
+            comptime if verbose:
                 _ = CUDACompat.atomicAdd(UnsafePointer(to=noise), Int32(1))
             continue
         debug_assert(iv[i] >= 0)
@@ -79,17 +77,15 @@ fn fitVertices(
         if nn[i] > 0:
             wv[i] *= Float(nn[i]) / chi2[i]
 
-    @parameter
-    if verbose:
+    comptime if verbose:
         print("found", foundClusters, "proto clusters ")
 
-    @parameter
-    if verbose:
+    comptime if verbose:
         print("and", noise, "noise")
 
 
 @always_inline
-fn fitVerticesKernel(
+def fitVerticesKernel(
     pdata: UnsafePointer[ZVertices],
     pws: UnsafePointer[WorkSpace],
     chi2Max: Float,  # for outlier rejection

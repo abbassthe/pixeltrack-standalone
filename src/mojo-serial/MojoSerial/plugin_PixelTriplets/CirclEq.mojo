@@ -1,4 +1,4 @@
-from math import sqrt
+from std.math import sqrt
 
 # | 1) circle is parameterized as:                                              |
 # |    C*[(X-Xp)**2+(Y-Yp)**2] - 2*alpha*(X-Xp) - 2*beta*(Y-Yp) = 0             |
@@ -17,14 +17,14 @@ from math import sqrt
 
 
 struct CircleEq[T: DType](Copyable, Movable):
-    var m_xp: Scalar[T]
-    var m_yp: Scalar[T]
-    var m_c: Scalar[T]
-    var m_alpha: Scalar[T]
-    var m_beta: Scalar[T]
+    var m_xp: Scalar[Self.T]
+    var m_yp: Scalar[Self.T]
+    var m_c: Scalar[Self.T]
+    var m_alpha: Scalar[Self.T]
+    var m_beta: Scalar[Self.T]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.m_xp = 0
         self.m_yp = 0
         self.m_c = 0
@@ -32,14 +32,14 @@ struct CircleEq[T: DType](Copyable, Movable):
         self.m_beta = 0
 
     @always_inline
-    fn __init__(
+    def __init__(
         out self,
-        x1: Scalar[T],
-        y1: Scalar[T],
-        x2: Scalar[T],
-        y2: Scalar[T],
-        x3: Scalar[T],
-        y3: Scalar[T],
+        x1: Scalar[Self.T],
+        y1: Scalar[Self.T],
+        x2: Scalar[Self.T],
+        y2: Scalar[Self.T],
+        x3: Scalar[Self.T],
+        y3: Scalar[Self.T],
     ):
         self.m_xp = 0
         self.m_yp = 0
@@ -48,14 +48,14 @@ struct CircleEq[T: DType](Copyable, Movable):
         self.m_beta = 0
         self.compute(x1, y1, x2, y2, x3, y3)
 
-    fn compute(
+    def compute(
         mut self,
-        x1: Scalar[T],
-        y1: Scalar[T],
-        x2: Scalar[T],
-        y2: Scalar[T],
-        x3: Scalar[T],
-        y3: Scalar[T],
+        x1: Scalar[Self.T],
+        y1: Scalar[Self.T],
+        x2: Scalar[Self.T],
+        y2: Scalar[Self.T],
+        x3: Scalar[Self.T],
+        y3: Scalar[Self.T],
     ):
         var noflip = abs(x3 - x1) < abs(y3 - y1)
 
@@ -71,9 +71,9 @@ struct CircleEq[T: DType](Copyable, Movable):
 
         var st2 = d12 * x3p - d32 * x1p
         var seq = det * det + st2 * st2
-        var al2 = Scalar[T](1.0) / sqrt(seq)
+        var al2 = Scalar[Self.T](1.0) / sqrt(seq)
         var be2 = -st2 * al2
-        var ct = Scalar[T](2.0) * num * al2
+        var ct = Scalar[Self.T](2.0) * num * al2
         al2 *= det
 
         self.m_xp = x2
@@ -83,38 +83,38 @@ struct CircleEq[T: DType](Copyable, Movable):
         self.m_beta = be2 if noflip else -al2
 
     # dca to origin divided by curvature
-    fn dca0(self) -> Scalar[T]:
+    def dca0(self) -> Scalar[Self.T]:
         var x = self.m_c * self.m_xp + self.m_alpha
         var y = self.m_c * self.m_yp + self.m_beta
-        return sqrt(x * x + y * y) - Scalar[T](1)
+        return sqrt(x * x + y * y) - Scalar[Self.T](1)
 
     # dca to given point (divided by curvature)
-    fn dca(self, x: Scalar[T], y: Scalar[T]) -> Scalar[T]:
+    def dca(self, x: Scalar[Self.T], y: Scalar[Self.T]) -> Scalar[Self.T]:
         var xx = self.m_c * (self.m_xp - x) + self.m_alpha
         var yy = self.m_c * (self.m_yp - y) + self.m_beta
-        return sqrt(xx * xx + yy * yy) - Scalar[T](1)
+        return sqrt(xx * xx + yy * yy) - Scalar[Self.T](1)
 
     # curvature
-    fn curvature(self) -> Scalar[T]:
+    def curvature(self) -> Scalar[Self.T]:
         return self.m_c
 
     # alpha and beta
-    fn cosdir(self) -> Tuple[Scalar[T], Scalar[T]]:
+    def cosdir(self) -> Tuple[Scalar[Self.T], Scalar[Self.T]]:
         return (self.m_alpha, self.m_beta)
 
     # alpha and beta at given point
-    fn cosdir(self, x: Scalar[T], y: Scalar[T]) -> Tuple[Scalar[T], Scalar[T]]:
+    def cosdir(self, x: Scalar[Self.T], y: Scalar[Self.T]) -> Tuple[Scalar[Self.T], Scalar[Self.T]]:
         return (
             self.m_alpha - self.m_c * (x - self.m_xp),
             self.m_beta - self.m_c * (y - self.m_yp),
         )
 
     # center
-    fn center(self) -> Tuple[Scalar[T], Scalar[T]]:
+    def center(self) -> Tuple[Scalar[Self.T], Scalar[Self.T]]:
         return (
             self.m_xp + self.m_alpha / self.m_c,
             self.m_yp + self.m_beta / self.m_c,
         )
 
-    fn radius(self) -> Scalar[T]:
-        return Scalar[T](1) / self.m_c
+    def radius(self) -> Scalar[Self.T]:
+        return Scalar[Self.T](1) / self.m_c

@@ -1,5 +1,5 @@
-from time import perf_counter_ns
-from pathlib import Path
+from std.time import perf_counter_ns
+from std.pathlib import Path
 
 from MojoSerial.DataFormats.FEDRawDataCollection import FEDRawDataCollection
 from MojoSerial.DataFormats.DigiClusterCount import DigiClusterCount
@@ -12,7 +12,7 @@ from MojoSerial.MojoBridge.DTypes import Typeable
 from MojoSerial.MojoBridge.File import read_simd, read_simd_eof
 
 
-fn readRaw(mut file: FileHandle, nfeds: UInt32) raises -> FEDRawDataCollection:
+def readRaw(mut file: FileHandle, nfeds: UInt32) raises -> FEDRawDataCollection:
     var rawCollection = FEDRawDataCollection()
     for _ in range(nfeds):
         var fedId = read_simd[DType.uint32](file)
@@ -43,7 +43,7 @@ struct Source(Defaultable, Movable, Typeable):
     var _validation: Bool
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._startEvent = 0
         self._endEvent = 0
 
@@ -63,7 +63,7 @@ struct Source(Defaultable, Movable, Typeable):
         self._vertices = []
         self._validation = False
 
-    fn __init__(
+    def __init__(
         out self,
         var startEvent: Int32,
         var endEvent: Int32,
@@ -143,7 +143,7 @@ struct Source(Defaultable, Movable, Typeable):
             return Self()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self._startEvent = other._startEvent
         self._endEvent = other._endEvent
 
@@ -164,7 +164,7 @@ struct Source(Defaultable, Movable, Typeable):
         self._validation = other._validation
 
     @always_inline
-    fn reconfigure(
+    def reconfigure(
         mut self,
         var startEvent: Int32,
         var endEvent: Int32,
@@ -178,15 +178,15 @@ struct Source(Defaultable, Movable, Typeable):
         self._numEvents = 0
 
     @always_inline
-    fn startProcessing(mut self):
+    def startProcessing(mut self):
         if self._runForMinutes >= 0:
             self._startTime = perf_counter_ns()
 
     @always_inline
-    fn processedEvents(self) -> Int32:
+    def processedEvents(self) -> Int32:
         return self._numEvents
 
-    fn produce(
+    def produce(
         mut self, streamId: Int32, ref reg: ProductRegistry
     ) -> UnsafePointer[Event]:
         """
@@ -245,5 +245,5 @@ struct Source(Defaultable, Movable, Typeable):
 
     @staticmethod
     @always_inline
-    fn dtype() -> String:
+    def dtype() -> String:
         return "Source"

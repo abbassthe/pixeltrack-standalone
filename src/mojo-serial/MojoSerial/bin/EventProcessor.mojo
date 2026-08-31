@@ -1,4 +1,4 @@
-from pathlib import Path
+from std.pathlib import Path
 
 from MojoSerial.Framework.ProductRegistry import ProductRegistry
 from MojoSerial.Framework.EventSetup import EventSetup
@@ -20,7 +20,7 @@ struct EventProcessor(Defaultable, Typeable):
     var _runForMinutes: Int32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._registry = ProductRegistry()
         self._source = Source()
         self._eventSetup = EventSetup()
@@ -30,7 +30,7 @@ struct EventProcessor(Defaultable, Typeable):
         self._endEvent = 0
         self._runForMinutes = 0
 
-    fn __init__(
+    def __init__(
         out self,
         var warmupEvents: Int,
         var startEvent: Int,
@@ -72,7 +72,7 @@ struct EventProcessor(Defaultable, Typeable):
             return Self()
 
     @always_inline
-    fn warmUp(mut self):
+    def warmUp(mut self):
         if self._warmupEvents <= 0:
             return
 
@@ -84,7 +84,7 @@ struct EventProcessor(Defaultable, Typeable):
         self.process()
 
     @always_inline
-    fn runToCompletion(mut self):
+    def runToCompletion(mut self):
         self._source.reconfigure(
             self._startEvent,
             self._endEvent,
@@ -93,19 +93,19 @@ struct EventProcessor(Defaultable, Typeable):
         self.process()
 
     @always_inline
-    fn process(mut self):
+    def process(mut self):
         self._source.startProcessing()
         self._schedule.run(self._registry)
 
     @always_inline
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         self._schedule.endJob()
 
     @always_inline
-    fn processedEvents(self) -> Int32:
+    def processedEvents(self) -> Int32:
         return self._source.processedEvents()
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "EventProcessor"

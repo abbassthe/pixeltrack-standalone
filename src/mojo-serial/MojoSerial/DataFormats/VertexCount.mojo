@@ -2,19 +2,18 @@ from MojoSerial.MojoBridge.DTypes import Typeable
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct VertexCount(Copyable, Defaultable, Movable, Typeable):
+struct VertexCount(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     var _vertices: UInt32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._vertices = 0
 
     @always_inline
-    fn nVertices(self) -> UInt32:
+    def nVertices(self) -> UInt32:
         return self._vertices
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
+    def dtype() -> String:
         return "VertexCount"

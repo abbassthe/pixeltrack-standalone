@@ -4,16 +4,13 @@ from MojoSerial.CUDADataFormats.HeterogeneousSoA import HeterogeneousSoA
 from MojoSerial.CUDADataFormats.TrajectoryStateSoA import TrajectoryStateSoA
 from MojoSerial.MojoBridge.Matrix import Vector, Matrix
 from MojoSerial.MojoBridge.DTypes import Float, Typeable
-
-
-@nonmaterializable(NoneType)
 struct TrackQuality:
-    alias bad: UInt8 = 0
-    alias dup: UInt8 = 1
-    alias loose: UInt8 = 2
-    alias strict: UInt8 = 3
-    alias tight: UInt8 = 4
-    alias highPurity: UInt8 = 5
+    comptime bad: UInt8 = 0
+    comptime dup: UInt8 = 1
+    comptime loose: UInt8 = 2
+    comptime strict: UInt8 = 3
+    comptime tight: UInt8 = 4
+    comptime highPurity: UInt8 = 5
 
 
 # WARNING: THIS STRUCT IS 128-ALIGNED (ScalarSoA)
@@ -21,27 +18,27 @@ struct TrackQuality:
 struct TrackSoAT[S: Int32](Defaultable, Movable, Typeable):
     @staticmethod
     @always_inline
-    fn stride() -> Int32:
-        return S
+    def stride() -> Int32:
+        return Self.S
 
-    alias Quality = UInt8
-    alias HIndexType = DType.uint16
-    alias HitContainer = OneToManyAssoc[
+    comptime Quality = UInt8
+    comptime HIndexType = DType.uint16
+    comptime HitContainer = OneToManyAssoc[
         Self.HIndexType,
         S.cast[DType.uint32](),
         5 * S.cast[DType.uint32](),
     ]
 
-    var m_quality: ScalarSoA[DType.uint8, Int(S)]
+    var m_quality: ScalarSoA[DType.uint8, Int(Self.S)]
 
     # this is chi2/ndof as not necessarely all hits are used in the fit
-    var chi2: ScalarSoA[DType.float32, Int(S)]
+    var chi2: ScalarSoA[DType.float32, Int(Self.S)]
 
     # State at the Beam spot
     # phi,tip,1/pt,cotan(theta),zip
-    var stateAtBS: TrajectoryStateSoA[S]
-    var eta: ScalarSoA[DType.float32, Int(S)]
-    var pt: ScalarSoA[DType.float32, Int(S)]
+    var stateAtBS: TrajectoryStateSoA[Self.S]
+    var eta: ScalarSoA[DType.float32, Int(Self.S)]
+    var pt: ScalarSoA[DType.float32, Int(Self.S)]
 
     # state at the detector of the outermost hit
     var hitIndices: Self.HitContainer
@@ -51,7 +48,7 @@ struct TrackSoAT[S: Int32](Defaultable, Movable, Typeable):
     var m_nTracks: UInt32
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self.m_quality = ScalarSoA[DType.uint8, Int(S)]()
 
         self.chi2 = ScalarSoA[DType.float32, Int(S)]()
@@ -65,11 +62,11 @@ struct TrackSoAT[S: Int32](Defaultable, Movable, Typeable):
         self.m_nTracks = 0
 
     @always_inline
-    fn quality(ref self, i: Int) -> ref [self.m_quality._data] Self.Quality:
+    def quality(ref self, i: Int) -> ref [self.m_quality._data] Self.Quality:
         return self.m_quality[i]
 
     @always_inline
-    fn qualityData[
+    def qualityData[
         origin: Origin, //
     ](ref [origin]self) -> UnsafePointer[
         Self.Quality, mut = origin.mut, origin=origin
@@ -77,44 +74,41 @@ struct TrackSoAT[S: Int32](Defaultable, Movable, Typeable):
         return self.m_quality.data()
 
     @always_inline
-    fn nHits(self, i: Int32) -> Int32:
+    def nHits(self, i: Int32) -> Int32:
         return self.detIndices.size(i.cast[DType.uint32]()).cast[DType.int32]()
 
     @always_inline
-    fn charge(self, i: Int32) -> Float:
+    def charge(self, i: Int32) -> Float:
         return Float(1.0) if self.stateAtBS.state[i][2, 0] >= 0 else Float(-1.0)
 
     @always_inline
-    fn phi(self, i: Int32) -> Float:
+    def phi(self, i: Int32) -> Float:
         return rebind[Scalar[DType.float32]](self.stateAtBS.state[i][0, 0])
 
     @always_inline
-    fn tip(self, i: Int32) -> Float:
+    def tip(self, i: Int32) -> Float:
         return rebind[Scalar[DType.float32]](self.stateAtBS.state[i][1, 0])
 
     @always_inline
-    fn zip(self, i: Int32) -> Float:
+    def zip(self, i: Int32) -> Float:
         return rebind[Scalar[DType.float32]](self.stateAtBS.state[i][4, 0])
 
     @always_inline
     @staticmethod
-    fn dtype() -> String:
-        return "TrackSoAT[" + String(S) + "]"
-
-
-@nonmaterializable(NoneType)
+    def dtype() -> String:
+        return "TrackSoAT[" + String(Self.S) + "]"
 struct PixelTrack:
     @staticmethod
     @always_inline
-    fn maxNumber() -> UInt32:
+    def maxNumber() -> UInt32:
         return 32 * 1024
 
-    alias TrackSoA = TrackSoAT[Self.maxNumber().cast[DType.int32]()]
-    alias TrajectoryState = TrajectoryStateSoA[
+    comptime TrackSoA = TrackSoAT[Self.maxNumber().cast[DType.int32]()]
+    comptime TrajectoryState = TrajectoryStateSoA[
         Self.maxNumber().cast[DType.int32]()
     ]
-    alias HitContainer = Self.TrackSoA.HitContainer
-    alias Quality = UInt8
+    comptime HitContainer = Self.TrackSoA.HitContainer
+    comptime Quality = UInt8
 
 
-alias PixelTrackHeterogeneous = HeterogeneousSoA[PixelTrack.TrackSoA]
+comptime PixelTrackHeterogeneous = HeterogeneousSoA[PixelTrack.TrackSoA]

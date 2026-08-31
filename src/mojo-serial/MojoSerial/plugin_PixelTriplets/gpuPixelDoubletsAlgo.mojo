@@ -1,6 +1,6 @@
 import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 from MojoSerial.plugin_PixelTriplets.GPUCACell import GPUCACell
-from sys import is_defined
+from std.sys import is_defined
 from MojoSerial.CUDACore.CUDACompat import CUDACompat
 from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
     TrackingRecHit2DSOAView,
@@ -8,13 +8,13 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
 )
 from MojoSerial.DataFormats.ApproxAtan2 import ApproxAtan2
 
-alias CellNeighbors = CAConstants.CellNeighbors
-alias CellTracks = CAConstants.CellTracks
-alias CellNeighborsVector = CAConstants.CellNeighborsVector
-alias CellTracksVector = CAConstants.CellTracksVector
+comptime CellNeighbors = CAConstants.CellNeighbors
+comptime CellTracks = CAConstants.CellTracks
+comptime CellNeighborsVector = CAConstants.CellNeighborsVector
+comptime CellTracksVector = CAConstants.CellTracksVector
 
 
-fn doubletsFromHisto(
+def doubletsFromHisto(
     layerPairs: UnsafePointer[UInt8],
     nPairs: UInt32,
     cells: UnsafePointer[GPUCACell],
@@ -35,12 +35,12 @@ fn doubletsFromHisto(
 ):
     # ysize cuts (z in the barrel) times 8
     # these are used if doClusterCut is true
-    alias minYsizeB1: Int = 36
-    alias minYsizeB2: Int = 28
-    alias maxDYsize12: Int = 28
-    alias maxDYsize: Int = 20
-    alias maxDYPred: Int = 20
-    alias dzdrFact: Float32 = 8.0 * 0.0285 / 0.015  # from dz/dr to "DY"
+    comptime minYsizeB1: Int = 36
+    comptime minYsizeB2: Int = 28
+    comptime maxDYsize12: Int = 28
+    comptime maxDYsize: Int = 20
+    comptime maxDYPred: Int = 20
+    comptime dzdrFact: Float32 = 8.0 * 0.0285 / 0.015  # from dz/dr to "DY"
 
     var isOuterLadder: Bool = ideal_cond
 
@@ -48,14 +48,14 @@ fn doubletsFromHisto(
     var offsets : UnsafePointer[UInt32] = hh.hitsLayerStart()
     debug_assert(offsets)
 
-    fn layerSize(li: UInt8) -> UInt32:
+    def layerSize(li: UInt8) -> UInt32:
         var idx = Int(li)
         return offsets[idx + 1] - offsets[idx]
 
     # nPairsMax to be optimized later (originally was 64).
     # If it should be much bigger, consider using a block-wide parallel prefix scan,
     # e.g. see https://nvlabs.github.io/cub/classcub_1_1_warp_scan.html
-    alias nPairsMax: Int = Int(CAConstants.maxNumberOfLayerPairs())
+    comptime nPairsMax: Int = Int(CAConstants.maxNumberOfLayerPairs())
     debug_assert(nPairs <= UInt32(nPairsMax))
     var innerLayerCumulativeSize = InlineArray[UInt32, nPairsMax](uninitialized=True)
     var ntot: UInt32 = 0
@@ -152,29 +152,29 @@ fn doubletsFromHisto(
         var mer = hh.rGlobal(Int(i))
 
         # all cuts: true if fails
-        alias z0cut: Float32 = 12.0  # cm
-        alias hardPtCut: Float32 = 0.5  # GeV
-        alias minRadius: Float32 = hardPtCut * 87.78  # cm
-        alias minRadius2T4: Float32 = 4.0 * minRadius * minRadius
+        comptime z0cut: Float32 = 12.0  # cm
+        comptime hardPtCut: Float32 = 0.5  # GeV
+        comptime minRadius: Float32 = hardPtCut * 87.78  # cm
+        comptime minRadius2T4: Float32 = 4.0 * minRadius * minRadius
 
         # `hh` is a borrowed, non-Copyable TrackingRecHit2DSOAView -- nested
         # `fn` closures in Mojo capture enclosing values by copy, which fails
         # for non-Copyable types. Passing it as an explicit parameter instead
         # (a borrow, not a copy) sidesteps that.
-        fn ptcut(hh: TrackingRecHit2DSOAView, j: Int, idphi: Int) -> Bool:
+        def ptcut(hh: TrackingRecHit2DSOAView, j: Int, idphi: Int) -> Bool:
             var r2t4 = minRadius2T4
             var ri = mer
             var ro = hh.rGlobal(j)
             var dphi = ApproxAtan2.short2phi(Int16(idphi))
             return dphi * dphi * (r2t4 - ri * ro) > (ro - ri) * (ro - ri)
 
-        fn z0cutoff(hh: TrackingRecHit2DSOAView, j: Int) -> Bool:
+        def z0cutoff(hh: TrackingRecHit2DSOAView, j: Int) -> Bool:
             var zo = hh.zGlobal(j)
             var ro = hh.rGlobal(j)
             var dr = ro - mer
             return dr > maxr[Int(pairLayerId)] or dr < 0.0 or abs(mez * ro - mer * zo) > z0cut * dr
 
-        fn zsizeCut(hh: TrackingRecHit2DSOAView, j: Int) -> Bool:
+        def zsizeCut(hh: TrackingRecHit2DSOAView, j: Int) -> Bool:
             var onlyBarrel = outer < 4
             var so = hh.clusterSizeY(j)
             var dy = maxDYsize12 if inner == 0 else maxDYsize
@@ -194,7 +194,7 @@ fn doubletsFromHisto(
         var iphicut = phicuts[Int(pairLayerId)]
         var kl = UInt32(Hist.bin(Int16((mep - iphicut))))
         var kh = UInt32(Hist.bin(Int16((mep + iphicut))))
-        fn incr(mut k: UInt32) -> UInt32:
+        def incr(mut k: UInt32) -> UInt32:
             k = (k + 1) % Hist.nbins()
             return k
 
@@ -211,8 +211,7 @@ fn doubletsFromHisto(
         var khh = kh
         _ = incr(khh)
         while kk != khh:
-            @parameter
-            if is_defined["GPU_DEBUG"]():
+            comptime if is_defined["GPU_DEBUG"]():
                 if kk != kl and kk != kh:
                     nmin += Int(hist.size(kk + hoff))
             var p = hist.begin(kk + hoff)
@@ -262,8 +261,7 @@ fn doubletsFromHisto(
                     oi.cast[DType.uint16](),
                 )
                 isOuterHitOfCell[oi_i].push_back(ind)
-                @parameter
-                if is_defined["GPU_DEBUG"]():
+                comptime if is_defined["GPU_DEBUG"]():
                     if isOuterHitOfCell[oi_i].full():
                         tooMany += 1
                     tot += 1
@@ -271,8 +269,7 @@ fn doubletsFromHisto(
 
             _ = incr(kk)
 
-        @parameter
-        if is_defined["GPU_DEBUG"]():
+        comptime if is_defined["GPU_DEBUG"]():
             if tooMany > 0:
                 print(
                     "OuterHitOfCell full for ",

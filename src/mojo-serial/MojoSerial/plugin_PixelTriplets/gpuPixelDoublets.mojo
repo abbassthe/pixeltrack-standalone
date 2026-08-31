@@ -3,13 +3,14 @@ from MojoSerial.plugin_PixelTriplets.GPUCACell import GPUCACell
 import MojoSerial.plugin_PixelTriplets.gpuPixelDoubletsAlgo as gpuPixelDoubleAlgo
 from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import TrackingRecHit2DSOAView
 from MojoSerial.plugin_PixelTriplets.gpuFishbone import fishbone
+from std.builtin import constrained
 
 
 
-alias nPairs: Int = 13 + 2 + 4
-alias _nPairsCheck = constrained[nPairs <= Int(CAConstants.maxNumberOfLayerPairs())]()
+comptime nPairs: Int = 13 + 2 + 4
+comptime _nPairsCheck = constrained[nPairs <= Int(CAConstants.maxNumberOfLayerPairs())]()
 
-alias layerPairs = InlineArray[UInt8, 2 * nPairs](
+comptime layerPairs = InlineArray[UInt8, 2 * nPairs](
     0, 1, 0, 4, 0, 7,              # BPIX1 (3)
     1, 2, 1, 4, 1, 7,              # BPIX2 (5)
     4, 5, 7, 8,                    # FPIX1 (8)
@@ -19,11 +20,11 @@ alias layerPairs = InlineArray[UInt8, 2 * nPairs](
     4, 6, 7, 9                     # Jumping Forward (19)
 )
 
-alias phi0p05: Int16 = 522
-alias phi0p06: Int16 = 626
-alias phi0p07: Int16 = 730
+comptime phi0p05: Int16 = 522
+comptime phi0p06: Int16 = 626
+comptime phi0p07: Int16 = 730
 
-alias phicuts = InlineArray[Int16, nPairs](
+comptime phicuts = InlineArray[Int16, nPairs](
     phi0p05,
     phi0p07,
     phi0p07,
@@ -45,7 +46,7 @@ alias phicuts = InlineArray[Int16, nPairs](
     phi0p05,
 )
 
-alias minz = InlineArray[Float32, nPairs](
+comptime minz = InlineArray[Float32, nPairs](
     -20.0,
     0.0,
     -30.0,
@@ -67,7 +68,7 @@ alias minz = InlineArray[Float32, nPairs](
     -70.0,
 )
 
-alias maxz = InlineArray[Float32, nPairs](
+comptime maxz = InlineArray[Float32, nPairs](
     20.0,
     30.0,
     0.0,
@@ -89,7 +90,7 @@ alias maxz = InlineArray[Float32, nPairs](
     70.0,
 )
 
-alias maxr = InlineArray[Float32, nPairs](
+comptime maxr = InlineArray[Float32, nPairs](
     20.0,
     9.0,
     9.0,
@@ -111,12 +112,12 @@ alias maxr = InlineArray[Float32, nPairs](
     9.0,
 )
 
-alias CellNeighbors = CAConstants.CellNeighbors
-alias CellTracks = CAConstants.CellTracks
-alias CellNeighborsVector = CAConstants.CellNeighborsVector
-alias CellTracksVector = CAConstants.CellTracksVector
+comptime CellNeighbors = CAConstants.CellNeighbors
+comptime CellTracks = CAConstants.CellTracks
+comptime CellNeighborsVector = CAConstants.CellNeighborsVector
+comptime CellTracksVector = CAConstants.CellTracksVector
 
-fn initDoublets(
+def initDoublets(
     isOuterHitOfCell: UnsafePointer[GPUCACell.OuterHitOfCell],
     nHits: UInt32,
     cellNeighbors: UnsafePointer[CellNeighborsVector],
@@ -146,13 +147,13 @@ fn initDoublets(
         cellTracks[][0].reset()
 
 
-alias getDoubletsFromHistoMaxBlockSize: Int = 64
-alias getDoubletsFromHistoMinBlocksPerMP: Int = 16
+comptime getDoubletsFromHistoMaxBlockSize: Int = 64
+comptime getDoubletsFromHistoMinBlocksPerMP: Int = 16
 #TO-DO port this 
 ##ifdef __CUDACC__
 # __launch_bounds__(getDoubletsFromHistoMaxBlockSize, getDoubletsFromHistoMinBlocksPerMP)
 ##endif
-fn getDoubletsFromHisto(
+def getDoubletsFromHisto(
     cells: UnsafePointer[GPUCACell],
     nCells: UnsafePointer[UInt32],
     cellNeighbors: UnsafePointer[CellNeighborsVector],

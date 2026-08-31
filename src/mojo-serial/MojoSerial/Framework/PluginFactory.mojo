@@ -1,4 +1,4 @@
-from collections.dict import _DictKeyIter
+from std.collections.dict import _DictKeyIter
 
 from MojoSerial.Framework.EDProducer import EDProducer
 from MojoSerial.Framework.Event import Event
@@ -12,51 +12,51 @@ struct EDProducerWrapper(Copyable, Defaultable, Movable, Typeable):
     var _ptr: UnsafePointer[NoneType]
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._ptr = UnsafePointer[NoneType]()
 
     @always_inline
-    fn producer(self) -> UnsafePointer[NoneType]:
+    def producer(self) -> UnsafePointer[NoneType]:
         return self._ptr
 
     @staticmethod
     @always_inline
-    fn dtype() -> String:
+    def dtype() -> String:
         return "EDProducerWrapper"
 
 
 struct EDProducerWrapperT[T: Typeable & EDProducer](Movable, Typeable):
-    var _ptr: UnsafePointer[T]
+    var _ptr: UnsafePointer[Self.T]
 
     @always_inline
-    fn __init__(out self, mut reg: ProductRegistry):
+    def __init__(out self, mut reg: ProductRegistry):
         self._ptr = UnsafePointer[T].alloc(1)
-        __get_address_as_uninit_lvalue(self._ptr.address) = T.__init__(reg)
+        __get_address_as_uninit_lvalue(self._ptr.address) = Self.T.__init__(reg)
 
     @always_inline
-    fn delete(self):
+    def delete(self):
         self._ptr.destroy_pointee()
         self._ptr.free()
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self._ptr = other._ptr
 
     @always_inline
-    fn producer(self) -> UnsafePointer[T]:
+    def producer(self) -> UnsafePointer[Self.T]:
         return self._ptr
 
     @staticmethod
     @always_inline
-    fn dtype() -> String:
-        return "EDProducerWrapperT[" + T.dtype() + "]"
+    def dtype() -> String:
+        return "EDProducerWrapperT[" + Self.T.dtype() + "]"
 
 
 struct EDProducerConcrete(Copyable, Movable, Typeable):
-    alias _C = fn (mut ProductRegistry) raises -> EDProducerWrapper
-    alias _P = fn (mut EDProducerWrapper, mut Event, EventSetup)
-    alias _E = fn (mut EDProducerWrapper) raises
-    alias _D = fn (mut EDProducerWrapper)
+    comptime _C = def (mut ProductRegistry) raises -> EDProducerWrapper
+    comptime _P = def (mut EDProducerWrapper, mut Event, EventSetup)
+    comptime _E = def (mut EDProducerWrapper) raises
+    comptime _D = def (mut EDProducerWrapper)
     var _producer: EDProducerWrapper
     var _create: Self._C
     var _produce: Self._P
@@ -64,7 +64,7 @@ struct EDProducerConcrete(Copyable, Movable, Typeable):
     var _det: Self._D
 
     @always_inline
-    fn __init__(
+    def __init__(
         out self, create: Self._C, produce: Self._P, end: Self._E, det: Self._D
     ):
         self._producer = EDProducerWrapper()
@@ -74,7 +74,7 @@ struct EDProducerConcrete(Copyable, Movable, Typeable):
         self._det = det
 
     @always_inline
-    fn __copyinit__(out self, other: Self):
+    def __copyinit__(out self, other: Self):
         self._producer = other._producer
         self._create = other._create
         self._produce = other._produce
@@ -82,7 +82,7 @@ struct EDProducerConcrete(Copyable, Movable, Typeable):
         self._det = other._det
 
     @always_inline
-    fn __moveinit__(out self, var other: Self):
+    def __moveinit__(out self, var other: Self):
         self._producer = other._producer^
         self._create = other._create
         self._produce = other._produce
@@ -90,83 +90,80 @@ struct EDProducerConcrete(Copyable, Movable, Typeable):
         self._det = other._det
 
     @always_inline
-    fn create(mut self, mut reg: ProductRegistry) raises:
+    def create(mut self, mut reg: ProductRegistry) raises:
         self._producer = self._create(reg)
 
     @always_inline
-    fn produce(mut self, mut event: Event, ref eventSetup: EventSetup):
+    def produce(mut self, mut event: Event, ref eventSetup: EventSetup):
         self._produce(self._producer, event, eventSetup)
 
     @always_inline
-    fn endJob(mut self) raises:
+    def endJob(mut self) raises:
         self._end(self._producer)
 
     @always_inline
-    fn delete(mut self):
+    def delete(mut self):
         self._det(self._producer)
 
     @staticmethod
     @always_inline
-    fn dtype() -> String:
+    def dtype() -> String:
         return "EDProducerConcrete"
 
 
 struct Registry(Typeable):
-    alias _pluginRegistryType = Dict[String, EDProducerConcrete]
+    comptime _pluginRegistryType = Dict[String, EDProducerConcrete]
     var _pluginRegistry: Self._pluginRegistryType
 
     @always_inline
-    fn __init__(out self):
+    def __init__(out self):
         self._pluginRegistry = {}
 
     @always_inline
-    fn __del__(var self):
+    def __deinit__(var self):
         self.delete()
 
     @always_inline
-    fn __getitem__(self, var name: String) raises -> EDProducerConcrete:
+    def __getitem__(self, var name: String) raises -> EDProducerConcrete:
         return self._pluginRegistry[name^]
 
     @always_inline
-    fn __setitem__(
+    def __setitem__(
         mut self, var name: String, var esproducer: EDProducerConcrete
     ) raises:
         self._pluginRegistry[name^] = esproducer^
 
     @always_inline
-    fn delete(mut self):
+    def delete(mut self):
         for i in range(self._pluginRegistry._entries.__len__()):
             if self._pluginRegistry._entries[i]:
                 self._pluginRegistry._entries[i].unsafe_value().value.delete()
 
     @staticmethod
     @always_inline
-    fn dtype() -> String:
+    def dtype() -> String:
         return "Registry"
-
-
-@nonmaterializable(NoneType)
 struct PluginFactory:
     @staticmethod
     @always_inline
-    fn getAll(
+    def getAll(
         mut reg: Registry,
     ) -> _DictKeyIter[
         Registry._pluginRegistryType.K,
         Registry._pluginRegistryType.V,
         Registry._pluginRegistryType.H,
-        __origin_of(reg._pluginRegistry),
+        origin_of(reg._pluginRegistry),
     ]:
         return reg._pluginRegistry.keys()
 
     @staticmethod
     @always_inline
-    fn size(mut reg: Registry) -> Int:
+    def size(mut reg: Registry) -> Int:
         return reg._pluginRegistry.__len__()
 
     @staticmethod
     @always_inline
-    fn create(
+    def create(
         var name: String, mut preg: ProductRegistry, mut reg: Registry
     ) raises -> EDProducerConcrete:
         reg[name].create(preg)
@@ -174,15 +171,15 @@ struct PluginFactory:
 
 
 @always_inline
-fn fwkModule[T: Typeable & EDProducer](mut reg: Registry):
+def fwkModule[T: Typeable & EDProducer](mut reg: Registry):
     @always_inline
-    fn create_templ[
+    def create_templ[
         T: Typeable & EDProducer
     ](mut reg: ProductRegistry) raises -> EDProducerWrapper:
         return rebind[EDProducerWrapper](EDProducerWrapperT[T](reg))
 
     @always_inline
-    fn produce_templ[
+    def produce_templ[
         T: Typeable & EDProducer
     ](
         mut edproducer: EDProducerWrapper,
@@ -194,11 +191,11 @@ fn fwkModule[T: Typeable & EDProducer](mut reg: Registry):
         )
 
     @always_inline
-    fn end_templ[T: Typeable & EDProducer](mut edproducer: EDProducerWrapper) raises:
+    def end_templ[T: Typeable & EDProducer](mut edproducer: EDProducerWrapper) raises:
         rebind[EDProducerWrapperT[T]](edproducer).producer()[].endJob()
 
     @always_inline
-    fn det_templ[T: Typeable & EDProducer](mut edproducer: EDProducerWrapper):
+    def det_templ[T: Typeable & EDProducer](mut edproducer: EDProducerWrapper):
         rebind[EDProducerWrapperT[T]](edproducer).delete()
 
     var crp = EDProducerConcrete(
