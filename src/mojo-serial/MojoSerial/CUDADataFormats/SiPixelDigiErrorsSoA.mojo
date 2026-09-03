@@ -41,10 +41,10 @@ struct SiPixelDigiErrorsSoA(Defaultable, Movable, Typeable):
         debug_assert(self.error_d[].capacity() == UInt(maxFedWords))
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self.data_d = other.data_d^
-        self.error_d = other.error_d^
-        self.formatterErrors_h = other.formatterErrors_h^
+    def __init__(out self, *, deinit move: Self):
+        self.data_d = move.data_d^
+        self.error_d = move.error_d^
+        self.formatterErrors_h = move.formatterErrors_h^
 
     def formatterErrors(
         self,

@@ -3,7 +3,9 @@ import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 import MojoSerial.plugin_PixelTriplets.FitResults as FitResults
 from MojoSerial.CUDACore.CUDACompat import CUDAStreamType
 from MojoSerial.MojoBridge.Matrix import Matrix, Map
-from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import TrackingRecHit2DSOAView
+from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
+    TrackingRecHit2DHeterogeneous,
+)
 from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import PixelTrack as pixelTrack
 from MojoSerial.plugin_PixelTriplets.FitUtils import Rfit as FitUtilsRfit
 from MojoSerial.plugin_PixelTriplets.RiemannFitOnGPU import (
@@ -76,7 +78,7 @@ struct Rfit:
 # (a `trait` with `var` fields is invalid Mojo: "fields in traits are not
 # supported yet").
 struct HelixFitOnGPU:
-    comptime HitsView = TrackingRecHit2DSOAView
+    comptime HitsView = TrackingRecHit2DHeterogeneous
 
     comptime Tuples = pixelTrack.HitContainer
     comptime OutputSoA = pixelTrack.TrackSoA

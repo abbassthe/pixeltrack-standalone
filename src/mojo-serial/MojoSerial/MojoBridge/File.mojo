@@ -4,7 +4,7 @@ import std.os as os
 
 @always_inline
 def read_simd[T: DType](mut file: FileHandle) raises -> Scalar[T]:
-    var obj = file.read_bytes(T.size_of())
+    var obj = file.read_bytes(size_of[T]())
     return obj.steal_data().bitcast[Scalar[T]]().take_pointee()
 
 
@@ -12,8 +12,8 @@ def read_simd[T: DType](mut file: FileHandle) raises -> Scalar[T]:
 def read_simd_eof[
     T: DType
 ](mut file: FileHandle) raises -> Tuple[Bool, Scalar[T]]:
-    var obj = file.read_bytes(T.size_of())
-    if obj.__len__() < T.size_of():
+    var obj = file.read_bytes(size_of[T]())
+    if obj.__len__() < size_of[T]():
         return True, 0
     return False, obj.steal_data().bitcast[Scalar[T]]().take_pointee()
 

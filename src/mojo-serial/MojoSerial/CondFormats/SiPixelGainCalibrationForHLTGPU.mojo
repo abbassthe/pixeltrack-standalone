@@ -1,3 +1,4 @@
+from std.collections import Span
 from std.memory import OwnedPointer
 
 from MojoSerial.CondFormats.SiPixelGainForHLTonGPU import SiPixelGainForHLTonGPU
@@ -22,15 +23,22 @@ struct SiPixelGainCalibrationForHLTGPU(Defaultable, Movable, Typeable):
     ):
         self._gainData = gainData^
         self._gainForHLTonHost = OwnedPointer[SiPixelGainForHLTonGPU](gain)
-        self._gainForHLTonHost[].v_pedestals = (
-            self._gainData.unsafe_ptr().bitcast[
-                SiPixelGainForHLTonGPU.DecodingStructure
-            ]()
+        self._gainForHLTonHost[].v_pedestals = rebind[
+            Span[SiPixelGainForHLTonGPU.DecodingStructure, ImmUntrackedOrigin]
+        ](
+            Span[SiPixelGainForHLTonGPU.DecodingStructure, _](
+                unsafe_ptr=self._gainData.unsafe_ptr().bitcast[
+                    SiPixelGainForHLTonGPU.DecodingStructure
+                ](),
+                length=len(self._gainData) // 2,
+            )
         )
 
     @always_inline
-    def getCPUProduct(self) -> UnsafePointer[SiPixelGainForHLTonGPU, mut=False]:
-        return self._gainForHLTonHost.unsafe_ptr()
+    def getCPUProduct(
+        self,
+    ) -> ref [self._gainForHLTonHost[]] SiPixelGainForHLTonGPU:
+        return self._gainForHLTonHost[]
 
     @always_inline
     @staticmethod

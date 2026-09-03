@@ -1,3 +1,4 @@
+from std.sys import size_of
 from layout import Layout, LayoutTensor, IntTuple
 
 from MojoSerial.MojoBridge.DTypes import Typeable
@@ -19,7 +20,7 @@ struct ScalarSoA[T: DType, S: Int](
     def __init__(out self):
         constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
         constrained[
-            S * T.size_of() % 128 == 0, "SoA size not a multiple of 128"
+            S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
         ]()
         self._data = InlineArray[Self.Scalar, Self.S](fill=0)
 
@@ -27,7 +28,7 @@ struct ScalarSoA[T: DType, S: Int](
     def __init__(out self, var list: InlineArray[Self.Scalar, Self.S]):
         constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
         constrained[
-            S * T.size_of() % 128 == 0, "SoA size not a multiple of 128"
+            S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
         ]()
         self._data = list^
 
@@ -37,7 +38,7 @@ struct ScalarSoA[T: DType, S: Int](
     ):
         constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
         constrained[
-            S * T.size_of() % 128 == 0, "SoA size not a multiple of 128"
+            S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
         ]()
 
         self._data = InlineArray[Self.Scalar, S](uninitialized=True)
@@ -53,14 +54,6 @@ struct ScalarSoA[T: DType, S: Int](
     @always_inline
     def __len__(self) -> Int:
         return Self.S
-
-    @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._data = other._data^
-
-    @always_inline
-    def __copyinit__(out self, other: Self):
-        self._data = other._data
 
     @always_inline
     def data[
@@ -98,7 +91,7 @@ struct MatrixSoA[T: DType, R: Int, C: Int, S: Int](
     def __init__(out self):
         constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
         constrained[
-            R * C * S * T.size_of() % 128 == 0, "SoA size not a multiple of 128"
+            R * C * S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
         ]()
         self._data = Self._D(fill=0)
 
@@ -106,7 +99,7 @@ struct MatrixSoA[T: DType, R: Int, C: Int, S: Int](
     def __init__(out self, var list: Self._D):
         constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
         constrained[
-            R * C * S * T.size_of() % 128 == 0, "SoA size not a multiple of 128"
+            R * C * S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
         ]()
         self._data = list^
 
@@ -116,7 +109,7 @@ struct MatrixSoA[T: DType, R: Int, C: Int, S: Int](
     ):
         constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
         constrained[
-            R * C * S * T.size_of() % 128 == 0, "SoA size not a multiple of 128"
+            R * C * S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
         ]()
 
         self._data = Self._D(uninitialized=True)
@@ -132,14 +125,6 @@ struct MatrixSoA[T: DType, R: Int, C: Int, S: Int](
     @always_inline
     def __len__(self) -> Int:
         return Self.R * Self.C * Self.S
-
-    @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._data = other._data^
-
-    @always_inline
-    def __copyinit__(out self, other: Self):
-        self._data = other._data
 
     @always_inline
     def __getitem__[

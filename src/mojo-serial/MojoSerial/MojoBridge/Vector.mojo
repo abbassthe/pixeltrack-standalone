@@ -120,7 +120,6 @@ struct Vector[T: DType, size: Int](
     Copyable,
     Defaultable,
     DevicePassable,
-    ExplicitlyCopyable,
     Floorable,
     Hashable,
     Movable,

@@ -1,7 +1,9 @@
 from MojoSerial.DataFormats.BeamSpotPOD import BeamSpotPOD
 from MojoSerial.CUDADataFormats.SiPixelClustersSoA import SiPixelClustersSoA
 from MojoSerial.CUDADataFormats.SiPixelDigisSoA import SiPixelDigisSoA
-from MojoSerial.CondFormats.PixelCPEforGPU import ParamsOnGPU
+from std.collections import Span
+
+from MojoSerial.CondFormats.PixelCPEFast import PixelCPEFast
 from MojoSerial.MojoBridge.DTypes import Typeable
 from MojoSerial.plugin_SiPixelRecHits.GPUPixelRecHits import getHits
 from MojoSerial.CUDACore.HistoContainer import fillManyFromVector
@@ -11,15 +13,15 @@ import MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous as TrackingRecHi
 
 
 def setHitsLayerStart(
-    hitsModuleStart: UnsafePointer[UInt32],
-    cpeParams: UnsafePointer[ParamsOnGPU],
-    hitsLayerStart: UnsafePointer[UInt32],
+    hitsModuleStart: Span[UInt32, _],
+    cpeParams: PixelCPEFast,
+    hitsLayerStart: Span[mut=True, UInt32, _],
 ):
     debug_assert(hitsModuleStart[0] == 0)
 
     for i in range(11):
         hitsLayerStart[i] = hitsModuleStart[
-            cpeParams[].layerGeometry().layerStart[i]
+            Int(cpeParams.layerGeometry().layerStart[i])
         ]
 
 
@@ -30,21 +32,21 @@ struct PixelRecHitGPUKernel(Defaultable, Typeable):
         ref digis_d: SiPixelDigisSoA,
         ref clusters_d: SiPixelClustersSoA,
         ref bs_d: BeamSpotPOD,
-        var cpeParams: UnsafePointer[ParamsOnGPU],
+        cpeParams: PixelCPEFast,
     ) -> TrackingRecHit2DHeterogeneous.TrackingRecHit2DCPU:
         var nHits = clusters_d.nClusters()
         var hits_d = TrackingRecHit2DHeterogeneous.TrackingRecHit2DCPU(
-            nHits, cpeParams, clusters_d.clusModuleStart()
+            nHits, clusters_d.clusModuleStart()
         )
 
         if digis_d.nModules():  # protect from empty events
             getHits(
                 cpeParams,
-                UnsafePointer(to=bs_d),
-                digis_d.view(),
+                bs_d,
+                digis_d,
                 digis_d.nDigis(),
-                clusters_d.view(),
-                hits_d.view(),
+                clusters_d,
+                hits_d,
             )
 
         # assuming full warp of threads is better than a smaller number...

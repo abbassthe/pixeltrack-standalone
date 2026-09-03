@@ -60,19 +60,19 @@ struct SiPixelRawDataError(
 
         self.setMessage()
 
-    def __moveinit__(out self, var existing: Self):
-        self._errorWord32 = existing._errorWord32
-        self._errorWord64 = existing._errorWord64
-        self._errorType = existing._errorType
-        self._fedId = existing._fedId
-        self._errorMessage = existing._errorMessage^
+    def __init__(out self, *, deinit move: Self):
+        self._errorWord32 = move._errorWord32
+        self._errorWord64 = move._errorWord64
+        self._errorType = move._errorType
+        self._fedId = move._fedId
+        self._errorMessage = move._errorMessage^
 
-    def __copyinit__(out self, existing: Self):
-        self._errorWord32 = existing._errorWord32
-        self._errorWord64 = existing._errorWord64
-        self._errorType = existing._errorType
-        self._fedId = existing._fedId
-        self._errorMessage = existing._errorMessage
+    def __init__(out self, *, copy: Self):
+        self._errorWord32 = copy._errorWord32
+        self._errorWord64 = copy._errorWord64
+        self._errorType = copy._errorType
+        self._fedId = copy._fedId
+        self._errorMessage = copy._errorMessage
 
     def setWord32(mut self, var errorWord32: UInt32):
         self._errorWord32 = errorWord32

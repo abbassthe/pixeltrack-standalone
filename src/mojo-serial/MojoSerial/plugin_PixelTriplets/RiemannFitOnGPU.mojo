@@ -7,8 +7,8 @@ from MojoSerial.plugin_PixelTriplets.HelixFitOnGPU import Rfit
 from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
     PixelTrack as pixelTrack,
 )
-from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
-    TrackingRecHit2DSOAView,
+from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
+    TrackingRecHit2DHeterogeneous,
 )
 from MojoSerial.MojoBridge.Matrix import to_layout_tensor
 
@@ -16,7 +16,7 @@ from MojoSerial.MojoBridge.Matrix import to_layout_tensor
 comptime RIEMANN_DEBUG = False
 
 
-comptime HitsOnGPU = TrackingRecHit2DSOAView
+comptime HitsOnGPU = TrackingRecHit2DHeterogeneous
 comptime Tuples = pixelTrack.HitContainer
 comptime OutputSoA = pixelTrack.TrackSoA
 comptime CircleFit = FitRfit.circle_fit

@@ -1,3 +1,4 @@
+from std.sys import size_of
 import std.random as random
 from std.utils.numerics import min_finite, max_finite
 
@@ -5,7 +6,7 @@ from MojoSerial.CUDACore.HistoContainer import HistoContainer
 import MojoSerial.CUDACore.HistoContainer as Histo
 
 
-def go[T: DType, NBINS: Int = 128, S: Int = 8 * T.size_of(), DELTA: Int = 1000]():
+def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]():
     random.seed()
 
     var rmin = min_finite[T]()
@@ -170,9 +171,8 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * T.size_of(), DELTA: Int = 1000](
         var tot: Int = 0
 
         Histo.forEachInBins(h, v[j], w, ftest, tot)
-        var rtot = Int(h.end(b0.cast[DType.uint32]())) - Int(
-            h.begin(b0.cast[DType.uint32]())
-        )
+        # C++: rtot = h.end(b0) - h.begin(b0), i.e. an element count
+        var rtot = Int(h.size(b0.cast[DType.uint32]()))
         debug_assert(tot == rtot)
 
         w = 1
@@ -182,13 +182,9 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * T.size_of(), DELTA: Int = 1000](
         var bm = b0 - 1
 
         if bp < Int(h.nbins()):
-            rtot += Int(h.end(bp.cast[DType.uint32]())) - Int(
-                h.begin(bp.cast[DType.uint32]())
-            )
+            rtot += Int(h.size(bp.cast[DType.uint32]()))
         if bm >= 0:
-            rtot += Int(h.end(bm.cast[DType.uint32]())) - Int(
-                h.begin(bm.cast[DType.uint32]())
-            )
+            rtot += Int(h.size(bm.cast[DType.uint32]()))
 
         debug_assert(tot == rtot)
         w = 2
@@ -198,13 +194,9 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * T.size_of(), DELTA: Int = 1000](
         bm -= 1
 
         if bp < Int(h.nbins()):
-            rtot += Int(h.end(bp.cast[DType.uint32]())) - Int(
-                h.begin(bp.cast[DType.uint32]())
-            )
+            rtot += Int(h.size(bp.cast[DType.uint32]()))
         if bm >= 0:
-            rtot += Int(h.end(bm.cast[DType.uint32]())) - Int(
-                h.begin(bm.cast[DType.uint32]())
-            )
+            rtot += Int(h.size(bm.cast[DType.uint32]()))
 
         debug_assert(tot == rtot)
 

@@ -4,10 +4,10 @@ from std.pathlib import Path
 from MojoSerial.CondFormats.PixelCPEforGPU import (
     CommonParams,
     DetParams,
-    ParamsOnGPU,
     LayerGeometry,
     AverageGeometry,
 )
+from MojoSerial.Geometry.Phase1PixelTopology import Phase1PixelTopology
 from MojoSerial.MojoBridge.DTypes import Float, Typeable
 from MojoSerial.MojoBridge.File import read_simd, read_obj, read_list
 
@@ -20,21 +20,12 @@ struct PixelCPEFast(Defaultable, Movable, Typeable):
     var m_layerGeometry: LayerGeometry
     var m_averageGeometry: AverageGeometry
 
-    var _cpuData: ParamsOnGPU
-
     @always_inline
     def __init__(out self):
         self.m_detParamsGPU = []
         self.m_commonParamsGPU = CommonParams()
         self.m_layerGeometry = LayerGeometry()
         self.m_averageGeometry = AverageGeometry()
-
-        self._cpuData = ParamsOnGPU(
-            UnsafePointer(to=self.m_commonParamsGPU),
-            self.m_detParamsGPU.unsafe_ptr(),
-            UnsafePointer(to=self.m_layerGeometry),
-            UnsafePointer(to=self.m_averageGeometry),
-        )
 
     def __init__(out self, path: Path):
         try:
@@ -53,29 +44,32 @@ struct PixelCPEFast(Defaultable, Movable, Typeable):
             )
             return Self()
 
-        self._cpuData = ParamsOnGPU(
-            UnsafePointer(to=self.m_commonParamsGPU),
-            self.m_detParamsGPU.unsafe_ptr(),
-            UnsafePointer(to=self.m_layerGeometry),
-            UnsafePointer(to=self.m_averageGeometry),
-        )
-
-    def __moveinit__(out self, var other: Self):
-        self.m_detParamsGPU = other.m_detParamsGPU^
-        self.m_commonParamsGPU = other.m_commonParamsGPU
-        self.m_layerGeometry = other.m_layerGeometry^
-        self.m_averageGeometry = other.m_averageGeometry^
-
-        self._cpuData = ParamsOnGPU(
-            UnsafePointer(to=self.m_commonParamsGPU),
-            self.m_detParamsGPU.unsafe_ptr(),
-            UnsafePointer(to=self.m_layerGeometry),
-            UnsafePointer(to=self.m_averageGeometry),
-        )
+    # C++ reaches these through ParamsOnGPU; that handle is gone, so they are
+    # accessors on the owner.
 
     @always_inline
-    def getCPUProduct(self) -> ref [self._cpuData] ParamsOnGPU:
-        return self._cpuData
+    def commonParams(self) -> CommonParams:
+        return self.m_commonParamsGPU
+
+    @always_inline
+    def detParams(ref self, i: Int) -> ref [self.m_detParamsGPU[i]] DetParams:
+        return self.m_detParamsGPU[i]
+
+    @always_inline
+    def layerGeometry(ref self) -> ref [self.m_layerGeometry] LayerGeometry:
+        return self.m_layerGeometry
+
+    @always_inline
+    def averageGeometry(
+        ref self,
+    ) -> ref [self.m_averageGeometry] AverageGeometry:
+        return self.m_averageGeometry
+
+    @always_inline
+    def layer(self, id: UInt16) -> UInt8:
+        return self.m_layerGeometry.layer[
+            Int(id) // Int(Phase1PixelTopology.maxModuleStride)
+        ]
 
     @always_inline
     @staticmethod

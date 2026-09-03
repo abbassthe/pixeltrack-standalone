@@ -1,3 +1,4 @@
+from std.collections import Span
 from std.memory import OwnedPointer, memcpy, memset
 
 from MojoSerial.CondFormats.SiPixelFedCablingMapGPU import (
@@ -226,9 +227,9 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
     def makeClusters(
         mut self,
         isRun2: Bool,
-        cablingMap: UnsafePointer[SiPixelFedCablingMapGPU],
-        modToUnp: UnsafePointer[UChar],
-        gains: UnsafePointer[SiPixelGainForHLTonGPU],
+        cablingMap: SiPixelFedCablingMapGPU,
+        modToUnp: Span[UChar, _],
+        gains: SiPixelGainForHLTonGPU,
         ref wordFed: WordFedAppender,
         var errors: PixelFormatterErrors,
         wordCounter: UInt32,
@@ -261,15 +262,15 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
                 cablingMap,
                 modToUnp,
                 wordCounter,
-                wordFed.word(),
-                wordFed.fedId(),
-                self.digis_d.xx(),
-                self.digis_d.yy(),
-                self.digis_d.adc(),
-                self.digis_d.pdigi(),
-                self.digis_d.rawIdArr(),
-                self.digis_d.moduleInd(),
-                self.digiErrors_d.error(),
+                Span(wordFed._word[]),
+                Span(wordFed._fedId[]),
+                Span(self.digis_d.xx_d[]),
+                Span(self.digis_d.yy_d[]),
+                Span(self.digis_d.adc_d[]),
+                Span(self.digis_d.pdigi_d[]),
+                Span(self.digis_d.rawIdArr_d[]),
+                Span(self.digis_d.moduleInd_d[]),
+                self.digiErrors_d.error_d[],
                 useQualityInfo,
                 includeErrors,
                 debug,
@@ -280,21 +281,21 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
         comptime if True:
             GPUCalibPixel.calibDigis(
                 isRun2,
-                self.digis_d.moduleInd(),
-                self.digis_d.c_xx(),
-                self.digis_d.c_yy(),
-                self.digis_d.adc(),
+                Span(self.digis_d.moduleInd_d[]),
+                Span(self.digis_d.xx_d[]),
+                Span(self.digis_d.yy_d[]),
+                Span(self.digis_d.adc_d[]),
                 gains,
                 wordCounter.cast[DType.int32](),
-                self.clusters_d.moduleStart(),
-                self.clusters_d.clusInModule(),
-                self.clusters_d.clusModuleStart(),
+                Span(self.clusters_d.moduleStart_d[]),
+                Span(self.clusters_d.clusInModule_d[]),
+                Span(self.clusters_d.clusModuleStart_d[]),
             )
 
             GPUClustering.countModules(
-                self.digis_d.c_moduleInd(),
-                self.clusters_d.moduleStart(),
-                self.digis_d.clus(),
+                Span(self.digis_d.moduleInd_d[]),
+                Span(self.clusters_d.moduleStart_d[]),
+                Span(self.digis_d.clus_d[]),
                 wordCounter.cast[DType.int32](),
             )
 
@@ -308,20 +309,20 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
                 self.digis_d.c_xx(),
                 self.digis_d.c_yy(),
                 self.clusters_d.c_moduleStart(),
-                self.clusters_d.clusInModule(),
-                self.clusters_d.moduleId(),
-                self.digis_d.clus(),
+                Span(self.clusters_d.clusInModule_d[]),
+                Span(self.clusters_d.moduleId_d[]),
+                Span(self.digis_d.clus_d[]),
                 wordCounter.cast[DType.int32](),
             )
 
             # apply charge cut
             GPUClustering.clusterChargeCut(
-                self.digis_d.moduleInd(),
+                Span(self.digis_d.moduleInd_d[]),
                 self.digis_d.c_adc(),
                 self.clusters_d.c_moduleStart(),
-                self.clusters_d.clusInModule(),
+                Span(self.clusters_d.clusInModule_d[]),
                 self.clusters_d.c_moduleId(),
-                self.digis_d.clus(),
+                Span(self.digis_d.clus_d[]),
                 wordCounter,
             )
 
@@ -381,7 +382,7 @@ def isBarrel(rawId: UInt32) -> Bool:
 
 
 def getRawId(
-    cablingMap: UnsafePointer[SiPixelFedCablingMapGPU],
+    cablingMap: SiPixelFedCablingMapGPU,
     var fed: UInt8,
     var link: UInt32,
     var roc: UInt32,
@@ -395,9 +396,9 @@ def getRawId(
         + roc
     )
     var detId = DetIdGPU(
-        cablingMap[].RawId[index],
-        cablingMap[].rocInDet[index],
-        cablingMap[].moduleId[index],
+        cablingMap.RawId[index],
+        cablingMap.rocInDet[index],
+        cablingMap.moduleId[index],
     )
     return detId
 
@@ -553,7 +554,7 @@ def checkROC(
     var errorWord: UInt32,
     var fedId: UInt8,
     var link: UInt32,
-    cablingMap: UnsafePointer[SiPixelFedCablingMapGPU],
+    cablingMap: SiPixelFedCablingMapGPU,
     debug: Bool = False,
 ) -> UInt8:
     var errorType = (
@@ -573,10 +574,10 @@ def checkROC(
             + (link - 1) * PixelGPUDetails.MAX_ROC
             + 1
         )
-        if index > 1 and index.cast[DType.uint32]() <= cablingMap[].size:
+        if index > 1 and index.cast[DType.uint32]() <= cablingMap.size:
             if not (
-                link == cablingMap[].link[index]
-                and cablingMap[].roc[index] == 1
+                link == cablingMap.link[index]
+                and cablingMap.roc[index] == 1
             ):
                 errorFound = False
         if debug and errorFound:
@@ -630,7 +631,7 @@ def getErrRawID(
     var fedId: UInt8,
     var errWord: UInt32,
     var errorType: UInt32,
-    cablingMap: UnsafePointer[SiPixelFedCablingMapGPU],
+    cablingMap: SiPixelFedCablingMapGPU,
     debug: Bool = False,
 ) -> UInt32:
     var rID: UInt32 = 0xFFFFFFFF
@@ -705,20 +706,18 @@ def getErrRawID(
 
 
 def RawToDigi_kernel(
-    cablingMap: UnsafePointer[SiPixelFedCablingMapGPU],
-    modToUnp: UnsafePointer[UChar],
+    cablingMap: SiPixelFedCablingMapGPU,
+    modToUnp: Span[UChar, _],
     wordCounter: UInt32,
-    word: UnsafePointer[UInt32],
-    fedIds: UnsafePointer[UInt8],
-    xx: UnsafePointer[UInt16, mut=True],
-    yy: UnsafePointer[UInt16, mut=True],
-    adc: UnsafePointer[UInt16, mut=True],
-    pdigi: UnsafePointer[UInt32, mut=True],
-    rawIdArr: UnsafePointer[UInt32, mut=True],
-    moduleId: UnsafePointer[UInt16, mut=True],
-    err: UnsafePointer[
-        SimpleVector[PixelErrorCompact, PixelErrorCompact.dtype()], mut=True
-    ],
+    word: Span[UInt32, _],
+    fedIds: Span[UChar, _],
+    xx: Span[mut=True, UInt16, _],
+    yy: Span[mut=True, UInt16, _],
+    adc: Span[mut=True, UInt16, _],
+    pdigi: Span[mut=True, UInt32, _],
+    rawIdArr: Span[mut=True, UInt32, _],
+    moduleId: Span[mut=True, UInt16, _],
+    mut err: SimpleVector[PixelErrorCompact, PixelErrorCompact.dtype()],
     useQualityInfo: Bool,
     includeErrors: Bool,
     debug: Bool = False,
@@ -754,7 +753,7 @@ def RawToDigi_kernel(
             var rID = getErrRawID(
                 fedId, ww, errorType.cast[DType.uint32](), cablingMap, debug
             )
-            _ = err[].push_back(PixelErrorCompact(rID, ww, errorType, fedId))
+            _ = err.push_back(PixelErrorCompact(rID, ww, errorType, fedId))
             continue
         var rawId = detId.RawId
         var rocIdInDetUnit = detId.rocInDet
@@ -769,7 +768,7 @@ def RawToDigi_kernel(
             + roc
         )
         if useQualityInfo:
-            skipROC = cablingMap[].badRocs[index].cast[DType.bool]()
+            skipROC = cablingMap.badRocs[index].cast[DType.bool]()
             if skipROC:
                 continue
 
@@ -815,7 +814,7 @@ def RawToDigi_kernel(
                     var error = conversionError(
                         fedId, 3, debug
                     )  # use the device function and fill the arrays
-                    _ = err[].push_back(
+                    _ = err.push_back(
                         PixelErrorCompact(rawId, ww, error, fedId)
                     )
                     if debug:
@@ -834,7 +833,7 @@ def RawToDigi_kernel(
             localPix = Pixel(row, col)
             if includeErrors and not dcolIsValid(dcol, pxid):
                 var error = conversionError(fedId, 3, debug)
-                _ = err[].push_back(PixelErrorCompact(rawId, ww, error, fedId))
+                _ = err.push_back(PixelErrorCompact(rawId, ww, error, fedId))
 
                 if debug:
                     print("Error status:", error, dcol, pxid, fedId, roc)

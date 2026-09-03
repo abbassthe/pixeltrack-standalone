@@ -50,8 +50,8 @@ def splitVertices(
                 ww[Int(old)] = 1.0 / ezt2[k]
                 it[Int(old)] = k
 
-        var znew: InlineArray[Float, 2] = InlineArray[Float, 2](0.0, 0.0)  # the new vertices
-        var wnew: InlineArray[Float, 2] = InlineArray[Float, 2](0.0, 0.0)  # the new vertices
+        var znew: InlineArray[Float, 2] = [0.0, 0.0]  # the new vertices
+        var wnew: InlineArray[Float, 2] = [0.0, 0.0]  # the new vertices
 
         debug_assert(Int32(nq) == nn[kv] + 1)
 

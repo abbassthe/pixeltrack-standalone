@@ -10,38 +10,44 @@ from MojoSerial.MojoBridge.DTypes import Typeable, signed_to_unsigned
 def countFromVector[
     T: DType, //
 ](
-    mut h: HistoContainer[T, *_],
+    mut h: HistoContainer[T, ...],
     nh: UInt32,
-    v: UnsafePointer[Scalar[T]],
-    offsets: UnsafePointer[UInt32],
+    v: Span[Scalar[T], _],
+    offsets: Span[UInt32, _],
 ):
-    for i in range(offsets[nh]):
-        var off = CUDAStdAlgorithm.upper_bound(offsets, offsets + nh + 1, i)
+    for i in range(Int(offsets[Int(nh)])):
+        # C++: off = upper_bound(offsets, offsets + nh + 1, i); ih = off - offsets - 1
+        var off = CUDAStdAlgorithm.upper_bound(
+            offsets[0 : Int(nh) + 1], UInt32(i)
+        )
 
-        debug_assert(off[] > 0)
-        var ih: Int32 = ((Int(off) - Int(offsets)) // size_of[UInt32]()) - 1
+        debug_assert(offsets[off] > 0)
+        var ih = Int32(off) - 1
 
         debug_assert(ih >= 0)
-        debug_assert(ih < Int(nh))
+        debug_assert(ih < Int32(nh))
         h.count(v[i], ih.cast[DType.uint32]())
 
 
 def fillFromVector[
     T: DType, //
 ](
-    mut h: HistoContainer[T, *_],
+    mut h: HistoContainer[T, ...],
     nh: UInt32,
-    v: UnsafePointer[Scalar[T]],
-    offsets: UnsafePointer[UInt32],
+    v: Span[Scalar[T], _],
+    offsets: Span[UInt32, _],
 ):
-    for i in range(offsets[nh]):
-        var off = CUDAStdAlgorithm.upper_bound(offsets, offsets + nh + 1, i)
+    for i in range(Int(offsets[Int(nh)])):
+        # C++: off = upper_bound(offsets, offsets + nh + 1, i); ih = off - offsets - 1
+        var off = CUDAStdAlgorithm.upper_bound(
+            offsets[0 : Int(nh) + 1], UInt32(i)
+        )
 
-        debug_assert(off[] > 0)
-        var ih: Int32 = ((Int(off) - Int(offsets)) // size_of[UInt32]()) - 1
+        debug_assert(offsets[off] > 0)
+        var ih = Int32(off) - 1
 
         debug_assert(ih >= 0)
-        debug_assert(ih < Int(nh))
+        debug_assert(ih < Int32(nh))
         h.fill(v[i], Scalar[h.IndexType](i), ih.cast[DType.uint32]())
 
 
@@ -55,7 +61,7 @@ def launchZero(mut h: HistoContainer):
 
 
 @always_inline
-def launchFinalize(mut h: HistoContainer[*_]):
+def launchFinalize(mut h: HistoContainer[...]):
     h.finalize()
 
 
@@ -63,10 +69,10 @@ def launchFinalize(mut h: HistoContainer[*_]):
 def fillManyFromVector[
     T: DType
 ](
-    mut h: HistoContainer[T, *_],
+    mut h: HistoContainer[T, ...],
     nh: UInt32,
-    v: UnsafePointer[Scalar[T]],
-    offsets: UnsafePointer[UInt32],
+    v: Span[Scalar[T], _],
+    offsets: Span[UInt32, _],
     totSize: UInt32,
 ):
     launchZero(h)
@@ -76,7 +82,7 @@ def fillManyFromVector[
 
 
 def finalizeBulk(
-    apc: UnsafePointer[AtomicPairCounter], mut assoc: HistoContainer[*_]
+    apc: Pointer[AtomicPairCounter, _], mut assoc: HistoContainer[...]
 ):
     assoc.bulkFinalizeFill(apc[])
 
@@ -93,11 +99,11 @@ def forEachInBins[
     """Iterate over N bins left and right of the one containing "v"."""
     var bs = hist.bin(value).cast[DType.int32]()
     var be = min(hist.nbins().cast[DType.int32]() - 1, bs + n)
-    bs = max(0, bs - n)
+    bs = max(Int32(0), bs - n)
     debug_assert(be >= bs)
 
-    var pj = hist.begin(Int(bs))
-    while pj < hist.end(Int(be)):
+    var pj = hist.begin(UInt32(bs))
+    while pj < hist.end(UInt32(be)):
         func(pj[])
         pj += 1
 
@@ -130,7 +136,9 @@ struct HistoContainer[
     T: DType,  # the type of the discretized input values
     NBINS: UInt32,  # number of bins
     SIZE: UInt32,  # max number of elements
-    S: UInt32 = T.size_of() * 8,  # number of significant bits in T
+    S: UInt32 = UInt32(
+        size_of[T]() * 8
+    ),  # number of significant bits in T
     I: DType = DType.uint32,  # type stored in the container (usually an index in a vector of the input values)
     NHISTS: UInt32 = 1,  # number of histos stored
 ](Defaultable, Movable, Sized, Typeable):
@@ -148,14 +156,22 @@ struct HistoContainer[
 
     @staticmethod
     def ilog2(var v: UInt32) -> UInt32:
-        comptime b = InlineArray[UInt32, 5](0x2, 0xC, 0xF0, 0xFF00, 0xFFFF0000)
-        comptime s = InlineArray[UInt32, 5](1, 2, 4, 8, 16)
+        comptime b: InlineArray[UInt32, 5] = [
+            0x2,
+            0xC,
+            0xF0,
+            0xFF00,
+            0xFFFF0000,
+        ]
+        comptime s: InlineArray[UInt32, 5] = [1, 2, 4, 8, 16]
 
         var r: UInt32 = 0
-        for i in range(4, -1, -1):
-            if v & b[i]:
-                v >>= s[i]
-                r |= s[i]
+        comptime for i in range(4, -1, -1):
+            comptime bi = b[i]
+            comptime si = s[i]
+            if v & bi:
+                v >>= si
+                r |= si
         return r
 
     @staticmethod
@@ -238,7 +254,7 @@ struct HistoContainer[
     def bulkFill(
         mut self,
         mut apc: AtomicPairCounter,
-        v: UnsafePointer[Scalar[Self.IndexType]],
+        v: Span[Scalar[Self.IndexType], _],
         n: UInt32,
     ) -> Int32:
         var c = apc.add(n)
@@ -317,18 +333,20 @@ struct HistoContainer[
     def size(self, b: UInt32) -> UInt32:
         return UInt32(self.off[b + 1] - self.off[b])
 
-    def begin(self) -> UnsafePointer[Scalar[Self.IndexType], mut=False]:
+    def begin(self) -> Pointer[Scalar[Self.IndexType], origin_of(self.bins)]:
         return self.bins.unsafe_ptr()
 
-    def end(self) -> UnsafePointer[Scalar[Self.IndexType], mut=False]:
+    def end(self) -> Pointer[Scalar[Self.IndexType], origin_of(self.bins)]:
         return self.begin() + self.size()
 
     def begin(
         self, b: UInt32
-    ) -> UnsafePointer[Scalar[Self.IndexType], mut=False]:
+    ) -> Pointer[Scalar[Self.IndexType], origin_of(self.bins)]:
         return self.bins.unsafe_ptr() + self.off[b]
 
-    def end(self, b: UInt32) -> UnsafePointer[Scalar[Self.IndexType], mut=False]:
+    def end(
+        self, b: UInt32
+    ) -> Pointer[Scalar[Self.IndexType], origin_of(self.bins)]:
         return self.bins.unsafe_ptr() + self.off[b + 1]
 
     @always_inline
@@ -336,7 +354,7 @@ struct HistoContainer[
     def dtype() -> String:
         return (
             "HistoContainer["
-            + Self.T.__repr__()
+            + String(Self.T)
             + ", "
             + String(Self.NBINS)
             + ", "
@@ -344,7 +362,7 @@ struct HistoContainer[
             + ", "
             + String(Self.S)
             + ", "
-            + Self.I.__repr__()
+            + String(Self.I)
             + ", "
             + String(Self.NHISTS)
             + "]"
@@ -356,5 +374,10 @@ comptime OneToManyAssoc[
     MAXONES: UInt32,  # max number of "ones"
     MAXMANYS: UInt32,  # max number of "manys"
 ] = HistoContainer[
-    DType.uint32, MAXONES, MAXMANYS, DType.uint32.size_of() * 8, I, 1
+    DType.uint32,
+    MAXONES,
+    MAXMANYS,
+    UInt32(size_of[DType.uint32]() * 8),
+    I,
+    1,
 ]

@@ -31,8 +31,8 @@ struct ESWrapper[T: Typeable & Movable](Movable, Typeable):
         self._ptr.init_pointee_move(obj^)
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    def __init__(out self, *, deinit move: Self):
+        self._ptr = move._ptr
 
     @always_inline
     def delete(self):
@@ -59,9 +59,9 @@ struct EventSetup(Defaultable, Movable, Typeable):
         self._dets = Dict[String, def (mut ESWrapperBase)]()
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._typeToProduct = other._typeToProduct^
-        self._dets = other._dets^
+    def __init__(out self, *, deinit move: Self):
+        self._typeToProduct = move._typeToProduct^
+        self._dets = move._dets^
 
     def __deinit__(var self):
         for k in self._typeToProduct.keys():

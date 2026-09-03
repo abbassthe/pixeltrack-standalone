@@ -105,46 +105,8 @@ struct LayerGeometry(Copyable, Defaultable, Movable, Typeable):
         return "LayerGeometry"
 
 
-@fieldwise_init
-struct ParamsOnGPU(Copyable, Defaultable, Movable, Typeable):
-    var m_commonParams: UnsafePointer[CommonParams]
-    var m_detParams: UnsafePointer[DetParams]
-    var m_layerGeometry: UnsafePointer[LayerGeometry]
-    var m_averageGeometry: UnsafePointer[AverageGeometry]
-
-    @always_inline
-    def __init__(out self):
-        self.m_commonParams = UnsafePointer[CommonParams]()
-        self.m_detParams = UnsafePointer[DetParams]()
-        self.m_layerGeometry = UnsafePointer[LayerGeometry]()
-        self.m_averageGeometry = UnsafePointer[AverageGeometry]()
-
-    @always_inline
-    def commonParams(self) -> CommonParams:
-        return self.m_commonParams[]
-
-    @always_inline
-    def detParams(self, i: Int32) -> ref [self.m_detParams] DetParams:
-        return self.m_detParams[i]
-
-    @always_inline
-    def layerGeometry(self) -> ref [self.m_layerGeometry] LayerGeometry:
-        return self.m_layerGeometry[]
-
-    @always_inline
-    def averageGeometry(self) -> ref [self.m_averageGeometry] AverageGeometry:
-        return self.m_averageGeometry[]
-
-    @always_inline
-    def layer(self, id: UInt16) -> UInt8:
-        return self.m_layerGeometry[].layer[
-            Int(id) // Phase1PixelTopology.maxModuleStride
-        ]
-
-    @always_inline
-    @staticmethod
-    def dtype() -> String:
-        return "ParamsOnGPU"
+# C++ has a ParamsOnGPU handle of four pointers into PixelCPEFast's own fields.
+# Its accessors live on PixelCPEFast directly here.
 
 
 @fieldwise_init
@@ -183,11 +145,11 @@ struct ClusParamsT[N: UInt32](Copyable, Defaultable, Movable, Typeable):
         self.Q_l_Y = InlineArray[Int32, Int(Self.N)](fill=0)
 
         self.charge = InlineArray[Int32, Int(Self.N)](fill=0)
-        self.xpos = InlineArray[Float, Int(Self.N)](0.0)
-        self.ypos = InlineArray[Float, Int(Self.N)](0.0)
+        self.xpos = InlineArray[Float, Int(Self.N)](fill=0.0)
+        self.ypos = InlineArray[Float, Int(Self.N)](fill=0.0)
 
-        self.xerr = InlineArray[Float, Int(Self.N)](0.0)
-        self.yerr = InlineArray[Float, Int(Self.N)](0.0)
+        self.xerr = InlineArray[Float, Int(Self.N)](fill=0.0)
+        self.yerr = InlineArray[Float, Int(Self.N)](fill=0.0)
 
         self.xsize = InlineArray[Int16, Int(Self.N)](fill=0)
         self.ysize = InlineArray[Int16, Int(Self.N)](fill=0)
@@ -404,9 +366,9 @@ def errorFromSize(
     cp.xerr[ic] = 0.0050
     cp.yerr[ic] = 0.0085
 
-    comptime xerr_barrel_l1 = InlineArray[Float, 3](0.00115, 0.00120, 0.00088)
+    comptime xerr_barrel_l1: InlineArray[Float, 3] = [0.00115, 0.00120, 0.00088]
     comptime xerr_barrel_l1_def: Float = 0.00200  # 0.01030
-    comptime yerr_barrel_l1 = InlineArray[Float, 9](
+    comptime yerr_barrel_l1: InlineArray[Float, 9] = [
         0.00375,
         0.00230,
         0.00250,
@@ -416,11 +378,11 @@ def errorFromSize(
         0.00210,
         0.00210,
         0.00240,
-    )
+    ]
     comptime yerr_barrel_l1_def: Float = 0.00210
-    comptime xerr_barrel_ln = InlineArray[Float, 3](0.00115, 0.00120, 0.00088)
+    comptime xerr_barrel_ln: InlineArray[Float, 3] = [0.00115, 0.00120, 0.00088]
     comptime xerr_barrel_ln_def: Float = 0.00200  # 0.01030
-    comptime yerr_barrel_ln = InlineArray[Float, 9](
+    comptime yerr_barrel_ln: InlineArray[Float, 9] = [
         0.00375,
         0.00230,
         0.00250,
@@ -430,11 +392,11 @@ def errorFromSize(
         0.00210,
         0.00210,
         0.00240,
-    )
+    ]
     comptime yerr_barrel_ln_def: Float = 0.00210
-    comptime xerr_endcap = InlineArray[Float, 2](0.0020, 0.0020)
+    comptime xerr_endcap: InlineArray[Float, 2] = [0.0020, 0.0020]
     comptime xerr_endcap_def: Float = 0.0020
-    comptime yerr_endcap = InlineArray[Float, 1](0.00210)
+    comptime yerr_endcap: InlineArray[Float, 1] = [0.00210]
     comptime yerr_endcap_def: Float = 0.00210
 
     var sx = cp.maxRow[ic] - cp.minRow[ic]
@@ -457,36 +419,40 @@ def errorFromSize(
         cp.minCol[ic].cast[DType.uint16]()
     )
 
+    # The tables stay comptime; `materialize` is what puts one in runtime
+    # memory so it can be indexed by the runtime sx/sy.
     if not isEdgeX and not isBig1X:
         if not detParams.isBarrel:
             cp.xerr[ic] = (
-                xerr_endcap[sx] if sx < len(xerr_endcap) else xerr_endcap_def
+                materialize[xerr_endcap]()[Int(sx)] if Int(sx)
+                < comptime (len(xerr_endcap)) else xerr_endcap_def
             )
         elif detParams.layer == 1:
             cp.xerr[ic] = (
-                xerr_barrel_l1[sx] if sx
-                < len(xerr_barrel_l1) else xerr_barrel_l1_def
+                materialize[xerr_barrel_l1]()[Int(sx)] if Int(sx)
+                < comptime (len(xerr_barrel_l1)) else xerr_barrel_l1_def
             )
         else:
             cp.xerr[ic] = (
-                xerr_barrel_ln[sx] if sx
-                < len(xerr_barrel_ln) else xerr_barrel_ln_def
+                materialize[xerr_barrel_ln]()[Int(sx)] if Int(sx)
+                < comptime (len(xerr_barrel_ln)) else xerr_barrel_ln_def
             )
 
     if not isEdgeY and not isBig1Y:
         if not detParams.isBarrel:
             cp.yerr[ic] = (
-                yerr_endcap[sy] if sy < len(yerr_endcap) else yerr_endcap_def
+                materialize[yerr_endcap]()[Int(sy)] if Int(sy)
+                < comptime (len(yerr_endcap)) else yerr_endcap_def
             )
         elif detParams.layer == 1:
             cp.yerr[ic] = (
-                yerr_barrel_l1[sy] if sy
-                < len(yerr_barrel_l1) else yerr_barrel_l1_def
+                materialize[yerr_barrel_l1]()[Int(sy)] if Int(sy)
+                < comptime (len(yerr_barrel_l1)) else yerr_barrel_l1_def
             )
         else:
             cp.yerr[ic] = (
-                yerr_barrel_ln[sy] if sy
-                < len(yerr_barrel_ln) else yerr_barrel_ln_def
+                materialize[yerr_barrel_ln]()[Int(sy)] if Int(sy)
+                < comptime (len(yerr_barrel_ln)) else yerr_barrel_ln_def
             )
 
 

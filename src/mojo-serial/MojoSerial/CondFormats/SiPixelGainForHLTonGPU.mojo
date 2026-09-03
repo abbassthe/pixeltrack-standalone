@@ -1,3 +1,4 @@
+from std.collections import Span
 from MojoSerial.MojoBridge.DTypes import Float, Typeable
 
 
@@ -25,7 +26,8 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
     comptime DecodingStructure = SiPixelGainForHLTonGPU_DecodingStructure
     comptime Range = Tuple[UInt32, UInt32]
 
-    var v_pedestals: UnsafePointer[Self.DecodingStructure]
+    # view into SiPixelGainCalibrationForHLTGPU's _gainData; origin untracked
+    var v_pedestals: Span[Self.DecodingStructure, ImmUntrackedOrigin]
     var rangeAndCols: InlineArray[Tuple[Self.Range, Int32], 2000]
     var _minPed: Float
     var _maxPed: Float
@@ -42,7 +44,9 @@ struct SiPixelGainForHLTonGPU(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     def __init__(out self):
-        self.v_pedestals = UnsafePointer[Self.DecodingStructure]()
+        self.v_pedestals = Span[
+            Self.DecodingStructure, ImmUntrackedOrigin
+        ]()
         self.rangeAndCols = InlineArray[Tuple[Self.Range, Int32], 2000](
             fill=Tuple[Self.Range, Int32](Self.Range(0, 0), 0)
         )

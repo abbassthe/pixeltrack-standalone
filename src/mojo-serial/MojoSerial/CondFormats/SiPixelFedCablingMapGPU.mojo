@@ -5,7 +5,6 @@ from MojoSerial.CondFormats.PixelCPEforGPU import (
     DetParams,
     LayerGeometry,
     AverageGeometry,
-    ParamsOnGPU,
 )
 from MojoSerial.MojoBridge.DTypes import UChar, Typeable
 from MojoSerial.CondFormats.PixelGPUDetails import PixelGPUDetails
@@ -63,15 +62,15 @@ struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
         self.__padding = InlineArray[UInt8, 124](fill=0)
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self.fed = other.fed^
-        self.link = other.link^
-        self.roc = other.roc^
-        self.RawId = other.RawId^
-        self.rocInDet = other.rocInDet^
-        self.moduleId = other.moduleId^
-        self.badRocs = other.badRocs^
-        self.size = other.size
+    def __init__(out self, *, deinit move: Self):
+        self.fed = move.fed^
+        self.link = move.link^
+        self.roc = move.roc^
+        self.RawId = move.RawId^
+        self.rocInDet = move.rocInDet^
+        self.moduleId = move.moduleId^
+        self.badRocs = move.badRocs^
+        self.size = move.size
 
         self.__padding = InlineArray[UInt8, 124](fill=0)
 

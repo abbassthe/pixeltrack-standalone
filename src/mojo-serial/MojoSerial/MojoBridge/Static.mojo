@@ -43,7 +43,7 @@ struct Static[T: Movable, id: Int = 0]:
         "This structure does not function correctly except in certain linear"
         " code sequences. Please refrain from using Static"
     )
-    def get() -> ref [MutableOrigin.cast_from[StaticConstantOrigin]] Self.T:
+    def get() -> ref [MutOrigin.cast_from[StaticConstantOrigin]] Self.T:
         """Returns a mutable reference to the static object."""
         return Self.__get_backing()[][]
 

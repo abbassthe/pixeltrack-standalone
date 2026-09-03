@@ -119,7 +119,7 @@ def generate_clusters(
         n += 1
 
         # messy
-        var xx = InlineArray[Int, 5](21, 25, 23, 24, 22)
+        var xx: InlineArray[Int, 5] = [21, 25, 23, 24, 22]
 
         comptime for k in range(5):
             h_id[n] = id
@@ -218,7 +218,7 @@ def main() raises:
 
     var n: Int
     var ncl: Int
-    var y = InlineArray[Int, 10](5, 7, 9, 1, 3, 0, 4, 8, 2, 6)
+    var y: InlineArray[Int, 10] = [5, 7, 9, 1, 3, 0, 4, 8, 2, 6]
 
     comptime for kkk in range(5):
         n = 0

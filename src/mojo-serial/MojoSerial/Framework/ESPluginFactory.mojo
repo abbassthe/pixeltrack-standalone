@@ -33,8 +33,8 @@ struct ESProducerWrapperT[T: Typeable & ESProducer](Movable, Typeable):
         __get_address_as_uninit_lvalue(self._ptr.address) = Self.T.__init__(path)
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    def __init__(out self, *, deinit move: Self):
+        self._ptr = move._ptr
 
     @always_inline
     def delete(self):
@@ -66,20 +66,6 @@ struct ESProducerConcrete(Copyable, Movable, Typeable):
         self._create = create
         self._produce = produce
         self._det = det
-
-    @always_inline
-    def __copyinit__(out self, other: Self):
-        self._producer = other._producer
-        self._create = other._create
-        self._produce = other._produce
-        self._det = other._det
-
-    @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._producer = other._producer^
-        self._create = other._create
-        self._produce = other._produce
-        self._det = other._det
 
     @always_inline
     def delete(mut self):

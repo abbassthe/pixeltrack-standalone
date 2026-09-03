@@ -26,9 +26,6 @@ from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
 from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
     TrackingRecHit2DHeterogeneous,
 )
-from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
-    TrackingRecHit2DSOAView,
-)
 
 comptime HitToTuple = CAConstants.HitToTuple
 comptime TupleMultiplicity = CAConstants.TupleMultiplicity
@@ -693,14 +690,13 @@ def kernel_fillHitInTracks(tuples  : UnsafePointer[HitContainer] ,
             h += 1
 
 def kernel_fillHitDetIndices(tuples  : UnsafePointer[HitContainer] ,
-                           hhp : UnsafePointer[TrackingRecHit2DSOAView] ,
+                           hh : TrackingRecHit2DHeterogeneous ,
                            hitDetIndices : UnsafePointer[HitContainer] ):
     # copy offsets
     var total_bins = Int(tuples[].totbins())
     for idx in range(0, total_bins, 1):
         hitDetIndices[].off[idx] = tuples[].off[idx]
     # fill hit indices
-    ref hh = hhp[]
     var nhits = hh.nHits()
     var total_size = Int(tuples[].size())
     for idx in range(0, total_size, 1):
@@ -724,7 +720,7 @@ def kernel_doStatsForHitInTracks(hitToTuple: UnsafePointer[HitToTuple] ,counters
                 UInt64(1),
             )
 
-def kernel_tripletCleaner(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[HitToTuple]):
+def kernel_tripletCleaner(hh : TrackingRecHit2DHeterogeneous , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[HitToTuple]):
     var bad  = trackQuality.bad
     var dup  = trackQuality.dup
 
@@ -781,7 +777,7 @@ def kernel_tripletCleaner(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples
             ip += 1
 
 
-def kernel_print_found_ntuplets(hhp : UnsafePointer[TrackingRecHit2DSOAView] , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[HitToTuple] ,  maxPrint : UInt32  ,  iev : Int):
+def kernel_print_found_ntuplets(hh : TrackingRecHit2DHeterogeneous , ptuples : UnsafePointer[HitContainer] , ptracks : UnsafePointer[TkSoA] , quality : UnsafePointer[Quality] , phitToTuple : UnsafePointer[HitToTuple] ,  maxPrint : UInt32  ,  iev : Int):
     ref foundNtuplets = ptuples[]
     ref tracks = ptracks[]
 
@@ -885,8 +881,8 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
     comptime Params = Params
     comptime Counters = Counters
 
-    comptime HitsView = TrackingRecHit2DSOAView
-    comptime HitsOnGPU = TrackingRecHit2DSOAView
+    comptime HitsView = TrackingRecHit2DHeterogeneous
+    comptime HitsOnGPU = TrackingRecHit2DHeterogeneous
     # mojo version of TrackingRecHit2DHeterogeneous is not generic
     comptime HitsOnCPU = TrackingRecHit2DHeterogeneous
     comptime HitToTuple = HitToTuple
@@ -953,26 +949,26 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
 
         self.m_params = params
 
-    def __moveinit__(out self, var other: Self):
-        self.counters_ = other.counters_
-        self.cellStorage_ = other.cellStorage_^
-        self.device_theCellNeighbors_ = other.device_theCellNeighbors_^
+    def __init__(out self, *, deinit move: Self):
+        self.counters_ = move.counters_
+        self.cellStorage_ = move.cellStorage_^
+        self.device_theCellNeighbors_ = move.device_theCellNeighbors_^
         self.device_theCellNeighborsContainer_ = (
-            other.device_theCellNeighborsContainer_
+            move.device_theCellNeighborsContainer_
         )
-        self.device_theCellTracks_ = other.device_theCellTracks_^
+        self.device_theCellTracks_ = move.device_theCellTracks_^
         self.device_theCellTracksContainer_ = (
-            other.device_theCellTracksContainer_
+            move.device_theCellTracksContainer_
         )
-        self.device_theCells_ = other.device_theCells_^
-        self.device_isOuterHitOfCell_ = other.device_isOuterHitOfCell_^
-        self.device_nCells_ = other.device_nCells_
-        self.device_hitToTuple_ = other.device_hitToTuple_^
-        self.device_hitToTuple_apc_ = other.device_hitToTuple_apc_
-        self.device_hitTuple_apc_ = other.device_hitTuple_apc_
-        self.device_tupleMultiplicity_ = other.device_tupleMultiplicity_^
-        self.device_storage_ = other.device_storage_^
-        self.m_params = other.m_params
+        self.device_theCells_ = move.device_theCells_^
+        self.device_isOuterHitOfCell_ = move.device_isOuterHitOfCell_^
+        self.device_nCells_ = move.device_nCells_
+        self.device_hitToTuple_ = move.device_hitToTuple_^
+        self.device_hitToTuple_apc_ = move.device_hitToTuple_apc_
+        self.device_hitTuple_apc_ = move.device_hitTuple_apc_
+        self.device_tupleMultiplicity_ = move.device_tupleMultiplicity_^
+        self.device_storage_ = move.device_storage_^
+        self.m_params = move.m_params
 
     def tuple_multiplicity(mut self) -> UnsafePointer[TupleMultiplicity]:
         return self.device_tupleMultiplicity_.unsafe_ptr()
@@ -1258,13 +1254,13 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
     # C++: CAHitNtupletGeneratorKernelsCPU::fillHitDetIndices (CAHitNtupletGeneratorKernels.cc)
     def fill_hit_det_indices(
         mut self,
-        hv: UnsafePointer[TrackingRecHit2DSOAView],
+        hh: TrackingRecHit2DHeterogeneous,
         tracks_d: UnsafePointer[TkSoA],
         cudaStream: Stream,
     ) raises:
         kernel_fillHitDetIndices(
             UnsafePointer(to=tracks_d[].hitIndices),
-            hv,
+            hh,
             UnsafePointer(to=tracks_d[].detIndices),
         )
 

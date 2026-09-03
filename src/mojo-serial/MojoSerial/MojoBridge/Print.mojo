@@ -97,7 +97,7 @@ def pprint[T: DType, //](M: Matrix[T, _, _]):
 
 @always_inline
 def type[T: UnknownDestructibility](it: T, out type: String):
-    return get_type_name[__type_of(it)]().split(".")[-1]
+    return get_type_name[type_of(it)]().split(".")[-1]
 
 
 @always_inline

@@ -12,9 +12,6 @@ from MojoSerial.CondFormats.PixelCPEFast import PixelCPEFast
 from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
     TrackingRecHit2DCPU,
 )
-from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
-    TrackingRecHit2DSOAView,
-)
 from MojoSerial.plugin_SiPixelRecHits.PixelRecHits import (
     PixelRecHitGPUKernel,
 )  # TODO : spit product from kernel
@@ -58,12 +55,12 @@ struct SiPixelRecHitCUDA(Defaultable, EDProducer, Typeable):
 
         var nHits = clusters.nClusters()
 
-        if nHits >= TrackingRecHit2DSOAView.maxHits():
+        if nHits >= TrackingRecHit2DCPU.maxHits():
             print(
                 "Clusters/Hits Overflow ",
                 nHits,
                 " ]= ",
-                TrackingRecHit2DSOAView.maxHits(),
+                TrackingRecHit2DCPU.maxHits(),
                 sep="",
             )
 
@@ -74,7 +71,7 @@ struct SiPixelRecHitCUDA(Defaultable, EDProducer, Typeable):
                     digis,
                     clusters,
                     bs,
-                    UnsafePointer(to=es.get[PixelCPEFast]().getCPUProduct()),
+                    es.get[PixelCPEFast](),
                 ),
             )
         except e:

@@ -1,48 +1,7 @@
+from std.collections import Span
 from std.memory import OwnedPointer
 
 from MojoSerial.MojoBridge.DTypes import SizeType, Typeable
-
-
-@fieldwise_init
-struct DeviceConstView(Defaultable, Movable, Typeable):
-    var _xx: UnsafePointer[UInt16]
-    var _yy: UnsafePointer[UInt16]
-    var _adc: UnsafePointer[UInt16]
-    var _moduleInd: UnsafePointer[UInt16]
-    var _clus: UnsafePointer[Int32]
-
-    @always_inline
-    def __init__(out self):
-        self._xx = UnsafePointer[UInt16]()
-        self._yy = UnsafePointer[UInt16]()
-        self._adc = UnsafePointer[UInt16]()
-        self._moduleInd = UnsafePointer[UInt16]()
-        self._clus = UnsafePointer[Int32]()
-
-    @always_inline
-    def xx(self, i: Int) -> UInt16:
-        return self._xx[i]
-
-    @always_inline
-    def yy(self, i: Int) -> UInt16:
-        return self._yy[i]
-
-    @always_inline
-    def adc(self, i: Int) -> UInt16:
-        return self._adc[i]
-
-    @always_inline
-    def moduleInd(self, i: Int) -> UInt16:
-        return self._moduleInd[i]
-
-    @always_inline
-    def clus(self, i: Int) -> Int32:
-        return self._clus[i]
-
-    @always_inline
-    @staticmethod
-    def dtype() -> String:
-        return "DeviceConstView"
 
 
 struct SiPixelDigisSoA(Defaultable, Movable, Typeable):
@@ -51,7 +10,6 @@ struct SiPixelDigisSoA(Defaultable, Movable, Typeable):
     var adc_d: OwnedPointer[List[UInt16]]  # ADC of each pixel
     var moduleInd_d: OwnedPointer[List[UInt16]]  # module id of each pixel
     var clus_d: OwnedPointer[List[Int32]]  # cluster id of each pixel
-    var view_d: OwnedPointer[DeviceConstView]  # "me" pointer
 
     # These are for CPU output; should we (eventually) place them to a
     # separate product?
@@ -68,7 +26,6 @@ struct SiPixelDigisSoA(Defaultable, Movable, Typeable):
         self.adc_d = OwnedPointer(List[UInt16]())
         self.moduleInd_d = OwnedPointer(List[UInt16]())
         self.clus_d = OwnedPointer(List[Int32]())
-        self.view_d = OwnedPointer(DeviceConstView())
 
         self.pdigi_d = OwnedPointer(List[UInt32]())
         self.rawIdArr_d = OwnedPointer(List[UInt32]())
@@ -78,63 +35,23 @@ struct SiPixelDigisSoA(Defaultable, Movable, Typeable):
 
     @always_inline
     def __init__(out self, maxFedWords: SizeType):
-        self.xx_d = OwnedPointer(List[UInt16](length=UInt(maxFedWords), fill=0))
-        self.yy_d = OwnedPointer(List[UInt16](length=UInt(maxFedWords), fill=0))
-        self.adc_d = OwnedPointer(
-            List[UInt16](length=UInt(maxFedWords), fill=0)
-        )
+        self.xx_d = OwnedPointer(List[UInt16](length=Int(maxFedWords), fill=0))
+        self.yy_d = OwnedPointer(List[UInt16](length=Int(maxFedWords), fill=0))
+        self.adc_d = OwnedPointer(List[UInt16](length=Int(maxFedWords), fill=0))
         self.moduleInd_d = OwnedPointer(
-            List[UInt16](length=UInt(maxFedWords), fill=0)
+            List[UInt16](length=Int(maxFedWords), fill=0)
         )
-        self.clus_d = OwnedPointer(
-            List[Int32](length=UInt(maxFedWords), fill=0)
-        )
-        self.view_d = OwnedPointer(
-            DeviceConstView(
-                self.xx_d[].unsafe_ptr(),
-                self.yy_d[].unsafe_ptr(),
-                self.adc_d[].unsafe_ptr(),
-                self.moduleInd_d[].unsafe_ptr(),
-                self.clus_d[].unsafe_ptr(),
-            )
-        )
+        self.clus_d = OwnedPointer(List[Int32](length=Int(maxFedWords), fill=0))
 
         self.pdigi_d = OwnedPointer(
-            List[UInt32](length=UInt(maxFedWords), fill=0)
+            List[UInt32](length=Int(maxFedWords), fill=0)
         )
         self.rawIdArr_d = OwnedPointer(
-            List[UInt32](length=UInt(maxFedWords), fill=0)
+            List[UInt32](length=Int(maxFedWords), fill=0)
         )
 
         self.nModules_h = 0
         self.nDigis_h = 0
-
-    def __moveinit__(out self, var other: Self):
-        self.xx_d = other.xx_d^
-        self.yy_d = other.yy_d^
-        self.adc_d = other.adc_d^
-        self.moduleInd_d = other.moduleInd_d^
-        self.clus_d = other.clus_d^
-
-        self.pdigi_d = other.pdigi_d^
-        self.rawIdArr_d = other.rawIdArr_d^
-
-        self.nModules_h = other.nModules_h
-        self.nDigis_h = other.nDigis_h
-
-        self.view_d = OwnedPointer(
-            DeviceConstView(
-                self.xx_d[].unsafe_ptr(),
-                self.yy_d[].unsafe_ptr(),
-                self.adc_d[].unsafe_ptr(),
-                self.moduleInd_d[].unsafe_ptr(),
-                self.clus_d[].unsafe_ptr(),
-            )
-        )
-
-    @always_inline
-    def view(self) -> UnsafePointer[DeviceConstView, mut=False]:
-        return self.view_d.unsafe_ptr()
 
     @always_inline
     def setNModulesDigis(mut self, nModules: UInt32, nDigis: UInt32):
@@ -149,89 +66,88 @@ struct SiPixelDigisSoA(Defaultable, Movable, Typeable):
     def nDigis(self) -> UInt32:
         return self.nDigis_h
 
+    # C++ DeviceConstView element accessors, folded onto the owner.
     @always_inline
-    def xx[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        UInt16, mut = origin.mut, origin=origin
-    ]:
-        return self.xx_d[].unsafe_ptr()
+    def xx(self, i: Int) -> UInt16:
+        return self.xx_d[][i]
 
     @always_inline
-    def yy[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        UInt16, mut = origin.mut, origin=origin
-    ]:
-        return self.yy_d[].unsafe_ptr()
+    def yy(self, i: Int) -> UInt16:
+        return self.yy_d[][i]
 
     @always_inline
-    def adc[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        UInt16, mut = origin.mut, origin=origin
-    ]:
-        return self.adc_d[].unsafe_ptr()
+    def adc(self, i: Int) -> UInt16:
+        return self.adc_d[][i]
 
     @always_inline
-    def moduleInd[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        UInt16, mut = origin.mut, origin=origin
-    ]:
-        return self.moduleInd_d[].unsafe_ptr()
+    def moduleInd(self, i: Int) -> UInt16:
+        return self.moduleInd_d[][i]
 
     @always_inline
-    def clus[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        Int32, mut = origin.mut, origin=origin
-    ]:
-        return self.clus_d[].unsafe_ptr()
+    def clus(self, i: Int) -> Int32:
+        return self.clus_d[][i]
+
+    # C++ non-const accessors; exclusive borrow, one live at a time.
+    @always_inline
+    def xx(ref self) -> Span[UInt16, origin_of(self.xx_d[])]:
+        return Span(self.xx_d[])
 
     @always_inline
-    def pdigi[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        UInt32, mut = origin.mut, origin=origin
-    ]:
-        return self.pdigi_d[].unsafe_ptr()
+    def yy(ref self) -> Span[UInt16, origin_of(self.yy_d[])]:
+        return Span(self.yy_d[])
 
     @always_inline
-    def rawIdArr[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        UInt32, mut = origin.mut, origin=origin
-    ]:
-        return self.rawIdArr_d[].unsafe_ptr()
+    def adc(ref self) -> Span[UInt16, origin_of(self.adc_d[])]:
+        return Span(self.adc_d[])
 
     @always_inline
-    def c_xx(self) -> UnsafePointer[UInt16, mut=False]:
-        return self.xx_d[].unsafe_ptr()
+    def moduleInd(ref self) -> Span[UInt16, origin_of(self.moduleInd_d[])]:
+        return Span(self.moduleInd_d[])
 
     @always_inline
-    def c_yy(self) -> UnsafePointer[UInt16, mut=False]:
-        return self.yy_d[].unsafe_ptr()
+    def clus(ref self) -> Span[Int32, origin_of(self.clus_d[])]:
+        return Span(self.clus_d[])
 
     @always_inline
-    def c_adc(self) -> UnsafePointer[UInt16, mut=False]:
-        return self.adc_d[].unsafe_ptr()
+    def pdigi(ref self) -> Span[UInt32, origin_of(self.pdigi_d[])]:
+        return Span(self.pdigi_d[])
 
     @always_inline
-    def c_moduleInd(self) -> UnsafePointer[UInt16, mut=False]:
-        return self.moduleInd_d[].unsafe_ptr()
+    def rawIdArr(ref self) -> Span[UInt32, origin_of(self.rawIdArr_d[])]:
+        return Span(self.rawIdArr_d[])
+
+    # C++ c_* const accessors; shared borrow, several may be live.
+    @always_inline
+    def c_xx(self) -> Span[UInt16, origin_of(self.xx_d[])].Immutable:
+        return Span(self.xx_d[])
 
     @always_inline
-    def c_clus(self) -> UnsafePointer[Int32, mut=False]:
-        return self.clus_d[].unsafe_ptr()
+    def c_yy(self) -> Span[UInt16, origin_of(self.yy_d[])].Immutable:
+        return Span(self.yy_d[])
 
     @always_inline
-    def c_pdigi(self) -> UnsafePointer[UInt32, mut=False]:
-        return self.pdigi_d[].unsafe_ptr()
+    def c_adc(self) -> Span[UInt16, origin_of(self.adc_d[])].Immutable:
+        return Span(self.adc_d[])
 
     @always_inline
-    def c_rawIdArr(self) -> UnsafePointer[UInt32, mut=False]:
-        return self.rawIdArr_d[].unsafe_ptr()
+    def c_moduleInd(
+        self,
+    ) -> Span[UInt16, origin_of(self.moduleInd_d[])].Immutable:
+        return Span(self.moduleInd_d[])
+
+    @always_inline
+    def c_clus(self) -> Span[Int32, origin_of(self.clus_d[])].Immutable:
+        return Span(self.clus_d[])
+
+    @always_inline
+    def c_pdigi(self) -> Span[UInt32, origin_of(self.pdigi_d[])].Immutable:
+        return Span(self.pdigi_d[])
+
+    @always_inline
+    def c_rawIdArr(
+        self,
+    ) -> Span[UInt32, origin_of(self.rawIdArr_d[])].Immutable:
+        return Span(self.rawIdArr_d[])
 
     @always_inline
     @staticmethod

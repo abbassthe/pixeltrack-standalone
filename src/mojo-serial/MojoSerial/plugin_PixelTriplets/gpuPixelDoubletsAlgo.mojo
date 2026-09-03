@@ -2,8 +2,8 @@ import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 from MojoSerial.plugin_PixelTriplets.GPUCACell import GPUCACell
 from std.sys import is_defined
 from MojoSerial.CUDACore.CUDACompat import CUDACompat
-from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
-    TrackingRecHit2DSOAView,
+from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
+    TrackingRecHit2DHeterogeneous,
     Hist,
 )
 from MojoSerial.DataFormats.ApproxAtan2 import ApproxAtan2
@@ -21,7 +21,7 @@ def doubletsFromHisto(
     nCells: UnsafePointer[UInt32],
     cellNeighbors: UnsafePointer[CellNeighborsVector],
     cellTracks: UnsafePointer[CellTracksVector],
-    hh: TrackingRecHit2DSOAView,
+    hh: TrackingRecHit2DHeterogeneous,
     isOuterHitOfCell: UnsafePointer[GPUCACell.OuterHitOfCell],
     phicuts: UnsafePointer[Int16],
     minz: UnsafePointer[Float32],
@@ -157,24 +157,24 @@ def doubletsFromHisto(
         comptime minRadius: Float32 = hardPtCut * 87.78  # cm
         comptime minRadius2T4: Float32 = 4.0 * minRadius * minRadius
 
-        # `hh` is a borrowed, non-Copyable TrackingRecHit2DSOAView -- nested
-        # `fn` closures in Mojo capture enclosing values by copy, which fails
-        # for non-Copyable types. Passing it as an explicit parameter instead
-        # (a borrow, not a copy) sidesteps that.
-        def ptcut(hh: TrackingRecHit2DSOAView, j: Int, idphi: Int) -> Bool:
+        # `hh` is passed in rather than captured: nested closures capture by
+        # copy, and the hit SoA is not Copyable.
+        def ptcut(
+            hh: TrackingRecHit2DHeterogeneous, j: Int, idphi: Int
+        ) -> Bool:
             var r2t4 = minRadius2T4
             var ri = mer
             var ro = hh.rGlobal(j)
             var dphi = ApproxAtan2.short2phi(Int16(idphi))
             return dphi * dphi * (r2t4 - ri * ro) > (ro - ri) * (ro - ri)
 
-        def z0cutoff(hh: TrackingRecHit2DSOAView, j: Int) -> Bool:
+        def z0cutoff(hh: TrackingRecHit2DHeterogeneous, j: Int) -> Bool:
             var zo = hh.zGlobal(j)
             var ro = hh.rGlobal(j)
             var dr = ro - mer
             return dr > maxr[Int(pairLayerId)] or dr < 0.0 or abs(mez * ro - mer * zo) > z0cut * dr
 
-        def zsizeCut(hh: TrackingRecHit2DSOAView, j: Int) -> Bool:
+        def zsizeCut(hh: TrackingRecHit2DHeterogeneous, j: Int) -> Bool:
             var onlyBarrel = outer < 4
             var so = hh.clusterSizeY(j)
             var dy = maxDYsize12 if inner == 0 else maxDYsize

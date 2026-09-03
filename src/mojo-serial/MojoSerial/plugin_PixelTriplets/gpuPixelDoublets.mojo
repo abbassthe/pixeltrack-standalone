@@ -1,7 +1,9 @@
 import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 from MojoSerial.plugin_PixelTriplets.GPUCACell import GPUCACell
 import MojoSerial.plugin_PixelTriplets.gpuPixelDoubletsAlgo as gpuPixelDoubleAlgo
-from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import TrackingRecHit2DSOAView
+from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
+    TrackingRecHit2DHeterogeneous,
+)
 from MojoSerial.plugin_PixelTriplets.gpuFishbone import fishbone
 from std.builtin import constrained
 
@@ -158,7 +160,7 @@ def getDoubletsFromHisto(
     nCells: UnsafePointer[UInt32],
     cellNeighbors: UnsafePointer[CellNeighborsVector],
     cellTracks: UnsafePointer[CellTracksVector],
-    hhp: UnsafePointer[TrackingRecHit2DSOAView],
+    hh: TrackingRecHit2DHeterogeneous,
     isOuterHitOfCell: UnsafePointer[GPUCACell.OuterHitOfCell],
     nActualPairs: Int,
     ideal_cond: Bool,
@@ -167,7 +169,6 @@ def getDoubletsFromHisto(
     doPtCut: Bool,
     maxNumOfDoublets: UInt32,
 ):
-    ref hh = hhp[]
     gpuPixelDoubleAlgo.doubletsFromHisto(
         layerPairs.unsafe_ptr(),
         UInt32(nActualPairs),

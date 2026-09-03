@@ -37,10 +37,10 @@ struct ProductRegistry(Movable, Sized, Typeable):
         self._typeToIndex = Dict[String, Indices]()
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._currentModuleIndex = other._currentModuleIndex
-        self._consumedModules = other._consumedModules^
-        self._typeToIndex = other._typeToIndex^
+    def __init__(out self, *, deinit move: Self):
+        self._currentModuleIndex = move._currentModuleIndex
+        self._consumedModules = move._consumedModules^
+        self._typeToIndex = move._typeToIndex^
 
     def produces[T: Typeable](mut self) raises -> EDPutTokenT[T]:
         if T.dtype() in self._typeToIndex:

@@ -17,10 +17,10 @@ struct FitResult(Copyable):
         self.circle = Rfit.circle_fit()
         self.line = Rfit.line_fit()
 
-    def __copyinit__(out self, other: Self):
-        self.fast_fit = other.fast_fit
-        self.circle = other.circle
-        self.line = other.line
+    def __init__(out self, *, copy: Self):
+        self.fast_fit = copy.fast_fit
+        self.circle = copy.circle
+        self.line = copy.line
 
 
 struct ExpectedResult(Copyable):
@@ -43,15 +43,15 @@ struct ExpectedResult(Copyable):
         self.line_chi2 = 0.0
         self.valid = False
 
-    def __copyinit__(out self, other: Self):
-        self.fast_fit = other.fast_fit
-        self.circle_par = other.circle_par
-        self.circle_cov = other.circle_cov
-        self.circle_chi2 = other.circle_chi2
-        self.line_par = other.line_par
-        self.line_cov = other.line_cov
-        self.line_chi2 = other.line_chi2
-        self.valid = other.valid
+    def __init__(out self, *, copy: Self):
+        self.fast_fit = copy.fast_fit
+        self.circle_par = copy.circle_par
+        self.circle_cov = copy.circle_cov
+        self.circle_chi2 = copy.circle_chi2
+        self.line_par = copy.line_par
+        self.line_cov = copy.line_cov
+        self.line_chi2 = copy.line_chi2
+        self.valid = copy.valid
 
 
 def fill_hits_and_hitscov[N: Int](

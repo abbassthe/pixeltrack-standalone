@@ -143,25 +143,25 @@ struct Source(Defaultable, Movable, Typeable):
             return Self()
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._startEvent = other._startEvent
-        self._endEvent = other._endEvent
+    def __init__(out self, *, deinit move: Self):
+        self._startEvent = move._startEvent
+        self._endEvent = move._endEvent
 
-        self._runForMinutes = other._runForMinutes
-        self._startTime = other._startTime
-        self._numEventsTimeLastCheck = other._numEventsTimeLastCheck
-        self._shouldStop = other._shouldStop
+        self._runForMinutes = move._runForMinutes
+        self._startTime = move._startTime
+        self._numEventsTimeLastCheck = move._numEventsTimeLastCheck
+        self._shouldStop = move._shouldStop
 
-        self._numEvents = other._numEvents
-        self._rawToken = other._rawToken
-        self._digiClusterToken = other._digiClusterToken
-        self._trackToken = other._trackToken
-        self._vertexToken = other._vertexToken
-        self._raw = other._raw^
-        self._digiclusters = other._digiclusters^
-        self._tracks = other._tracks^
-        self._vertices = other._vertices^
-        self._validation = other._validation
+        self._numEvents = move._numEvents
+        self._rawToken = move._rawToken
+        self._digiClusterToken = move._digiClusterToken
+        self._trackToken = move._trackToken
+        self._vertexToken = move._vertexToken
+        self._raw = move._raw^
+        self._digiclusters = move._digiclusters^
+        self._tracks = move._tracks^
+        self._vertices = move._vertices^
+        self._validation = move._validation
 
     @always_inline
     def reconfigure(

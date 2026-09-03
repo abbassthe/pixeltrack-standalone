@@ -1,3 +1,4 @@
+from std.sys import size_of
 from std.memory import OwnedPointer
 
 from MojoSerial.CondFormats.SiPixelFedCablingMapGPUWrapper import (
@@ -83,12 +84,12 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
             ref hgpuMap = iSetup.get[SiPixelFedCablingMapGPUWrapper]()
             if hgpuMap.hasQuality() != self._useQuality:
                 raise "UseQuality of the module (" + self._useQuality.__str__() + ") differs the one from SiPixelFedCablingMapGPUWrapper. Please fix your configuration."
-            var gpuMap = hgpuMap.getCPUProduct()
+            ref gpuMap = hgpuMap.getCPUProduct()
             var gpuModulesToUnpack = hgpuMap.getModToUnpAll()
 
             ref hgains = iSetup.get[SiPixelGainCalibrationForHLTGPU]()
 
-            var gpuGains = hgains.getCPUProduct()
+            ref gpuGains = hgains.getCPUProduct()
 
             ref _fedIds = iSetup.get[SiPixelFedIds]().fedIds()
 
@@ -116,7 +117,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
 
                 # GPU specific
                 var nWords: Int32 = (
-                    rawData.size().cast[DType.int32]() / DType.uint64.size_of()
+                    rawData.size().cast[DType.int32]() / size_of[DType.uint64]()
                 )
                 if nWords == 0:
                     continue
@@ -159,7 +160,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
 
                 var bw = (header + 1).bitcast[UInt32]()
                 var ew = trailer.bitcast[UInt32]()
-                var le = (Int(ew) - Int(bw)) // DType.uint32.size_of()
+                var le = (Int(ew) - Int(bw)) // size_of[DType.uint32]()
                 debug_assert(le % 2 == 0)
                 self._wordFedAppender[].initializeWordFed(
                     fedId.cast[DType.int32](),

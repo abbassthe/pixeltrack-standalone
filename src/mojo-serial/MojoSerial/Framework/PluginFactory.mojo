@@ -39,8 +39,8 @@ struct EDProducerWrapperT[T: Typeable & EDProducer](Movable, Typeable):
         self._ptr.free()
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    def __init__(out self, *, deinit move: Self):
+        self._ptr = move._ptr
 
     @always_inline
     def producer(self) -> UnsafePointer[Self.T]:
@@ -72,22 +72,6 @@ struct EDProducerConcrete(Copyable, Movable, Typeable):
         self._produce = produce
         self._end = end
         self._det = det
-
-    @always_inline
-    def __copyinit__(out self, other: Self):
-        self._producer = other._producer
-        self._create = other._create
-        self._produce = other._produce
-        self._end = other._end
-        self._det = other._det
-
-    @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._producer = other._producer^
-        self._create = other._create
-        self._produce = other._produce
-        self._end = other._end
-        self._det = other._det
 
     @always_inline
     def create(mut self, mut reg: ProductRegistry) raises:

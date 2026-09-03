@@ -10,8 +10,8 @@ from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
     PixelTrack as pixelTrack,
     TrackQuality as trackQuality,
 )
-from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
-    TrackingRecHit2DSOAView,
+from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
+    TrackingRecHit2DHeterogeneous,
 )
 
 
@@ -26,7 +26,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
     comptime CellNeighborsVector = CAConstants.CellNeighborsVector
     comptime CellTracksVector = CAConstants.CellTracksVector
 
-    comptime Hits = TrackingRecHit2DSOAView
+    comptime Hits = TrackingRecHit2DHeterogeneous
     comptime hindex_type = Self.Hits.HIndexType
 
     comptime TmpTuple = VecArray[UInt32, "TmpTuple", 6]
@@ -401,7 +401,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
     # trying to free the track building process from hardcoded layers, leaving
     # the visit of the graph based on the neighborhood connections between cells.
     def find_ntuplets[
-        origin: MutableOrigin, //, DEPTH: Int
+        origin: MutOrigin, //, DEPTH: Int
     ](
         self,
         hh: Self.Hits,

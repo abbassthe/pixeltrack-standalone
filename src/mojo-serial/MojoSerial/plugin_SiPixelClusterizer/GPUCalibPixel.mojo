@@ -1,4 +1,4 @@
-from std.memory import memset
+from std.collections import Span
 
 from MojoSerial.CondFormats.SiPixelGainForHLTonGPU import SiPixelGainForHLTonGPU
 from MojoSerial.CUDADataFormats.GPUClusteringConstants import (
@@ -17,19 +17,21 @@ struct GPUCalibPixel:
     @staticmethod
     def calibDigis(
         isRun2: Bool,
-        id: UnsafePointer[UInt16, mut=True],
-        x: UnsafePointer[UInt16],
-        y: UnsafePointer[UInt16],
-        adc: UnsafePointer[UInt16, mut=True],
-        ped: UnsafePointer[SiPixelGainForHLTonGPU],
+        id: Span[mut=True, UInt16, _],
+        x: Span[UInt16, _],
+        y: Span[UInt16, _],
+        adc: Span[mut=True, UInt16, _],
+        ped: SiPixelGainForHLTonGPU,
         numElements: Int32,
-        moduleStart: UnsafePointer[UInt32, mut=True],  # just to zero first
-        nClustersInModule: UnsafePointer[UInt32, mut=True],  # just to zero them
-        clusModuleStart: UnsafePointer[UInt32, mut=True],  # just to zero first
+        moduleStart: Span[mut=True, UInt32, _],  # just to zero first
+        nClustersInModule: Span[mut=True, UInt32, _],  # just to zero them
+        clusModuleStart: Span[mut=True, UInt32, _],  # just to zero first
     ):
         clusModuleStart[0] = 0
         moduleStart[0] = 0
-        memset(nClustersInModule, 0, Int(GPUClusteringConstants.MaxNumModules))
+        nClustersInModule[
+            0 : Int(GPUClusteringConstants.MaxNumModules)
+        ].fill(0)
         for i in range(numElements):
             if Self.InvId == id[i]:
                 continue
@@ -46,7 +48,7 @@ struct GPUCalibPixel:
 
             var row = x[i].cast[DType.int32]()
             var col = y[i].cast[DType.int32]()
-            var ret = ped[].getPedAndGain(
+            var ret = ped.getPedAndGain(
                 id[i].cast[DType.uint32](),
                 col,
                 row,

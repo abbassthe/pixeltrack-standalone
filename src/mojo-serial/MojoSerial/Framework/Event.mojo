@@ -14,12 +14,12 @@ struct WrapperBase(Copyable, Defaultable, Movable, Typeable):
         self._ptr = UnsafePointer[NoneType]()
 
     @always_inline
-    def __copyinit__(out self, other: Self):
-        self._ptr = other._ptr
+    def __init__(out self, *, copy: Self):
+        self._ptr = copy._ptr
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    def __init__(out self, *, deinit move: Self):
+        self._ptr = move._ptr
 
     @always_inline
     def product(self) -> UnsafePointer[NoneType, mut=False]:
@@ -49,8 +49,8 @@ struct Wrapper[T: Typeable & Movable](Movable, Typeable):
         self._ptr.free()
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._ptr = other._ptr
+    def __init__(out self, *, deinit move: Self):
+        self._ptr = move._ptr
 
     @always_inline
     def product(self) -> UnsafePointer[Self.T, mut=False]:
@@ -96,11 +96,11 @@ struct Event(Defaultable, Movable, Typeable):
             self._dets[i](self._products[i])
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._streamId = other._streamId
-        self._eventId = other._eventId
-        self._products = other._products^
-        self._dets = other._dets^
+    def __init__(out self, *, deinit move: Self):
+        self._streamId = move._streamId
+        self._eventId = move._eventId
+        self._products = move._products^
+        self._dets = move._dets^
 
     @always_inline
     def streamID(self) -> StreamID:

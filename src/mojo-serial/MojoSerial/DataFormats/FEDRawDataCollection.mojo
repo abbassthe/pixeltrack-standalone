@@ -13,12 +13,12 @@ struct FEDRawDataCollection(Copyable, Defaultable, Movable, Typeable):
         )
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._data = other._data^
+    def __init__(out self, *, deinit move: Self):
+        self._data = move._data^
 
     @always_inline
-    def __copyinit__(out self, other: Self):
-        self._data = other._data
+    def __init__(out self, *, copy: Self):
+        self._data = copy._data
 
     @always_inline
     def FEDData(ref self, fedid: Int) -> ref [self._data] FEDRawData:

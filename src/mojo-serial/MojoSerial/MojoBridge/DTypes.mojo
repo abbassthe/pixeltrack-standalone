@@ -231,8 +231,8 @@ struct TypeableOwnedPointer[T: Typeable & Movable](Movable, Typeable):
         self._inner = OwnedPointer(value^)
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._inner = other._inner^
+    def __init__(out self, *, deinit move: Self):
+        self._inner = move._inner^
 
     @always_inline
     def unsafe_ptr(ref self) -> UnsafePointer[Self.T]:

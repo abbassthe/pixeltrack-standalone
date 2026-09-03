@@ -31,12 +31,12 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
         self._data = Self.Data(length=UInt(newsize), fill=0)
 
     @always_inline
-    def __copyinit__(out self, existing: Self):
-        self._data = existing._data
+    def __init__(out self, *, copy: Self):
+        self._data = copy._data
 
     @always_inline
-    def __moveinit__(out self, var existing: Self):
-        self._data = existing._data^
+    def __init__(out self, *, deinit move: Self):
+        self._data = move._data^
 
     @always_inline
     def data[

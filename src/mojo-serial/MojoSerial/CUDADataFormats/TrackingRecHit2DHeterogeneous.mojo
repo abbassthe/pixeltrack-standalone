@@ -1,11 +1,11 @@
+from std.collections import Span
 from std.memory import OwnedPointer
 from std.sys import size_of
 
-from MojoSerial.CondFormats.PixelCPEforGPU import ParamsOnGPU
 from MojoSerial.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
-from MojoSerial.CUDADataFormats.TrackingRecHit2DSOAView import (
-    Hist,
-    TrackingRecHit2DSOAView,
+from MojoSerial.CUDACore.HistoContainer import HistoContainer
+from MojoSerial.CUDADataFormats.GPUClusteringConstants import (
+    GPUClusteringConstants,
 )
 from MojoSerial.Geometry.Phase1PixelTopology import (
     Phase1PixelTopology,
@@ -13,167 +13,214 @@ from MojoSerial.Geometry.Phase1PixelTopology import (
 )
 from MojoSerial.MojoBridge.DTypes import Float, Typeable
 
+comptime Hist = HistoContainer[
+    DType.int16,
+    128,
+    GPUClusteringConstants.MaxNumClusters,
+    UInt32(8 * size_of[UInt16]()),
+    DType.int16,
+    10,
+]
+
 
 struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
-    comptime n16: UInt32 = 4
-    comptime n32: UInt32 = 9
+    """Hit SoA. C++ packs every column into m_store16/m_store32 and hands out a
+    TrackingRecHit2DSOAView of pointers into them; this port stores each column
+    as its own typed buffer and folds the view's accessors onto the owner.
+    """
 
-    comptime __d = debug_assert(
-        size_of[UInt32]() == size_of[Float]()
-    )  # just stating the obvious
+    comptime HIndexType = UInt16  # if maxHits is <= 2^16
 
-    var m_store16: OwnedPointer[List[UInt16]]
-    var m_store32: OwnedPointer[List[Float]]
+    @staticmethod
+    @always_inline
+    def maxHits() -> UInt32:
+        return GPUClusteringConstants.MaxNumClusters
 
-    var m_HistStore: OwnedPointer[Hist]
+    # local coord
+    var m_xl_d: OwnedPointer[List[Float]]
+    var m_yl_d: OwnedPointer[List[Float]]
+    var m_xerr_d: OwnedPointer[List[Float]]
+    var m_yerr_d: OwnedPointer[List[Float]]
+
+    # global coord
+    var m_xg_d: OwnedPointer[List[Float]]
+    var m_yg_d: OwnedPointer[List[Float]]
+    var m_zg_d: OwnedPointer[List[Float]]
+    var m_rg_d: OwnedPointer[List[Float]]
+    var m_iphi_d: OwnedPointer[List[Int16]]
+
+    # cluster properties
+    var m_charge_d: OwnedPointer[List[Int32]]
+    var m_xsize_d: OwnedPointer[List[Int16]]
+    var m_ysize_d: OwnedPointer[List[Int16]]
+    var m_detInd_d: OwnedPointer[List[UInt16]]
+
+    # supporting objects, owned
     var m_AverageGeometryStore: OwnedPointer[AverageGeometry]
+    var m_HistStore: OwnedPointer[Hist]
+    var m_hitsLayerStart_d: OwnedPointer[List[UInt32]]
 
-    var m_view: OwnedPointer[TrackingRecHit2DSOAView]
+    # forwarded from clusters, copied in
+    var m_hitsModuleStart_d: OwnedPointer[List[UInt32]]
 
     var m_nHits: UInt32
 
-    # needed for legacy
-    var m_hitsModuleStart: UnsafePointer[UInt32]
-
-    # needed as kernel params
-    var m_hist: UnsafePointer[Hist]
-    var m_hitsLayerStart: UnsafePointer[UInt32]
-    var m_iphi: UnsafePointer[Int16]
-
     @always_inline
     def __init__(out self):
-        self.m_store16 = OwnedPointer(List[UInt16]())
-        self.m_store32 = OwnedPointer(List[Float]())
-        self.m_HistStore = OwnedPointer(Hist())
+        self.m_xl_d = OwnedPointer(List[Float]())
+        self.m_yl_d = OwnedPointer(List[Float]())
+        self.m_xerr_d = OwnedPointer(List[Float]())
+        self.m_yerr_d = OwnedPointer(List[Float]())
+
+        self.m_xg_d = OwnedPointer(List[Float]())
+        self.m_yg_d = OwnedPointer(List[Float]())
+        self.m_zg_d = OwnedPointer(List[Float]())
+        self.m_rg_d = OwnedPointer(List[Float]())
+        self.m_iphi_d = OwnedPointer(List[Int16]())
+
+        self.m_charge_d = OwnedPointer(List[Int32]())
+        self.m_xsize_d = OwnedPointer(List[Int16]())
+        self.m_ysize_d = OwnedPointer(List[Int16]())
+        self.m_detInd_d = OwnedPointer(List[UInt16]())
+
         self.m_AverageGeometryStore = OwnedPointer(AverageGeometry())
-        self.m_view = OwnedPointer(TrackingRecHit2DSOAView())
+        self.m_HistStore = OwnedPointer(Hist())
+        self.m_hitsLayerStart_d = OwnedPointer(List[UInt32]())
+
+        self.m_hitsModuleStart_d = OwnedPointer(List[UInt32]())
 
         self.m_nHits = 0
-        self.m_hitsModuleStart = UnsafePointer[UInt32]()
-        self.m_hist = self.m_HistStore.unsafe_ptr()
-
-        self.m_hitsLayerStart = UnsafePointer[UInt32]()
-        self.m_iphi = UnsafePointer[Int16]()
 
     def __init__(
         out self,
         nHits: UInt32,
-        cpeParams: UnsafePointer[ParamsOnGPU],
-        hitsModuleStart: UnsafePointer[UInt32],
+        hitsModuleStart: Span[UInt32, _],
         stream: CUDAStreamType = cudaStreamDefault,
     ):
         self.m_nHits = nHits
-        self.m_hitsModuleStart = hitsModuleStart
 
-        self.m_view = OwnedPointer(TrackingRecHit2DSOAView())
+        self.m_hitsModuleStart_d = OwnedPointer(List[UInt32]())
+        for i in range(len(hitsModuleStart)):
+            self.m_hitsModuleStart_d[].append(hitsModuleStart[i])
 
-        self.m_view[].m_nHits = self.m_nHits
         self.m_AverageGeometryStore = OwnedPointer(AverageGeometry())
-        self.m_view[].m_averageGeometry = (
-            self.m_AverageGeometryStore.unsafe_ptr()
-        )
-        self.m_view[].m_cpeParams = cpeParams
-        self.m_view[].m_hitsModuleStart = self.m_hitsModuleStart
-
-        # if empty do not bother
-        if nHits == 0:
-            # must initialize remaining fields to defaults before returning
-            self.m_store16 = OwnedPointer(List[UInt16]())
-            self.m_store32 = OwnedPointer(List[Float]())
-            self.m_HistStore = OwnedPointer(Hist())
-            self.m_hitsLayerStart = UnsafePointer[UInt32]()
-            self.m_iphi = UnsafePointer[Int16]()
-            self.m_hist = self.m_HistStore.unsafe_ptr()
-            return
-
-        self.m_store16 = OwnedPointer(
-            List[UInt16](length=Int(nHits * Self.n16), fill=0)
-        )
-        self.m_store32 = OwnedPointer(
-            List[Float](length=Int(nHits * Self.n32 + 11), fill=0)
-        )
         self.m_HistStore = OwnedPointer(Hist())
 
-        self.m_hitsLayerStart = UnsafePointer[UInt32]()
+        # C++ reserves numberOfLayers + 1 uint32 at the tail of m_store32
+        self.m_hitsLayerStart_d = OwnedPointer(
+            List[UInt32](
+                length=Int(Phase1PixelTopology.numberOfLayers) + 1, fill=0
+            )
+        )
 
-        # cannot wrap self in an @parameter function without having all fields initialized
-        self.m_hist = self.m_HistStore.unsafe_ptr()
-        self.m_iphi = UnsafePointer[Int16]()
+        var n = Int(nHits)
+        self.m_xl_d = OwnedPointer(List[Float](length=n, fill=0))
+        self.m_yl_d = OwnedPointer(List[Float](length=n, fill=0))
+        self.m_xerr_d = OwnedPointer(List[Float](length=n, fill=0))
+        self.m_yerr_d = OwnedPointer(List[Float](length=n, fill=0))
 
-        # fyi: @parameter captures by reference
-        @parameter
-        def get16(i: Int) -> UnsafePointer[UInt16]:
-            return self.m_store16[].unsafe_ptr() + i * nHits
+        self.m_xg_d = OwnedPointer(List[Float](length=n, fill=0))
+        self.m_yg_d = OwnedPointer(List[Float](length=n, fill=0))
+        self.m_zg_d = OwnedPointer(List[Float](length=n, fill=0))
+        self.m_rg_d = OwnedPointer(List[Float](length=n, fill=0))
+        self.m_iphi_d = OwnedPointer(List[Int16](length=n, fill=0))
 
-        @parameter
-        def get32(i: Int) -> UnsafePointer[Float]:
-            return self.m_store32[].unsafe_ptr() + i * nHits
-
-        # copy all the pointers
-        self.m_view[].m_hist = self.m_hist
-        self.m_view[].m_xl = get32(0)
-        self.m_view[].m_yl = get32(1)
-        self.m_view[].m_xerr = get32(2)
-        self.m_view[].m_yerr = get32(3)
-
-        self.m_view[].m_xg = get32(4)
-        self.m_view[].m_yg = get32(5)
-        self.m_view[].m_zg = get32(6)
-        self.m_view[].m_rg = get32(7)
-
-        self.m_iphi = get16(0).bitcast[Int16]()
-        self.m_view[].m_iphi = self.m_iphi
-
-        self.m_view[].m_charge = get32(8).bitcast[Int32]()
-        self.m_view[].m_xsize = get16(2).bitcast[Int16]()
-        self.m_view[].m_ysize = get16(3).bitcast[Int16]()
-        self.m_view[].m_detInd = get16(1)
-
-        self.m_hitsLayerStart = get32(Int(Self.n32)).bitcast[UInt32]()
-        self.m_view[].m_hitsLayerStart = self.m_hitsLayerStart
-
-    @always_inline
-    def __moveinit__(out self, var other: Self):
-        self.m_store16 = other.m_store16^
-        self.m_store32 = other.m_store32^
-        self.m_HistStore = other.m_HistStore^
-        self.m_AverageGeometryStore = other.m_AverageGeometryStore^
-        self.m_view = other.m_view^
-
-        self.m_nHits = other.m_nHits
-        self.m_hitsModuleStart = other.m_hitsModuleStart
-        self.m_hist = other.m_hist
-
-        self.m_hitsLayerStart = other.m_hitsLayerStart
-        self.m_iphi = other.m_iphi
-
-    @always_inline
-    def view[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        TrackingRecHit2DSOAView, mut = origin.mut, origin=origin
-    ]:
-        return self.m_view.unsafe_ptr()
+        self.m_charge_d = OwnedPointer(List[Int32](length=n, fill=0))
+        self.m_xsize_d = OwnedPointer(List[Int16](length=n, fill=0))
+        self.m_ysize_d = OwnedPointer(List[Int16](length=n, fill=0))
+        self.m_detInd_d = OwnedPointer(List[UInt16](length=n, fill=0))
 
     @always_inline
     def nHits(self) -> UInt32:
         return self.m_nHits
 
-    @always_inline
-    def hitsModuleStart(self) -> UnsafePointer[UInt32, mut=False]:
-        return self.m_hitsModuleStart
+    # ---- per-hit accessors (were TrackingRecHit2DSOAView's) ----
 
     @always_inline
-    def hitsLayerStart(mut self) -> UnsafePointer[UInt32, mut=True]:
-        return self.m_hitsLayerStart
+    def xLocal(ref self, i: Int) -> ref [self.m_xl_d[][i]] Float:
+        return self.m_xl_d[][i]
 
     @always_inline
-    def phiBinner(mut self) -> UnsafePointer[Hist, mut=True]:
-        return self.m_hist
+    def yLocal(ref self, i: Int) -> ref [self.m_yl_d[][i]] Float:
+        return self.m_yl_d[][i]
 
     @always_inline
-    def iphi(mut self) -> UnsafePointer[Int16, mut=True]:
-        return self.m_iphi
+    def xerrLocal(ref self, i: Int) -> ref [self.m_xerr_d[][i]] Float:
+        return self.m_xerr_d[][i]
+
+    @always_inline
+    def yerrLocal(ref self, i: Int) -> ref [self.m_yerr_d[][i]] Float:
+        return self.m_yerr_d[][i]
+
+    @always_inline
+    def xGlobal(ref self, i: Int) -> ref [self.m_xg_d[][i]] Float:
+        return self.m_xg_d[][i]
+
+    @always_inline
+    def yGlobal(ref self, i: Int) -> ref [self.m_yg_d[][i]] Float:
+        return self.m_yg_d[][i]
+
+    @always_inline
+    def zGlobal(ref self, i: Int) -> ref [self.m_zg_d[][i]] Float:
+        return self.m_zg_d[][i]
+
+    @always_inline
+    def rGlobal(ref self, i: Int) -> ref [self.m_rg_d[][i]] Float:
+        return self.m_rg_d[][i]
+
+    @always_inline
+    def iphi(ref self, i: Int) -> ref [self.m_iphi_d[][i]] Int16:
+        return self.m_iphi_d[][i]
+
+    @always_inline
+    def charge(ref self, i: Int) -> ref [self.m_charge_d[][i]] Int32:
+        return self.m_charge_d[][i]
+
+    @always_inline
+    def clusterSizeX(ref self, i: Int) -> ref [self.m_xsize_d[][i]] Int16:
+        return self.m_xsize_d[][i]
+
+    @always_inline
+    def clusterSizeY(ref self, i: Int) -> ref [self.m_ysize_d[][i]] Int16:
+        return self.m_ysize_d[][i]
+
+    @always_inline
+    def detectorIndex(ref self, i: Int) -> ref [self.m_detInd_d[][i]] UInt16:
+        return self.m_detInd_d[][i]
+
+    @always_inline
+    def hitsModuleStart(self, i: Int) -> UInt32:
+        return self.m_hitsModuleStart_d[][i]
+
+    # ---- supporting objects ----
+
+    @always_inline
+    def phiBinner(ref self) -> ref [self.m_HistStore[]] Hist:
+        return self.m_HistStore[]
+
+    @always_inline
+    def averageGeometry(
+        ref self,
+    ) -> ref [self.m_AverageGeometryStore[]] AverageGeometry:
+        return self.m_AverageGeometryStore[]
+
+    # ---- whole-column views ----
+
+    @always_inline
+    def hitsModuleStart(
+        self,
+    ) -> Span[UInt32, origin_of(self.m_hitsModuleStart_d[])].Immutable:
+        return Span(self.m_hitsModuleStart_d[])
+
+    @always_inline
+    def hitsLayerStart(
+        ref self,
+    ) -> Span[UInt32, origin_of(self.m_hitsLayerStart_d[])]:
+        return Span(self.m_hitsLayerStart_d[])
+
+    @always_inline
+    def iphi(ref self) -> Span[Int16, origin_of(self.m_iphi_d[])]:
+        return Span(self.m_iphi_d[])
 
     @always_inline
     @staticmethod

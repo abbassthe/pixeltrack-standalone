@@ -122,7 +122,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     Ceilable,
     Copyable,
     Defaultable,
-    ExplicitlyCopyable,
     Floorable,
     Hashable,
     MatrixLike,
@@ -1644,11 +1643,11 @@ def to_layout_tensor[
 ](
     m: Matrix[T, rows, cols], mut buf: InlineArray[Scalar[T], rows * cols]
 ) -> LayoutTensor[
-    mut=True, T, Layout.col_major(rows, cols), MutableAnyOrigin
+    mut=True, T, Layout.col_major(rows, cols), MutAnyOrigin
 ]:
     for c in range(cols):
         for r in range(rows):
             buf[c * rows + r] = m[r, c]
     return LayoutTensor[
-        mut=True, T, Layout.col_major(rows, cols), MutableAnyOrigin
+        mut=True, T, Layout.col_major(rows, cols), MutAnyOrigin
     ](buf.unsafe_ptr())

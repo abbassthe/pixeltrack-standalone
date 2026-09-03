@@ -1,3 +1,5 @@
+from std.collections import Span
+
 from MojoSerial.Geometry.Phase1PixelTopology import Phase1PixelTopology
 from MojoSerial.CUDACore.HistoContainer import HistoContainer
 from MojoSerial.CUDACore.CUDACompat import CUDACompat
@@ -8,9 +10,9 @@ from MojoSerial.CUDADataFormats.GPUClusteringConstants import (
 struct GPUClustering:
     @staticmethod
     def countModules(
-        id: UnsafePointer[UInt16],
-        moduleStart: UnsafePointer[UInt32, mut=True],
-        clusterId: UnsafePointer[Int32, mut=True],
+        id: Span[UInt16, _],
+        moduleStart: Span[mut=True, UInt32, _],
+        clusterId: Span[mut=True, Int32, _],
         numElements: Int32,
     ):
         for i in range(numElements):
@@ -22,27 +24,27 @@ struct GPUClustering:
                 j -= 1
             if j < 0 or id[j] != id[i]:
                 # boundary
-                var loc = moduleStart[]
-                if moduleStart[] < GPUClusteringConstants.MaxNumModules:
-                    moduleStart[] += 1
+                var loc = moduleStart[0]
+                if moduleStart[0] < GPUClusteringConstants.MaxNumModules:
+                    moduleStart[0] += 1
                 moduleStart[loc + 1] = i.cast[DType.uint32]()
 
     @staticmethod
     def findClus(
-        id: UnsafePointer[UInt16],  # module id of each pixel
-        x: UnsafePointer[UInt16],  # local coordinates of each pixel
-        y: UnsafePointer[UInt16],  #
-        moduleStart: UnsafePointer[
-            UInt32
+        id: Span[UInt16, _],  # module id of each pixel
+        x: Span[UInt16, _],  # local coordinates of each pixel
+        y: Span[UInt16, _],  #
+        moduleStart: Span[
+            UInt32, _
         ],  # index of the first pixel of each module
-        nClustersInModule: UnsafePointer[
-            UInt32, mut=True
+        nClustersInModule: Span[
+            mut=True, UInt32, _
         ],  # output: number of clusters found in each module
-        moduleId: UnsafePointer[
-            UInt32, mut=True
+        moduleId: Span[
+            mut=True, UInt32, _
         ],  # output: module id of each module
-        clusterId: UnsafePointer[
-            Int32, mut=True
+        clusterId: Span[
+            mut=True, Int32, _
         ],  # output: cluster id of each pixel
         numElements: Int32,
     ):
@@ -63,13 +65,13 @@ struct GPUClustering:
             msize = numElements
 
             # skip threads not associated to an existing pixel
-            for i in range(first, numElements):
+            for i in range(Int(first), Int(numElements)):
                 if id[i] == GPUClusteringConstants.InvId:  # skip invalid pixels
                     continue
                 if (
                     id[i] != thisModuleId
                 ):  # find the first pixel in a different module
-                    msize = min(msize, i)
+                    msize = min(msize, Int32(i))
                     break
 
             # init hist  (ymax=416 < 512 : 9bits)
@@ -116,17 +118,17 @@ struct GPUClustering:
                 <= maxPixInModule.cast[DType.int32]()
             )
 
-            for i in range(first, msize):
+            for i in range(Int(first), Int(msize)):
                 if id[i] == GPUClusteringConstants.InvId:  # skip invalid pixels
                     continue
                 hist.count(y[i])
 
             hist.finalize()
 
-            for i in range(first, msize):
+            for i in range(Int(first), Int(msize)):
                 if id[i] == GPUClusteringConstants.InvId:  # skip invalid pixels
                     continue
-                hist.fill(y[i], i - Int(firstPixel))
+                hist.fill(y[i], UInt16(i - Int(firstPixel)))
 
             var maxiter = hist.size()
             # allocate space for duplicate pixels: a pixel can appear more than once with different charge in the same event
@@ -212,7 +214,7 @@ struct GPUClustering:
 
             # find the number of different clusters, identified by a pixels with clus[i] == i;
             # mark these pixels with a negative id.
-            for i in range(first, msize):
+            for i in range(Int(first), Int(msize)):
                 if id[i] == GPUClusteringConstants.InvId:  # skip invalid pixels
                     continue
                 if Int(clusterId[i]) == i:
@@ -222,7 +224,7 @@ struct GPUClustering:
                     clusterId[i] = -((old + 1).cast[DType.int32]())
 
             # propagate the negative id to all the pixels in the cluster.
-            for i in range(first, msize):
+            for i in range(Int(first), Int(msize)):
                 if id[i] == GPUClusteringConstants.InvId:  # skip invalid pixels
                     continue
                 if clusterId[i] >= 0:
@@ -230,7 +232,7 @@ struct GPUClustering:
                     clusterId[i] = clusterId[clusterId[i]]
 
             # adjust the cluster id to be a positive value starting from 0
-            for i in range(first, msize):
+            for i in range(Int(first), Int(msize)):
                 if id[i] == GPUClusteringConstants.InvId:  # skip invalid pixels
                     clusterId[i] = -9999
                     continue
@@ -241,19 +243,19 @@ struct GPUClustering:
 
     @staticmethod
     def clusterChargeCut(
-        id: UnsafePointer[
-            UInt16, mut=True
+        id: Span[
+            mut=True, UInt16, _
         ],  # module id of each pixel (modified if bad cluster)
-        adc: UnsafePointer[UInt16],  # charge of each pixel
-        moduleStart: UnsafePointer[
-            UInt32
+        adc: Span[UInt16, _],  # charge of each pixel
+        moduleStart: Span[
+            UInt32, _
         ],  # index of the first pixel of each module
-        nClustersInModule: UnsafePointer[
-            UInt32, mut=True
+        nClustersInModule: Span[
+            mut=True, UInt32, _
         ],  # modified: number of clusters found in each module
-        moduleId: UnsafePointer[UInt32],  # module id of each module
-        clusterId: UnsafePointer[
-            Int32, mut=True
+        moduleId: Span[UInt32, _],  # module id of each module
+        clusterId: Span[
+            mut=True, Int32, _
         ],  # modified: cluster id of each pixel
         numElements: UInt32,
     ):
@@ -308,7 +310,7 @@ struct GPUClustering:
                 ]()
             ):
                 # remove excess
-                for i in range(first, numElements):
+                for i in range(Int(first), Int(numElements)):
                     if id[i] == GPUClusteringConstants.InvId:
                         continue  # not valid
                     if id[i] != thisModuleId:
@@ -334,14 +336,14 @@ struct GPUClustering:
             for i in range(nclus):
                 charge[i] = 0
 
-            for i in range(first, numElements):
+            for i in range(Int(first), Int(numElements)):
                 if id[i] == GPUClusteringConstants.InvId:
                     continue  # not valid
                 if id[i] != thisModuleId:
                     break  # end of module
                 charge[clusterId[i]] += adc[i].cast[DType.int32]()
 
-            var chargeCut = 2000 if thisModuleId < 96 else 4000
+            var chargeCut: Int32 = 2000 if thisModuleId < 96 else 4000
             for i in range(nclus):
                 newclusId[i] = 1 if charge[i] > chargeCut else 0
                 ok[i] = 1 if charge[i] > chargeCut else 0
@@ -365,7 +367,7 @@ struct GPUClustering:
                     newclusId[i] = GPUClusteringConstants.InvId + 1
 
             # reassign id
-            for i in range(first, numElements):
+            for i in range(Int(first), Int(numElements)):
                 if id[i] == GPUClusteringConstants.InvId:
                     continue  # not valid
                 if id[i] != thisModuleId:

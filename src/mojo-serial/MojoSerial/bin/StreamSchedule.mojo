@@ -87,13 +87,6 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
             print("Error occurred in bin/StreamSchedule.mojo,", e)
             return Self()
 
-    @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._source = other._source
-        self._eventSetup = other._eventSetup
-        self._path = other._path^
-        self._streamId = other._streamId
-
     def run(mut self, ref reg: ProductRegistry):
         var event: Event
         var ptr = self._source[].produce(self._streamId, reg)

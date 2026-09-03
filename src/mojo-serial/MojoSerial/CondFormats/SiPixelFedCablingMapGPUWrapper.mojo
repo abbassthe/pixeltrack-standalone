@@ -1,6 +1,8 @@
 from MojoSerial.CondFormats.SiPixelFedCablingMapGPU import (
     SiPixelFedCablingMapGPU,
 )
+from std.collections import Span
+
 from MojoSerial.MojoBridge.DTypes import UChar, Typeable
 
 
@@ -26,20 +28,16 @@ struct SiPixelFedCablingMapGPUWrapper(Defaultable, Movable, Typeable):
         self._hasQuality = True
         self.cablingMapHost = cablingMap^
 
-    @always_inline
-    def __moveinit__(out self, var other: Self):
-        self.modToUnpDefault = other.modToUnpDefault^
-        self._hasQuality = other._hasQuality
-        self.cablingMapHost = other.cablingMapHost^
-
     def hasQuality(self) -> Bool:
         return self._hasQuality
 
-    def getCPUProduct(self) -> UnsafePointer[SiPixelFedCablingMapGPU, mut=False]:
-        return UnsafePointer(to=self.cablingMapHost)
+    def getCPUProduct(self) -> ref [self.cablingMapHost] SiPixelFedCablingMapGPU:
+        return self.cablingMapHost
 
-    def getModToUnpAll(self) -> UnsafePointer[UChar, mut=False]:
-        return self.modToUnpDefault.unsafe_ptr()
+    def getModToUnpAll(
+        self,
+    ) -> Span[UChar, origin_of(self.modToUnpDefault)].Immutable:
+        return Span(self.modToUnpDefault)
 
     @always_inline
     @staticmethod

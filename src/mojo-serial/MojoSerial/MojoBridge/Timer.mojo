@@ -55,9 +55,9 @@ struct TimerManager(Defaultable, Movable, Sized):
         self._cur = OwnedPointer[List[String]](List[String]())
 
     @always_inline
-    def __moveinit__(out self, var other: Self):
-        self._storage = other._storage^
-        self._cur = other._cur^
+    def __init__(out self, *, deinit move: Self):
+        self._storage = move._storage^
+        self._cur = move._cur^
 
     @always_inline
     def __enter__(ref self):
