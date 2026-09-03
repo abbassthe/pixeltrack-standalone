@@ -59,27 +59,27 @@ def fill_hits_and_hitscov[N: Int](
     mut hits_ge: Matrix[DType.float32, 6, N],
 ):
     comptime if N == 5:
-        var xs = InlineArray[Float64, 5](
+        var xs: InlineArray[Float64, 5] = [
             2.934787,
             6.314229,
             8.936963,
             10.360559,
             12.856387,
-        )
-        var ys = InlineArray[Float64, 5](
+        ]
+        var ys: InlineArray[Float64, 5] = [
             0.773211,
             1.816356,
             2.765734,
             3.330824,
             4.422212,
-        )
-        var zs = InlineArray[Float64, 5](
+        ]
+        var zs: InlineArray[Float64, 5] = [
             -10.980247,
             -23.162731,
             -32.759060,
             -38.061260,
             -47.518867,
-        )
+        ]
         for i in range(5):
             hits[0, i] = xs[i]
             hits[1, i] = ys[i]
@@ -118,17 +118,17 @@ def fill_hits_and_hitscov[N: Int](
         return
 
     comptime if N > 3:
-        var xs = InlineArray[Float64, 4](1.98645, 4.72598, 7.65632, 11.3151)
-        var ys = InlineArray[Float64, 4](2.18002, 4.88864, 7.75845, 11.3134)
-        var zs = InlineArray[Float64, 4](2.46338, 6.99838, 11.808, 17.793)
+        var xs: InlineArray[Float64, 4] = [1.98645, 4.72598, 7.65632, 11.3151]
+        var ys: InlineArray[Float64, 4] = [2.18002, 4.88864, 7.75845, 11.3134]
+        var zs: InlineArray[Float64, 4] = [2.46338, 6.99838, 11.808, 17.793]
         for i in range(4):
             hits[0, i] = xs[i]
             hits[1, i] = ys[i]
             hits[2, i] = zs[i]
     else:
-        var xs = InlineArray[Float64, 3](1.98645, 4.72598, 7.65632)
-        var ys = InlineArray[Float64, 3](2.18002, 4.88864, 7.75845)
-        var zs = InlineArray[Float64, 3](2.46338, 6.99838, 11.808)
+        var xs: InlineArray[Float64, 3] = [1.98645, 4.72598, 7.65632]
+        var ys: InlineArray[Float64, 3] = [2.18002, 4.88864, 7.75845]
+        var zs: InlineArray[Float64, 3] = [2.46338, 6.99838, 11.808]
         for i in range(3):
             hits[0, i] = xs[i]
             hits[1, i] = ys[i]

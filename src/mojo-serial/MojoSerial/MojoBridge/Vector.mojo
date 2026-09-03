@@ -10,7 +10,6 @@ from std.utils.numerics import min_or_neg_inf as _min_or_neg_inf
 from std.hashlib.hasher import Hasher
 
 from MojoSerial.MojoBridge.DTypes import Typeable
-from std.builtin import constrained
 
 
 @always_inline
@@ -281,7 +280,7 @@ struct Vector[T: DType, size: Int](
     @staticmethod
     def from_bits[U: DType, //](value: SIMD[U, size]) -> Vector[U, size]:
         """Initializes a vector from the bits of an integral SIMD vector."""
-        constrained[U.is_integral(), "DType must be integral"]()
+        comptime assert U.is_integral(), "DType must be integral"
         return Vector[U, size](SIMD[U, size].from_bits(value))
 
     # Operators
@@ -303,22 +302,22 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     def __add__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data + rhs._data
 
     @always_inline
     def __sub__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data - rhs._data
 
     @always_inline
     def __mul__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data * rhs._data
 
     @always_inline
     def __matmul__(self, rhs: Self) -> Self._D:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res: Self._D = 0
         for i in range(size):
             res += self._data[i] * rhs._data[i]
@@ -326,27 +325,27 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     def __truediv__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data / rhs._data
 
     @always_inline
     def __floordiv__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data // rhs._data
 
     @always_inline
     def __mod__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data % rhs._data
 
     @always_inline
     def __pow__(self, exp: Int) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data**exp
 
     @always_inline
     def __pow__(self, exp: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data**exp._data
 
     @always_inline
@@ -375,150 +374,142 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     def __pos__(self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self
 
     @always_inline
     def __neg__(self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return -self._data
 
     @always_inline
     def __and__(self, rhs: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         return self._data & rhs._data
 
     @always_inline
     def __xor__(self, rhs: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         return self._data ^ rhs._data
 
     @always_inline
     def __or__(self, rhs: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         return self._data | rhs._data
 
     @always_inline
     def __lshift__(self, rhs: Self) -> Self:
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        comptime assert T.is_integral(), "DType must be an integral type"
         return self._data << rhs._data
 
     @always_inline
     def __rshift__(self, rhs: Self) -> Self:
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        comptime assert T.is_integral(), "DType must be an integral type"
         return self._data >> rhs._data
 
     @always_inline
     def __invert__(self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         return ~self._data
 
     # In place operations
 
     @always_inline("nodebug")
     def __iadd__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self + rhs
 
     @always_inline("nodebug")
     def __isub__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self - rhs
 
     @always_inline("nodebug")
     def __imul__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self * rhs
 
     @always_inline("nodebug")
     def __itruediv__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self / rhs
 
     @always_inline("nodebug")
     def __ifloordiv__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self // rhs
 
     @always_inline("nodebug")
     def __imod__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self.__mod__(rhs)
 
     @always_inline("nodebug")
     def __ipow__(mut self, rhs: Int):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self.__pow__(rhs)
 
     @always_inline("nodebug")
     def __iand__(mut self, rhs: Self):
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         self = self & rhs
 
     @always_inline("nodebug")
     def __ixor__(mut self, rhs: Self):
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         self = self ^ rhs
 
     @always_inline("nodebug")
     def __ior__(mut self, rhs: Self):
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         self = self | rhs
 
     @always_inline("nodebug")
     def __ilshift__(mut self, rhs: Self):
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        comptime assert T.is_integral(), "DType must be an integral type"
         self = self << rhs
 
     @always_inline("nodebug")
     def __irshift__(mut self, rhs: Self):
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        comptime assert T.is_integral(), "DType must be an integral type"
         self = self >> rhs
 
     @always_inline("nodebug")
     def __iinvert__(mut self):
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         self = ~self
 
     # Reversed operations
 
     @always_inline
     def __radd__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value + self
 
     @always_inline
     def __rsub__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value - self
 
     @always_inline
     def __rmul__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value * self
 
     @always_inline
@@ -527,56 +518,53 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     def __rfloordiv__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return rhs // self
 
     @always_inline
     def __rtruediv__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value / self
 
     @always_inline
     def __rmod__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value % self
 
     @always_inline
     def __rpow__(self, base: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return base**self
 
     @always_inline
     def __rand__(self, value: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType be an integral or bool type"
         return value & self
 
     @always_inline
     def __rxor__(self, value: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType be an integral or bool type"
         return value ^ self
 
     @always_inline
     def __ror__(self, value: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType be an integral or bool type"
         return value | self
 
     @always_inline
     def __rlshift__(self, value: Self) -> Self:
-        constrained[T.is_integral(), "DType be an integral type"]()
+        comptime assert T.is_integral(), "DType be an integral type"
         return value << self
 
     @always_inline
     def __rrshift__(self, value: Self) -> Self:
-        constrained[T.is_integral(), "DType be an integral type"]()
+        comptime assert T.is_integral(), "DType be an integral type"
         return value >> self
 
     # Trait conformance
@@ -651,32 +639,29 @@ struct Vector[T: DType, size: Int](
             return self._refine[target]()
 
         comptime if T in (DType.float8_e4m3fn, DType.float8_e5m2):
-            constrained[
+            comptime assert (
                 target
                 in (
                     DType.bfloat16,
                     DType.float16,
                     DType.float32,
                     DType.float64,
-                ),
+                )
+            ), String(
                 (
-                    String(
-                        (
-                            "Only FP8->F64, FP8->F32, FP8->F16, and FP8->BF16"
-                            " castings are implemented. "
-                        ),
-                        T,
-                        "->",
-                        target,
-                    )
+                    "Only FP8->F64, FP8->F32, FP8->F16, and FP8->BF16"
+                    " castings are implemented. "
                 ),
-            ]()
+                T,
+                "->",
+                target,
+            )
 
         return self._data.cast[target]()
 
     @always_inline
     def is_power_of_two(self) -> Self._Mask:
-        constrained[T.is_integral(), "DType must be integral"]()
+        comptime assert T.is_integral(), "DType must be integral"
 
         comptime if T.is_unsigned():
             return Self._Mask(pop_count(self._data) == 1)
@@ -698,16 +683,15 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     def fma(self, multiplier: Self, accumulator: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self._data.fma(multiplier._data, accumulator._data)
 
     def slice[
         output_width: Int, /, *, offset: Int = 0
     ](self) -> Vector[T, output_width]:
-        constrained[
-            0 <= offset < output_width + offset <= size,
-            "Output width must be a positive integer less than size",
-        ]()
+        comptime assert (
+            0 <= offset < output_width + offset <= size
+        ), "Output width must be a positive integer less than size"
 
         comptime if output_width == 1:
             return self[offset]
@@ -716,30 +700,28 @@ struct Vector[T: DType, size: Int](
 
     def insert[*, offset: Int = 0](self, value: Vector[T, _]) -> Self:
         comptime input_width = value.size
-        constrained[
-            0 <= offset < input_width + offset <= size,
-            "Insertion position must not exceed the size of the vector",
-        ]()
+        comptime assert (
+            0 <= offset < input_width + offset <= size
+        ), "Insertion position must not exceed the size of the vector"
 
         comptime if size == 1:
-            constrained[
-                input_width == 1, "The input width must be 1 if the size is 1"
-            ]()
+            comptime assert (
+                input_width == 1
+            ), "The input width must be 1 if the size is 1"
             return value[0]
 
         return self._data.insert[offset=offset](value._data)
 
     def iinsert[*, offset: Int = 0](mut self, value: Vector[T, _]):
         comptime input_width = value.size
-        constrained[
-            0 <= offset < input_width + offset <= size,
-            "Insertion position must not exceed the size of the vector",
-        ]()
+        comptime assert (
+            0 <= offset < input_width + offset <= size
+        ), "Insertion position must not exceed the size of the vector"
 
         comptime if size == 1:
-            constrained[
-                input_width == 1, "The input width must be 1 if the size is 1"
-            ]()
+            comptime assert (
+                input_width == 1
+            ), "The input width must be 1 if the size is 1"
             self._data[0] = value[0]
 
         self._data = self._data.insert[offset=offset](value._data)
@@ -782,10 +764,9 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     def split(self) -> Tuple[Vector[T, size // 2], Vector[T, size // 2]]:
-        constrained[
-            size % 2 == 0 and size > 1,
-            "Vector size must be divisible by 2 for splitting",
-        ]()
+        comptime assert (
+            size % 2 == 0 and size > 1
+        ), "Vector size must be divisible by 2 for splitting"
         comptime half_size = size // 2
         var se = self.slice[half_size]()
         var lf = self.slice[half_size, offset=half_size]()
@@ -793,10 +774,9 @@ struct Vector[T: DType, size: Int](
 
     @always_inline
     def deinterleave(self) -> Tuple[Vector[T, size // 2], Vector[T, size // 2]]:
-        constrained[
-            size % 2 == 0 and size > 1,
-            "Vector size must be divisible by 2 for deinterleaving",
-        ]()
+        comptime assert (
+            size % 2 == 0 and size > 1
+        ), "Vector size must be divisible by 2 for deinterleaving"
 
         comptime if size == 2:
             return self[0], self[1]
@@ -875,12 +855,11 @@ struct Vector[T: DType, size: Int](
         return A
 
     def reduce_bit_count(self) -> Int:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "Expected either integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "Expected either integral or bool type"
 
-        comptime if T is DType.bool:
+        comptime if T == DType.bool:
             return Int(self.cast[DType.uint8]().reduce_add())
         else:
             return Int(Vector[T, size](pop_count(self._data)).reduce_add())

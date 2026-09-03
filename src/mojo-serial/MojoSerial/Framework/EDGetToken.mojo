@@ -1,5 +1,4 @@
 from MojoSerial.MojoBridge.DTypes import Typeable
-from std.builtin import constrained
 
 
 struct EDGetTokenT[T: Typeable](Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
@@ -15,10 +14,9 @@ struct EDGetTokenT[T: Typeable](Copyable, Defaultable, Movable, Typeable, Trivia
 
     @always_inline
     def __init__[O: Typeable](out self, iValue: UInt):
-        constrained[
-            O.dtype() == "ProductRegistry",
-            "Only the product registry can hand tokens",
-        ]()
+        comptime assert (
+            O.dtype() == "ProductRegistry"
+        ), "Only the product registry can hand tokens"
         self.m_value = iValue
 
     @always_inline
@@ -49,10 +47,9 @@ struct EDGetToken(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassa
 
     @always_inline
     def __init__[O: Typeable](out self, iValue: UInt):
-        constrained[
-            O.dtype() == "ProductRegistry",
-            "Only the product registry can hand tokens",
-        ]()
+        comptime assert (
+            O.dtype() == "ProductRegistry"
+        ), "Only the product registry can hand tokens"
         self.m_value = iValue
 
     @always_inline

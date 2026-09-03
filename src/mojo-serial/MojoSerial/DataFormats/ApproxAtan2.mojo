@@ -2,7 +2,6 @@ from std.memory import bitcast
 from std.math import pi
 
 from MojoSerial.MojoBridge.DTypes import Short, Float, Double, hex_to_float
-from std.builtin import constrained
 struct ApproxAtan2:
     """
     Approximate atan2 evaluations. Polynomials were obtained using Sollya scripts.
@@ -10,19 +9,18 @@ struct ApproxAtan2:
 
     @staticmethod
     def approx_atan2f_P[DEGREE: Int](x: Float) -> Float:
-        constrained[
+        comptime assert (
             DEGREE == 3
             or DEGREE == 5
             or DEGREE == 7
             or DEGREE == 9
             or DEGREE == 11
             or DEGREE == 13
-            or DEGREE == 15,
-            (
-                "degree of the polynomial to approximate atan(x) must be one of"
-                " {3, 5, 7, 9, 11, 13, 15}."
-            ),
-        ]()
+            or DEGREE == 15
+        ), (
+            "degree of the polynomial to approximate atan(x) must be one of"
+            " {3, 5, 7, 9, 11, 13, 15}."
+        )
         var z = x * x
 
         comptime if DEGREE == 3:
@@ -177,19 +175,18 @@ struct ApproxAtan2:
 
     @staticmethod
     def approx_atan2i_P[DEGREE: Int](x: Float) -> Float:
-        constrained[
+        comptime assert (
             DEGREE == 3
             or DEGREE == 5
             or DEGREE == 7
             or DEGREE == 9
             or DEGREE == 11
             or DEGREE == 13
-            or DEGREE == 15,
-            (
-                "degree of the polynomial to approximate atan(x) must be one of"
-                " {3, 5, 7, 9, 11, 13, 15}."
-            ),
-        ]()
+            or DEGREE == 15
+        ), (
+            "degree of the polynomial to approximate atan(x) must be one of"
+            " {3, 5, 7, 9, 11, 13, 15}."
+        )
         var z = x * x
 
         comptime if DEGREE == 3:
@@ -295,13 +292,12 @@ struct ApproxAtan2:
 
     @staticmethod
     def approx_atan2s_P[DEGREE: Int](x: Float) -> Float:
-        constrained[
-            DEGREE == 3 or DEGREE == 5 or DEGREE == 7 or DEGREE == 9,
-            (
-                "degree of the polynomial to approximate atan(x) must be one of"
-                " {3, 5, 7, 9}."
-            ),
-        ]()
+        comptime assert (
+            DEGREE == 3 or DEGREE == 5 or DEGREE == 7 or DEGREE == 9
+        ), (
+            "degree of the polynomial to approximate atan(x) must be one of"
+            " {3, 5, 7, 9}."
+        )
         var z = x * x
 
         comptime if DEGREE == 3:

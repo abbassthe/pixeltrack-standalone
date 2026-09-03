@@ -10,7 +10,6 @@ from layout import Layout, LayoutTensor
 
 from MojoSerial.MojoBridge.DTypes import Double, Typeable
 from MojoSerial.MojoBridge.Vector import Vector
-from std.builtin import constrained
 
 
 @fieldwise_init
@@ -403,7 +402,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __add__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
 
         comptime for i in range(rows):
@@ -412,7 +411,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __sub__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
 
         comptime for i in range(rows):
@@ -426,7 +425,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __mul__(self, scalar: Self._D) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
         # Splat explicitly: relying on implicit Scalar->Vector conversion in
         # `res._data[i] * scalar` silently only fills lane 0 in this Mojo build.
@@ -454,7 +453,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __truediv__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
 
         comptime for i in range(rows):
@@ -463,7 +462,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __truediv__(self, scalar: Self._D) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
         var splatted = Self._R(scalar)
 
@@ -473,7 +472,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __floordiv__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
 
         comptime for i in range(rows):
@@ -482,7 +481,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __mod__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
 
         comptime for i in range(rows):
@@ -493,9 +492,9 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     def __pow__(
         self: Matrix[T, rows, colns], exp: Int
     ) -> Matrix[T, rows, colns]:
-        constrained[
-            rows == colns, "Can only calculate power of a square matrix"
-        ]()
+        comptime assert (
+            rows == colns
+        ), "Can only calculate power of a square matrix"
         comptime sq = Matrix[T, rows, rows]
 
         if exp < 0:
@@ -559,12 +558,12 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __pos__(self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return self
 
     @always_inline
     def __neg__(self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
 
         comptime for i in range(rows):
@@ -573,10 +572,9 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __and__(self, rhs: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         var res = self
 
         comptime for i in range(rows):
@@ -585,10 +583,9 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __xor__(self, rhs: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         var res = self
 
         comptime for i in range(rows):
@@ -597,10 +594,9 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __or__(self, rhs: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         var res = self
 
         comptime for i in range(rows):
@@ -609,7 +605,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __lshift__(self, rhs: Self) -> Self:
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        comptime assert T.is_integral(), "DType must be an integral type"
         var res = self
 
         comptime for i in range(rows):
@@ -618,7 +614,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __rshift__(self, rhs: Self) -> Self:
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        comptime assert T.is_integral(), "DType must be an integral type"
         var res = self
 
         comptime for i in range(rows):
@@ -629,7 +625,9 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     def __invert__[
         W: DType, *, protect: Bool = False
     ](self: Matrix[T, rows, colns]) -> Matrix[W, rows, colns]:
-        constrained[rows == colns, "Can only find inverse of a square matrix"]()
+        comptime assert (
+            rows == colns
+        ), "Can only find inverse of a square matrix"
         debug_assert(
             abs(self.det[DType.float64]()) > 1e-9, "Matrix is not invertible"
         )
@@ -690,155 +688,150 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline("nodebug")
     def __iadd__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self + rhs
 
     @always_inline("nodebug")
     def __isub__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self - rhs
 
     @always_inline("nodebug")
     def __imul__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
-        constrained[rows == colns, "In-place matrix multiply requires a square matrix"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
+        comptime assert (
+            rows == colns
+        ), "In-place matrix multiply requires a square matrix"
         var result = rebind[Matrix[T, colns, colns]](self) @ rebind[Matrix[T, colns, colns]](rhs)
         self = rebind[Self](result)
 
     @always_inline("nodebug")
     def __imul__(mut self, scalar: Self._D):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self * scalar
 
     @always_inline("nodebug")
     def __itruediv__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self / rhs
 
     @always_inline("nodebug")
     def __itruediv__(mut self, scalar: Self._D):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self / scalar
 
     @always_inline("nodebug")
     def __ifloordiv__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self // rhs
 
     @always_inline("nodebug")
     def __imod__(mut self, rhs: Self):
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         self = self.__mod__(rhs)
 
     @always_inline("nodebug")
     def __ipow__(mut self: Matrix[T, rows, colns], rhs: Int):
-        constrained[T.is_numeric(), "DType must be numeric"]()
-        constrained[
-            rows == colns, "Can only calculate power of a square matrix"
-        ]()
+        comptime assert T.is_numeric(), "DType must be numeric"
+        comptime assert (
+            rows == colns
+        ), "Can only calculate power of a square matrix"
         self = self.__pow__(rhs)
 
     @always_inline("nodebug")
     def __iand__(mut self, rhs: Self):
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         self = self & rhs
 
     @always_inline("nodebug")
     def __ixor__(mut self, rhs: Self):
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         self = self ^ rhs
 
     @always_inline("nodebug")
     def __ior__(mut self, rhs: Self):
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         self = self | rhs
 
     @always_inline("nodebug")
     def __ilshift__(mut self, rhs: Self):
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        comptime assert T.is_integral(), "DType must be an integral type"
         self = self << rhs
 
     @always_inline("nodebug")
     def __irshift__(mut self, rhs: Self):
-        constrained[T.is_integral(), "DType must be an integral type"]()
+        comptime assert T.is_integral(), "DType must be an integral type"
         self = self >> rhs
 
     @always_inline("nodebug")
     def __iinvert__(mut self):
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType must be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType must be an integral or bool type"
         self = ~self
 
     # Reversed operations
 
     @always_inline
     def __radd__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value + self
 
     @always_inline
     def __rsub__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value - self
 
     @always_inline
     def __rfloordiv__(self, rhs: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return rhs // self
 
     @always_inline
     def __rtruediv__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value / self
 
     @always_inline
     def __rmod__(self, value: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         return value % self
 
     @always_inline
     def __rand__(self, value: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType be an integral or bool type"
         return value & self
 
     @always_inline
     def __rxor__(self, value: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType be an integral or bool type"
         return value ^ self
 
     @always_inline
     def __ror__(self, value: Self) -> Self:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "DType be an integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "DType be an integral or bool type"
         return value | self
 
     @always_inline
     def __rlshift__(self, value: Self) -> Self:
-        constrained[T.is_integral(), "DType be an integral type"]()
+        comptime assert T.is_integral(), "DType be an integral type"
         return value << self
 
     @always_inline
     def __rrshift__(self, value: Self) -> Self:
-        constrained[T.is_integral(), "DType be an integral type"]()
+        comptime assert T.is_integral(), "DType be an integral type"
         return value >> self
 
     # Trait conformance
@@ -942,26 +935,23 @@ struct Matrix[T: DType, rows: Int, colns: Int](
             return self._refine[target]()
 
         comptime if T in (DType.float8_e4m3fn, DType.float8_e5m2):
-            constrained[
+            comptime assert (
                 target
                 in (
                     DType.bfloat16,
                     DType.float16,
                     DType.float32,
                     DType.float64,
-                ),
+                )
+            ), String(
                 (
-                    String(
-                        (
-                            "Only FP8->F64, FP8->F32, FP8->F16, and FP8->BF16"
-                            " castings are implemented. "
-                        ),
-                        T,
-                        "->",
-                        target,
-                    )
+                    "Only FP8->F64, FP8->F32, FP8->F16, and FP8->BF16"
+                    " castings are implemented. "
                 ),
-            ]()
+                T,
+                "->",
+                target,
+            )
 
         # low level manip for efficiency
         var res = InlineArray[Vector[target, colns], rows](uninitialized=True)
@@ -972,7 +962,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def is_power_of_two(self) -> Self._Mask:
-        constrained[T.is_integral(), "DType must be integral"]()
+        comptime assert T.is_integral(), "DType must be integral"
         if T.is_unsigned():
             return self.pop_count() == 1
         else:
@@ -1056,7 +1046,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     #this is not flattening it is just taking first col
     @always_inline
     def head[n: Int](self) -> Matrix[T, n, 1]:
-        constrained[colns == 1, "head() requires a column vector"]()
+        comptime assert colns == 1, "head() requires a column vector"
         var res = Matrix[T, n, 1]()
         for i in range(n):
             res[i, 0] = self[i, 0]
@@ -1086,7 +1076,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     def _row_by_coln(
         self, other: Matrix[T, colns, _], row: Int, coln: Int
     ) -> Self._D:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var sum: Self._D = 0
 
         comptime for i in range(colns):
@@ -1106,7 +1096,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     @staticmethod
     @no_inline
     def identity() -> Self:
-        constrained[rows == colns, "Identity can only be a square matrix"]()
+        comptime assert rows == colns, "Identity can only be a square matrix"
         var res = Self()
         for i in range(rows):
             res[i, i] = 1
@@ -1116,21 +1106,25 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     def inverse[
         W: DType, *, protect: Bool = False
     ](self: Matrix[T, rows, colns]) -> Matrix[W, rows, colns]:
-        constrained[rows == colns, "Can only find inverse of a square matrix"]()
+        comptime assert (
+            rows == colns
+        ), "Can only find inverse of a square matrix"
         return self.__invert__[W, protect=protect]()
 
     @always_inline
     def inverse(self) -> Self:
-        constrained[rows == colns, "Can only find inverse of a square matrix"]()
+        comptime assert (
+            rows == colns
+        ), "Can only find inverse of a square matrix"
         return ~self
 
     @no_inline
     def det[
         W: DType, *, protect: Bool = False
     ](self: Matrix[T, rows, colns]) -> Scalar[W]:
-        constrained[
-            rows == colns, "Can only calculate determinant for a square matrix"
-        ]()
+        comptime assert (
+            rows == colns
+        ), "Can only calculate determinant for a square matrix"
         comptime n = rows
 
         var mat = self.cast[DType.float64]()
@@ -1187,7 +1181,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def fma(self, multiplier: Self, accumulator: Self) -> Self:
-        constrained[T.is_numeric(), "DType must be numeric"]()
+        comptime assert T.is_numeric(), "DType must be numeric"
         var res = self
         for i in range(rows):
             res._data[i] = res._data[i].fma(
@@ -1203,14 +1197,12 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         row_offset: Int = 0,
         coln_offset: Int = 0,
     ](self) -> Matrix[T, output_rows, output_colns]:
-        constrained[
-            0 <= row_offset < output_rows + row_offset <= rows,
-            "Output rows must be a positive integer less than rows",
-        ]()
-        constrained[
-            0 <= coln_offset < output_colns + coln_offset <= rows,
-            "Output colns must be a positive integer less than colns",
-        ]()
+        comptime assert (
+            0 <= row_offset < output_rows + row_offset <= rows
+        ), "Output rows must be a positive integer less than rows"
+        comptime assert (
+            0 <= coln_offset < output_colns + coln_offset <= rows
+        ), "Output colns must be a positive integer less than colns"
 
         comptime if output_rows == 1 and output_colns == 1:
             return self[row_offset, coln_offset]
@@ -1224,20 +1216,17 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     ](self, mat: Matrix[T, *_]) -> Self:
         comptime input_rows = mat.rows
         comptime input_colns = mat.colns
-        constrained[
-            0 <= row_offset < input_rows + row_offset <= rows,
-            "Insertion position must not exceed the rows of the matrix",
-        ]()
-        constrained[
-            0 <= coln_offset < input_colns + coln_offset <= rows,
-            "Insertion position must not exceed the colns of the matrix",
-        ]()
+        comptime assert (
+            0 <= row_offset < input_rows + row_offset <= rows
+        ), "Insertion position must not exceed the rows of the matrix"
+        comptime assert (
+            0 <= coln_offset < input_colns + coln_offset <= rows
+        ), "Insertion position must not exceed the colns of the matrix"
 
         comptime if rows == 1 and colns == 1:
-            constrained[
-                input_rows == 1 and input_colns == 1,
-                "The input width must be 1 if the size of the matrix is 1",
-            ]()
+            comptime assert (
+                input_rows == 1 and input_colns == 1
+            ), "The input width must be 1 if the size of the matrix is 1"
             return mat[0]
 
         var res = self
@@ -1251,20 +1240,17 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     ](mut self, mat: Matrix[T, *_]):
         comptime input_rows = mat.rows
         comptime input_colns = mat.colns
-        constrained[
-            0 <= row_offset < input_rows + row_offset <= rows,
-            "Insertion position must not exceed the rows of the matrix",
-        ]()
-        constrained[
-            0 <= coln_offset < input_colns + coln_offset <= rows,
-            "Insertion position must not exceed the colns of the matrix",
-        ]()
+        comptime assert (
+            0 <= row_offset < input_rows + row_offset <= rows
+        ), "Insertion position must not exceed the rows of the matrix"
+        comptime assert (
+            0 <= coln_offset < input_colns + coln_offset <= rows
+        ), "Insertion position must not exceed the colns of the matrix"
 
         comptime if rows == 1 and colns == 1:
-            constrained[
-                input_rows == 1 and input_colns == 1,
-                "The input width must be 1 if the size of the matrix is 1",
-            ]()
+            comptime assert (
+                input_rows == 1 and input_colns == 1
+            ), "The input width must be 1 if the size of the matrix is 1"
             self[0] = mat[0]
 
         comptime for i in range(row_offset, rows):
@@ -1298,10 +1284,9 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     ](self) -> InlineArray[
         Matrix[T, rows // factor, colns // factor], factor * factor
     ]:
-        constrained[
-            rows == colns and rows % factor == 0,
-            "Can only do integral splits on square matrices",
-        ]()
+        comptime assert (
+            rows == colns and rows % factor == 0
+        ), "Can only do integral splits on square matrices"
         var res = InlineArray[
             Matrix[T, rows // factor, colns // factor], factor * factor
         ](uninitialized=True)
@@ -1376,12 +1361,11 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         return A
 
     def reduce_bit_count(self) -> Int:
-        constrained[
-            T.is_integral() or T is DType.bool,
-            "Expected either integral or bool type",
-        ]()
+        comptime assert (
+            T.is_integral() or T == DType.bool
+        ), "Expected either integral or bool type"
 
-        comptime if T is DType.bool:
+        comptime if T == DType.bool:
             return Int(self.cast[DType.uint8]().reduce_add())
         else:
             return Int(self.pop_count().reduce_add())
@@ -1441,12 +1425,12 @@ struct Map[T: DType, rows: Int, colns: Int, default_inner_stride: Int = 1](
     #this is not flattening it is just taking first col
     @always_inline
     def __getitem__(self, i: Int) -> Scalar[Self.T]:
-        constrained[colns == 1, "Map 1D access requires a column vector"]()
+        comptime assert colns == 1, "Map 1D access requires a column vector"
         return self[i, 0]
 
     @always_inline
     def __setitem__(mut self, i: Int, val: Scalar[Self.T]):
-        constrained[colns == 1, "Map 1D access requires a column vector"]()
+        comptime assert colns == 1, "Map 1D access requires a column vector"
         self[i, 0] = val
 
     @always_inline
@@ -1467,7 +1451,7 @@ struct Map[T: DType, rows: Int, colns: Int, default_inner_stride: Int = 1](
     #this is not flattening it is just taking first col
     @always_inline
     def head[n: Int](self) -> Matrix[T, n, 1]:
-        constrained[colns == 1, "Map head() requires a column vector"]()
+        comptime assert colns == 1, "Map head() requires a column vector"
         var res = Matrix[T, n, 1]()
         for i in range(n):
             res[i, 0] = self[i, 0]

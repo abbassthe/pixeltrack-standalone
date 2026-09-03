@@ -126,9 +126,7 @@ struct Params(Copyable, Movable):
         dcaCutOuterTriplet: Float32,
         cuts: QualityCuts = QualityCuts(
             # polynomial coefficients for the pT-dependent chi2 cut
-            chi2Coeff=InlineArray[Float32, 4](
-                0.68177776, 0.74609577, -0.08035491, 0.00315399
-            ),
+            chi2Coeff=[0.68177776, 0.74609577, -0.08035491, 0.00315399],
             # max pT used to determine the chi2 cut
             chi2MaxPt=10.0,
             # chi2 scale factor: 30 for broken line fit, 45 for Riemann fit

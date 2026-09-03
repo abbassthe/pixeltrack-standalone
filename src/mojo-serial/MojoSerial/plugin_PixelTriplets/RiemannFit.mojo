@@ -979,14 +979,14 @@ def Circle_fit[
         comptime if is_defined["RFIT_DEBUG"]():
             Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=D_[0][0]), "circle_fit - D_[0][0]:")
 
-        comptime nu = InlineArray[InlineArray[UInt32, 2], 6](
-            InlineArray[UInt32, 2](0, 0),
-            InlineArray[UInt32, 2](0, 1),
-            InlineArray[UInt32, 2](0, 2),
-            InlineArray[UInt32, 2](1, 1),
-            InlineArray[UInt32, 2](1, 2),
-            InlineArray[UInt32, 2](2, 2),
-        )
+        comptime nu: InlineArray[InlineArray[UInt32, 2], 6] = [
+            [0, 0],
+            [0, 1],
+            [0, 2],
+            [1, 1],
+            [1, 2],
+            [2, 2],
+        ]
 
         # cov matrix of the 6 independent elements of A
         var E = Rfit.Matrix6d()

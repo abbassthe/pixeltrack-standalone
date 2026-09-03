@@ -5,14 +5,12 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
     TrackingRecHit2DHeterogeneous,
 )
 from MojoSerial.plugin_PixelTriplets.gpuFishbone import fishbone
-from std.builtin import constrained
 
 
 
 comptime nPairs: Int = 13 + 2 + 4
-comptime _nPairsCheck = constrained[nPairs <= Int(CAConstants.maxNumberOfLayerPairs())]()
 
-comptime layerPairs = InlineArray[UInt8, 2 * nPairs](
+comptime layerPairs: InlineArray[UInt8, 2 * nPairs] = [
     0, 1, 0, 4, 0, 7,              # BPIX1 (3)
     1, 2, 1, 4, 1, 7,              # BPIX2 (5)
     4, 5, 7, 8,                    # FPIX1 (8)
@@ -20,13 +18,13 @@ comptime layerPairs = InlineArray[UInt8, 2 * nPairs](
     0, 2, 1, 3,                    # Jumping Barrel (15)
     0, 5, 0, 8,                    # Jumping Forward (BPIX1,FPIX2)
     4, 6, 7, 9                     # Jumping Forward (19)
-)
+]
 
 comptime phi0p05: Int16 = 522
 comptime phi0p06: Int16 = 626
 comptime phi0p07: Int16 = 730
 
-comptime phicuts = InlineArray[Int16, nPairs](
+comptime phicuts: InlineArray[Int16, nPairs] = [
     phi0p05,
     phi0p07,
     phi0p07,
@@ -46,9 +44,9 @@ comptime phicuts = InlineArray[Int16, nPairs](
     phi0p05,
     phi0p05,
     phi0p05,
-)
+]
 
-comptime minz = InlineArray[Float32, nPairs](
+comptime minz: InlineArray[Float32, nPairs] = [
     -20.0,
     0.0,
     -30.0,
@@ -68,9 +66,9 @@ comptime minz = InlineArray[Float32, nPairs](
     -30.0,
     -70.0,
     -70.0,
-)
+]
 
-comptime maxz = InlineArray[Float32, nPairs](
+comptime maxz: InlineArray[Float32, nPairs] = [
     20.0,
     30.0,
     0.0,
@@ -90,9 +88,9 @@ comptime maxz = InlineArray[Float32, nPairs](
     0.0,
     70.0,
     70.0,
-)
+]
 
-comptime maxr = InlineArray[Float32, nPairs](
+comptime maxr: InlineArray[Float32, nPairs] = [
     20.0,
     9.0,
     9.0,
@@ -112,7 +110,7 @@ comptime maxr = InlineArray[Float32, nPairs](
     9.0,
     9.0,
     9.0,
-)
+]
 
 comptime CellNeighbors = CAConstants.CellNeighbors
 comptime CellTracks = CAConstants.CellTracks
@@ -169,6 +167,10 @@ def getDoubletsFromHisto(
     doPtCut: Bool,
     maxNumOfDoublets: UInt32,
 ):
+    # `comptime assert` is only legal in a function body, so this guard on the
+    # module-level tables lives with their consumer.
+    comptime assert nPairs <= Int(CAConstants.maxNumberOfLayerPairs())
+
     gpuPixelDoubleAlgo.doubletsFromHisto(
         layerPairs.unsafe_ptr(),
         UInt32(nActualPairs),

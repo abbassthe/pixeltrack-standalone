@@ -2,7 +2,6 @@ from std.sys import size_of
 from layout import Layout, LayoutTensor, IntTuple
 
 from MojoSerial.MojoBridge.DTypes import Typeable
-from std.builtin import constrained
 
 
 def isPowerOf2(v: Int32) -> Bool:
@@ -18,28 +17,28 @@ struct ScalarSoA[T: DType, S: Int](
 
     @always_inline
     def __init__(out self):
-        constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
-        constrained[
-            S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
-        ]()
+        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert (
+            S * size_of[T]() % 128 == 0
+        ), "SoA size not a multiple of 128"
         self._data = InlineArray[Self.Scalar, Self.S](fill=0)
 
     @always_inline
     def __init__(out self, var list: InlineArray[Self.Scalar, Self.S]):
-        constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
-        constrained[
-            S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
-        ]()
+        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert (
+            S * size_of[T]() % 128 == 0
+        ), "SoA size not a multiple of 128"
         self._data = list^
 
     @always_inline
     def __init__(
         out self, var ptr: UnsafePointer[Self.Scalar], *, var cp: Bool = False
     ):
-        constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
-        constrained[
-            S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
-        ]()
+        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert (
+            S * size_of[T]() % 128 == 0
+        ), "SoA size not a multiple of 128"
 
         self._data = InlineArray[Self.Scalar, S](uninitialized=True)
 
@@ -89,28 +88,28 @@ struct MatrixSoA[T: DType, R: Int, C: Int, S: Int](
 
     @always_inline
     def __init__(out self):
-        constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
-        constrained[
-            R * C * S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
-        ]()
+        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert (
+            R * C * S * size_of[T]() % 128 == 0
+        ), "SoA size not a multiple of 128"
         self._data = Self._D(fill=0)
 
     @always_inline
     def __init__(out self, var list: Self._D):
-        constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
-        constrained[
-            R * C * S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
-        ]()
+        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert (
+            R * C * S * size_of[T]() % 128 == 0
+        ), "SoA size not a multiple of 128"
         self._data = list^
 
     @always_inline
     def __init__(
         out self, var ptr: UnsafePointer[Self.Scalar], *, var cp: Bool = False
     ):
-        constrained[isPowerOf2(S), "SoA stride not a power of 2"]()
-        constrained[
-            R * C * S * size_of[T]() % 128 == 0, "SoA size not a multiple of 128"
-        ]()
+        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert (
+            R * C * S * size_of[T]() % 128 == 0
+        ), "SoA size not a multiple of 128"
 
         self._data = Self._D(uninitialized=True)
 
