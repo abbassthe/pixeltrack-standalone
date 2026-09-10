@@ -1,5 +1,5 @@
 from std.collections import Span
-from std.memory import OwnedPointer, memcpy, memset
+from std.memory import memcpy, memset
 
 from MojoSerial.CondFormats.SiPixelFedCablingMapGPU import (
     SiPixelFedCablingMapGPU,
@@ -157,16 +157,18 @@ def pixelToChannel(row: Int32, col: Int32) -> UInt32:
 
 
 struct WordFedAppender(Defaultable, Movable, Typeable):
-    var _word: OwnedPointer[List[UInt32]]
-    var _fedId: OwnedPointer[List[UChar]]
+    # Plain Lists: a List is already a heap handle, so the OwnedPointer was a
+    # second allocation and indirection (doc §12).
+    var _word: List[UInt32]
+    var _fedId: List[UChar]
 
     @always_inline
     def __init__(out self):
-        self._word = OwnedPointer(
-            List[UInt32](length=Int(PixelGPUDetails.MAX_FED_WORDS), fill=0)
+        self._word = List[UInt32](
+            length=Int(PixelGPUDetails.MAX_FED_WORDS), fill=0
         )
-        self._fedId = OwnedPointer(
-            List[UChar](length=Int(PixelGPUDetails.MAX_FED_WORDS), fill=0)
+        self._fedId = List[UChar](
+            length=Int(PixelGPUDetails.MAX_FED_WORDS), fill=0
         )
 
     def initializeWordFed(
@@ -176,21 +178,21 @@ struct WordFedAppender(Defaultable, Movable, Typeable):
         src: UnsafePointer[UInt32],
         length: UInt32,
     ):
-        memcpy(self._word[].unsafe_ptr() + wordCounterGPU, src, Int(length))
+        memcpy(self._word.unsafe_ptr() + wordCounterGPU, src, Int(length))
         # fedId is actually a byte wide, so c++ and mojo memset counts match up
         memset(
-            self._fedId[].unsafe_ptr() + wordCounterGPU / 2,
+            self._fedId.unsafe_ptr() + wordCounterGPU / 2,
             (fedId - 1200).cast[DType.uint8](),
             Int(length / 2),
         )
 
     @always_inline
     def word(self) -> UnsafePointer[UInt32, mut=False]:
-        return self._word[].unsafe_ptr()
+        return self._word.unsafe_ptr()
 
     @always_inline
     def fedId(self) -> UnsafePointer[UChar, mut=False]:
-        return self._fedId[].unsafe_ptr()
+        return self._fedId.unsafe_ptr()
 
     @always_inline
     @staticmethod
@@ -262,15 +264,15 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
                 cablingMap,
                 modToUnp,
                 wordCounter,
-                Span(wordFed._word[]),
-                Span(wordFed._fedId[]),
-                Span(self.digis_d.xx_d[]),
-                Span(self.digis_d.yy_d[]),
-                Span(self.digis_d.adc_d[]),
-                Span(self.digis_d.pdigi_d[]),
-                Span(self.digis_d.rawIdArr_d[]),
-                Span(self.digis_d.moduleInd_d[]),
-                self.digiErrors_d.error_d[],
+                Span(wordFed._word),
+                Span(wordFed._fedId),
+                Span(self.digis_d.xx_d),
+                Span(self.digis_d.yy_d),
+                Span(self.digis_d.adc_d),
+                Span(self.digis_d.pdigi_d),
+                Span(self.digis_d.rawIdArr_d),
+                Span(self.digis_d.moduleInd_d),
+                self.digiErrors_d.error_d,
                 useQualityInfo,
                 includeErrors,
                 debug,
@@ -281,21 +283,21 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
         comptime if True:
             GPUCalibPixel.calibDigis(
                 isRun2,
-                Span(self.digis_d.moduleInd_d[]),
-                Span(self.digis_d.xx_d[]),
-                Span(self.digis_d.yy_d[]),
-                Span(self.digis_d.adc_d[]),
+                Span(self.digis_d.moduleInd_d),
+                Span(self.digis_d.xx_d),
+                Span(self.digis_d.yy_d),
+                Span(self.digis_d.adc_d),
                 gains,
                 wordCounter.cast[DType.int32](),
-                Span(self.clusters_d.moduleStart_d[]),
-                Span(self.clusters_d.clusInModule_d[]),
-                Span(self.clusters_d.clusModuleStart_d[]),
+                Span(self.clusters_d.moduleStart_d),
+                Span(self.clusters_d.clusInModule_d),
+                Span(self.clusters_d.clusModuleStart_d),
             )
 
             GPUClustering.countModules(
-                Span(self.digis_d.moduleInd_d[]),
-                Span(self.clusters_d.moduleStart_d[]),
-                Span(self.digis_d.clus_d[]),
+                Span(self.digis_d.moduleInd_d),
+                Span(self.clusters_d.moduleStart_d),
+                Span(self.digis_d.clus_d),
                 wordCounter.cast[DType.int32](),
             )
 
@@ -309,20 +311,20 @@ struct SiPixelRawToClusterGPUKernel(Defaultable, Typeable):
                 self.digis_d.c_xx(),
                 self.digis_d.c_yy(),
                 self.clusters_d.c_moduleStart(),
-                Span(self.clusters_d.clusInModule_d[]),
-                Span(self.clusters_d.moduleId_d[]),
-                Span(self.digis_d.clus_d[]),
+                Span(self.clusters_d.clusInModule_d),
+                Span(self.clusters_d.moduleId_d),
+                Span(self.digis_d.clus_d),
                 wordCounter.cast[DType.int32](),
             )
 
             # apply charge cut
             GPUClustering.clusterChargeCut(
-                Span(self.digis_d.moduleInd_d[]),
+                Span(self.digis_d.moduleInd_d),
                 self.digis_d.c_adc(),
                 self.clusters_d.c_moduleStart(),
-                Span(self.clusters_d.clusInModule_d[]),
+                Span(self.clusters_d.clusInModule_d),
                 self.clusters_d.c_moduleId(),
-                Span(self.digis_d.clus_d[]),
+                Span(self.digis_d.clus_d),
                 wordCounter,
             )
 
@@ -507,28 +509,28 @@ def conversionError(
         if debug:
             print(
                 "Error in Fed:",
-                fedId.__str__() + ", invalid channel Id (errorType = 35)",
+                String(fedId) + ", invalid channel Id (errorType = 35)",
             )
         errorType = 35
     elif status == 2:
         if debug:
             print(
                 "Error in Fed:",
-                fedId.__str__() + ", invalid ROC Id (errorType = 36)",
+                String(fedId) + ", invalid ROC Id (errorType = 36)",
             )
         errorType = 36
     elif status == 3:
         if debug:
             print(
                 "Error in Fed:",
-                fedId.__str__() + ", invalid dcol/pixel value (errorType = 37)",
+                String(fedId) + ", invalid dcol/pixel value (errorType = 37)",
             )
         errorType = 37
     elif status == 4:
         if debug:
             print(
                 "Error in Fed:",
-                fedId.__str__()
+                String(fedId)
                 + ", dcol/pixel read out of order (errorType = 38)",
             )
         errorType = 38

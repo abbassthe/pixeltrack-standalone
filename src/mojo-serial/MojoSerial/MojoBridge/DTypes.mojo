@@ -186,15 +186,20 @@ def signed_to_unsigned[T: DType]() -> DType:
         return DType.uint128
     elif T == DType.int256 or T == DType.uint256:
         return DType.uint256
-    return DType.invalid
+    else:
+        # 1.0 removed DType.invalid, so an unsupported dtype is a build error at
+        # the instantiation site. The assert must sit in this `else` branch: at
+        # the function tail it is evaluated unconditionally, rejecting every T.
+        comptime assert False, "signed_to_unsigned requires an integral DType"
+        return DType.uint8
 
 
 @always_inline
-def enumerate[T: Movable & Copyable](K: Span[T]) -> List[Tuple[Int, T]]:
+def enumerate[T: Movable & Copyable](K: Span[T, _]) -> List[Tuple[Int, T]]:
     var L: List[Tuple[Int, T]] = []
     for i in range(len(K)):
-        L.append((i, K[i]))
-    return L
+        L.append((i, K[i].copy()))
+    return L^
 
 
 @fieldwise_init
@@ -223,7 +228,9 @@ struct TypeableUInt(Copyable, Movable, Typeable, TrivialRegisterPassable):
 # gap so heterogeneous-SoA products (see CUDADataFormats/HeterogeneousSoA.mojo)
 # can be registered under their own concrete type, matching the C++ originals
 # (e.g. PixelTrackHeterogeneous, ZVertexHeterogeneous) directly.
-struct TypeableOwnedPointer[T: Typeable & Movable](Movable, Typeable):
+struct TypeableOwnedPointer[T: Typeable & Movable & Deinitable](
+    Movable, Typeable
+):
     var _inner: OwnedPointer[Self.T]
 
     @always_inline
@@ -234,13 +241,11 @@ struct TypeableOwnedPointer[T: Typeable & Movable](Movable, Typeable):
     def __init__(out self, *, deinit move: Self):
         self._inner = move._inner^
 
+    # Borrow the pointee, mirroring C++'s unique_ptr::operator*. This is the
+    # only accessor: every caller wants the SoA, not its address.
     @always_inline
-    def unsafe_ptr(ref self) -> UnsafePointer[Self.T]:
-        return self._inner.unsafe_ptr()
-
-    @always_inline
-    def take(mut self) -> Self.T:
-        return self._inner.unsafe_ptr().take_pointee()
+    def __getitem__(ref self) -> ref [self._inner[]] Self.T:
+        return self._inner[]
 
     @always_inline
     @staticmethod

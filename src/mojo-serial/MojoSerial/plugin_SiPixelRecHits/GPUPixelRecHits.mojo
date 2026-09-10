@@ -47,22 +47,22 @@ def getHits(
     agc.endCapZ[1] = ag.endCapZ[1] - bs.z
 
     # Columns are bound once here rather than reached through the per-hit
-    # accessors: an accessor call reloads the OwnedPointer -> List indirection
-    # on every store, which the backend cannot hoist. Field-path borrows, so
-    # they compose; a `ref self` accessor would take the whole struct.
-    var xLocal = Span(hits.m_xl_d[])
-    var yLocal = Span(hits.m_yl_d[])
-    var xerrLocal = Span(hits.m_xerr_d[])
-    var yerrLocal = Span(hits.m_yerr_d[])
-    var xGlobal = Span(hits.m_xg_d[])
-    var yGlobal = Span(hits.m_yg_d[])
-    var zGlobal = Span(hits.m_zg_d[])
-    var rGlobal = Span(hits.m_rg_d[])
-    var iphi = Span(hits.m_iphi_d[])
-    var charge = Span(hits.m_charge_d[])
-    var clusterSizeX = Span(hits.m_xsize_d[])
-    var clusterSizeY = Span(hits.m_ysize_d[])
-    var detectorIndex = Span(hits.m_detInd_d[])
+    # accessors: an accessor call reloads the List indirection on every store,
+    # which the backend cannot hoist. Field-path borrows, so they compose; a
+    # `ref self` accessor would take the whole struct.
+    var xLocal = Span(hits.m_xl_d)
+    var yLocal = Span(hits.m_yl_d)
+    var xerrLocal = Span(hits.m_xerr_d)
+    var yerrLocal = Span(hits.m_yerr_d)
+    var xGlobal = Span(hits.m_xg_d)
+    var yGlobal = Span(hits.m_yg_d)
+    var zGlobal = Span(hits.m_zg_d)
+    var rGlobal = Span(hits.m_rg_d)
+    var iphi = Span(hits.m_iphi_d)
+    var charge = Span(hits.m_charge_d)
+    var clusterSizeX = Span(hits.m_xsize_d)
+    var clusterSizeY = Span(hits.m_ysize_d)
+    var detectorIndex = Span(hits.m_detInd_d)
 
     # to be moved in common namespace...
     comptime InvId: UInt16 = 9999  # must be > MaxNumModules

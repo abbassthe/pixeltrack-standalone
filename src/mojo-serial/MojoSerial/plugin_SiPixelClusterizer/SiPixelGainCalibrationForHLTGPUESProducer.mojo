@@ -27,8 +27,9 @@ struct SiPixelGainCalibrationForHLTGPUESProducer(ESProducer):
                 eventSetup.put[SiPixelGainCalibrationForHLTGPU](
                     SiPixelGainCalibrationForHLTGPU(
                         gain^,
-                        rebind[List[Char]](gainData^)
-                        # rebind works because UChar and Char are bit-compatible
+                        rebind[List[Char]](gainData).copy()
+                        # rebind works because UChar and Char are bit-compatible;
+                        # it yields a reference, so the copy is on its result
                     )
                 )
         except e:

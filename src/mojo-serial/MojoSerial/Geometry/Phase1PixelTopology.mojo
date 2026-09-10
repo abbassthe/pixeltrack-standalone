@@ -18,8 +18,11 @@ struct Phase1PixelTopology:
     ]() * Self.numColsInModule.cast[DType.uint32]()
 
     comptime numberOfModules: UInt32 = 1856
-    comptime numberOfLayers: UInt32 = 10
-    comptime layerStart: InlineArray[UInt32, Int(Self.numberOfLayers) + 1] = [
+    # Int, not UInt32: used as an InlineArray length below, and `Int(<UInt32
+    # comptime>)` does not fold to a literal in parameter position, so a list
+    # literal cannot match the deduced size.
+    comptime numberOfLayers: Int = 10
+    comptime layerStart: InlineArray[UInt32, Self.numberOfLayers + 1] = [
         0,
         96,
         320,
@@ -33,7 +36,7 @@ struct Phase1PixelTopology:
         Self.numberOfModules,
     ]
 
-    comptime layerName: InlineArray[StaticString, Int(Self.numberOfLayers)] = [
+    comptime layerName: InlineArray[StaticString, Self.numberOfLayers] = [
         "BL1",
         "BL2",
         "BL3",
@@ -50,23 +53,14 @@ struct Phase1PixelTopology:
     comptime numberOfLaddersInBarrel: UInt32 = Self.numberOfModulesInBarrel / 8
 
     @staticmethod
-    def _map_to_array[
-        I: DType, R: DType, N: Int, func: fn[Scalar[I]] () -> Scalar[R]
-    ]() -> InlineArray[Scalar[R], N]:
-        var arr = InlineArray[Scalar[R], N](fill=0)
-
-        comptime for i in range(N):
-            arr[i] = func[i]()
-        return arr
-
-    @staticmethod
     def findMaxModuleStride() -> UInt32:
+        # layerStart is indexed against the runtime `n`, so materialize it once
+        var ls = materialize[Self.layerStart]()
         var go = True
-        var n = 2
+        var n: UInt32 = 2
         while go:
-
-            comptime for i in range(1, 11):
-                if Self.layerStart[i] % n != 0:
+            for i in range(1, 11):
+                if ls[i] % n != 0:
                     go = False
                     break
             if not go:
@@ -79,8 +73,9 @@ struct Phase1PixelTopology:
     @staticmethod
     def findLayer[detId: UInt32]() -> UInt8:
         comptime for i in range(11):
-            if detId < Self.layerStart[i + 1]:
-                return i
+            comptime bound = Self.layerStart[i + 1]
+            if detId < bound:
+                return UInt8(i)
         return 11
 
     @staticmethod
@@ -88,29 +83,38 @@ struct Phase1PixelTopology:
         comptime _detId = detId * Self.maxModuleStride
 
         comptime for i in range(11):
-            if _detId < Self.layerStart[i + 1]:
-                return i
+            comptime bound = Self.layerStart[i + 1]
+            if _detId < bound:
+                return UInt8(i)
         return 11
 
     comptime layerIndexSize: UInt32 = Self.numberOfModules / Self.maxModuleStride
 
+    # C++ builds this with a generic map-to-array helper taking a function
+    # parameter; that shape no longer binds in 1.0, and it had one caller.
+    @staticmethod
+    def _build_layer_table() -> InlineArray[UInt8, Int(Self.layerIndexSize)]:
+        var arr = InlineArray[UInt8, Int(Self.layerIndexSize)](fill=0)
+        comptime for i in range(Int(Self.layerIndexSize)):
+            arr[i] = Self.findLayerFromCompact[UInt32(i)]()
+        return arr^
+
     comptime layer: InlineArray[
         UInt8, Int(Self.layerIndexSize)
-    ] = Self._map_to_array[
-        DType.uint32,
-        DType.uint8,
-        Int(Self.layerIndexSize),
-        Self.findLayerFromCompact,
-    ]()
+    ] = Self._build_layer_table()
 
     @staticmethod
     def validateLayerIndex() -> Bool:
+        var layer = materialize[Self.layer]()
+        var ls = materialize[Self.layerStart]()
+        var stride = Int(Self.maxModuleStride)
         var res = True
-        for i in range(Self.numberOfModules):
-            var j = i / Self.maxModuleStride
-            res &= Self.layer[j] < 10
-            res &= i >= Self.layerStart[Self.layer[j]]
-            res &= i < Self.layerStart[Self.layer[j] + 1]
+        for i in range(Int(Self.numberOfModules)):
+            var j = i // stride
+            var l = Int(layer[j])
+            res &= l < 10
+            res &= UInt32(i) >= ls[l]
+            res &= UInt32(i) < ls[l + 1]
         return res
 
     comptime __d = debug_assert(

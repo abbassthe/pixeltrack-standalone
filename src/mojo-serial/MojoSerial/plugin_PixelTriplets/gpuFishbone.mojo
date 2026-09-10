@@ -7,7 +7,7 @@ from MojoSerial.plugin_PixelTriplets.GPUCACell import GPUCACell
 def fishbone(
     hhp: UnsafePointer[GPUCACell.Hits],
     cells: UnsafePointer[GPUCACell],
-    nCells: UnsafePointer[UInt32],
+    nCells: UInt32,  # C++ takes uint32_t const*; unused in the body
     isOuterHitOfCell: UnsafePointer[GPUCACell.OuterHitOfCell],
     nHits: UInt32,
     checkTrack: Bool,

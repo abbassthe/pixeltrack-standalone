@@ -1,5 +1,7 @@
 @fieldwise_init
-struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
+struct OrderedMultiSet[
+    T: ImplicitlyCopyable & Deinitable, Compare: AnyType
+](Movable, Sized):
     # Sorted storage using a comparator type with `less(a, b) -> Bool`.
     var _items: List[Self.T]
 
@@ -16,7 +18,7 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
         return self._items.__len__() == 0
 
     @always_inline
-    def clear(ref self):
+    def clear(mut self):
         self._items.clear()
 
     @always_inline
@@ -24,16 +26,16 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
         return self._items[index]
 
     @always_inline
-    def _less(self, a: read T, b: read T) -> Bool:
+    def _less(self, a: Self.T, b: Self.T) -> Bool:
         return Compare.less(a, b)
 
     @always_inline
-    def _equivalent(self, a: read T, b: read T) -> Bool:
+    def _equivalent(self, a: Self.T, b: Self.T) -> Bool:
         return (not self._less(a, b)) and (not self._less(b, a))
 
     # Returns the first position where `value` can be inserted without
     # violating sorted order.
-    def lower_bound(self, value: read T) -> Int:
+    def lower_bound(self, value: Self.T) -> Int:
         var i: Int = 0
         var n = self._items.__len__()
         while i < n:
@@ -43,7 +45,7 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
         return n
 
     # Returns one matching index or -1 if no equivalent element exists.
-    def find(self, value: read T) -> Int:
+    def find(self, value: Self.T) -> Int:
         var i = self.lower_bound(value)
         if i < self._items.__len__() and self._equivalent(self._items[i], value):
             return i
@@ -62,12 +64,12 @@ struct OrderedMultiSet[T: Copyable, Compare: AnyType](Movable, Sized):
     def erase_at(mut self, index: Int) -> Bool:
         if index < 0 or index >= self._items.__len__():
             return False
-        self._items.remove(index)
+        _ = self._items.pop(index)
         return True
 
-    def erase_one(mut self, value: read T) -> Bool:
+    def erase_one(mut self, value: Self.T) -> Bool:
         var index = self.find(value)
         if index == -1:
             return False
-        self._items.remove(index)
+        _ = self._items.pop(index)
         return True

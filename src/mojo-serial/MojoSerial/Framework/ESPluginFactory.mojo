@@ -51,7 +51,7 @@ struct ESProducerWrapperT[T: Typeable & ESProducer](Movable, Typeable):
         return "ESProducerWrapperT[" + Self.T.dtype() + "]"
 
 
-struct ESProducerConcrete(Copyable, Movable, Typeable):
+struct ESProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
     comptime _C = def (var Path) -> ESProducerWrapper
     comptime _P = def (mut ESProducerWrapper, mut EventSetup)
     comptime _D = def (mut ESProducerWrapper)
@@ -109,9 +109,8 @@ struct Registry(Typeable):
 
     @always_inline
     def delete(mut self):
-        for i in range(self._pluginRegistry._entries.__len__()):
-            if self._pluginRegistry._entries[i]:
-                self._pluginRegistry._entries[i].unsafe_value().value.delete()
+        for ref producer in self._pluginRegistry.values():
+            producer.delete()
 
     @staticmethod
     @always_inline

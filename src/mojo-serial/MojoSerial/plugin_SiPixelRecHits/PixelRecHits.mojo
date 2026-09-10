@@ -57,7 +57,7 @@ struct PixelRecHitGPUKernel(Defaultable, Typeable):
 
         if nHits:
             fillManyFromVector(
-                hits_d.phiBinner()[],
+                hits_d.phiBinner(),
                 10,
                 hits_d.iphi(),
                 hits_d.hitsLayerStart(),

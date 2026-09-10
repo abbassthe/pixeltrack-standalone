@@ -1,5 +1,3 @@
-from std.memory import OwnedPointer
-
 from MojoSerial.CUDACore.CUDACompat import CUDACompat
 from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
     PixelTrack as pixelTrack,
@@ -20,34 +18,34 @@ comptime TkSoA = pixelTrack.TrackSoA
 
 
 # workspace used in the vertex reco algos
+#
+# Columns are Lists, not inline arrays, for the reason given on ZVertexSoA: as
+# an inline struct this is ~600 kB, and every deref of an OwnedPointer[WorkSpace]
+# materializes it.
 @fieldwise_init
 struct WorkSpace(Copyable, Defaultable, Movable, Typeable):
     comptime MAXTRACKS = ZVertexSoA.MAXTRACKS
     comptime MAXVTX = ZVertexSoA.MAXVTX
 
     var ntrks: UInt32  # number of "selected tracks"
-    var itrk: InlineArray[UInt16, UInt(Self.MAXTRACKS)]  # index of original track
-    var zt: InlineArray[Float, UInt(Self.MAXTRACKS)]  # input track z at bs
-    var ezt2: InlineArray[Float, UInt(Self.MAXTRACKS)]  # input error^2 on the above
-    var ptt2: InlineArray[Float, UInt(Self.MAXTRACKS)]  # input pt^2 on the above
-    var izt: InlineArray[
-        UInt8, UInt(Self.MAXTRACKS)
-    ]  # interized z-position of input tracks
-    var iv: InlineArray[
-        Int32, UInt(Self.MAXTRACKS)
-    ]  # vertex index for each associated track
+    var itrk: List[UInt16]  # index of original track
+    var zt: List[Float]  # input track z at bs
+    var ezt2: List[Float]  # input error^2 on the above
+    var ptt2: List[Float]  # input pt^2 on the above
+    var izt: List[UInt8]  # interized z-position of input tracks
+    var iv: List[Int32]  # vertex index for each associated track
 
     var nvIntermediate: UInt32  # the number of vertices after splitting pruning etc.
 
     @always_inline
     def __init__(out self):
         self.ntrks = 0
-        self.itrk = InlineArray[UInt16, UInt(Self.MAXTRACKS)](fill=0)
-        self.zt = InlineArray[Float, UInt(Self.MAXTRACKS)](fill=0.0)
-        self.ezt2 = InlineArray[Float, UInt(Self.MAXTRACKS)](fill=0.0)
-        self.ptt2 = InlineArray[Float, UInt(Self.MAXTRACKS)](fill=0.0)
-        self.izt = InlineArray[UInt8, UInt(Self.MAXTRACKS)](fill=0)
-        self.iv = InlineArray[Int32, UInt(Self.MAXTRACKS)](fill=0)
+        self.itrk = List[UInt16](length=Int(Self.MAXTRACKS), fill=0)
+        self.zt = List[Float](length=Int(Self.MAXTRACKS), fill=0.0)
+        self.ezt2 = List[Float](length=Int(Self.MAXTRACKS), fill=0.0)
+        self.ptt2 = List[Float](length=Int(Self.MAXTRACKS), fill=0.0)
+        self.izt = List[UInt8](length=Int(Self.MAXTRACKS), fill=0)
+        self.iv = List[Int32](length=Int(Self.MAXTRACKS), fill=0)
         self.nvIntermediate = 0
 
     @always_inline
@@ -62,21 +60,19 @@ struct WorkSpace(Copyable, Defaultable, Movable, Typeable):
 
 
 @always_inline
-def init(pdata: UnsafePointer[ZVertexSoA], pws: UnsafePointer[WorkSpace]):
-    pdata[].init()
-    pws[].init()
+def init(mut data: ZVertexSoA, mut ws: WorkSpace):
+    data.init()
+    ws.init()
 
 
 @always_inline
 def loadTracks(
-    ptracks: UnsafePointer[TkSoA],
-    soa: UnsafePointer[ZVertexSoA],
-    pws: UnsafePointer[WorkSpace],
+    tracks: TkSoA,
+    mut soa: ZVertexSoA,
+    mut ws: WorkSpace,
     ptMin: Float,
 ):
-    debug_assert(Bool(ptracks))
-    debug_assert(Bool(soa))
-    ref tracks = ptracks[]
+    # C++ asserts ptracks/soa are non-null; a borrow cannot be null.
     ref fit = tracks.stateAtBS
     var quality = tracks.qualityData()
 
@@ -86,7 +82,7 @@ def loadTracks(
             break  # this is a guard: maybe we need to move to nTracks...
 
         # initialize soa...
-        soa[].idv[Int(idx)] = -1
+        soa.idv[Int(idx)] = -1
 
         if nHits < 4:
             continue  # no triplets
@@ -98,14 +94,13 @@ def loadTracks(
         if pt < ptMin:
             continue
 
-        ref data = pws[]
-        var it = CUDACompat.atomicAdd(UnsafePointer(to=data.ntrks), UInt32(1))
-        data.itrk[Int(it)] = UInt16(idx)
-        data.zt[Int(it)] = tracks.zip(idx)
-        data.ezt2[Int(it)] = rebind[Scalar[DType.float32]](
+        var it = CUDACompat.atomicAdd(ws.ntrks, UInt32(1))
+        ws.itrk[Int(it)] = UInt16(idx)
+        ws.zt[Int(it)] = tracks.zip(idx)
+        ws.ezt2[Int(it)] = rebind[Scalar[DType.float32]](
             fit.covariance[idx][14, 0]
         )
-        data.ptt2[Int(it)] = pt * pt
+        ws.ptt2[Int(it)] = pt * pt
 
 
 struct Producer(Typeable):
@@ -145,32 +140,34 @@ struct Producer(Typeable):
         self.chi2max = ichi2max
 
     def make(
-        self, tksoa: UnsafePointer[Self.TkSoA], ptMin: Float
+        self, tksoa: Self.TkSoA, ptMin: Float
     ) raises -> ZVertexHeterogeneous:
         var vertices: ZVertexHeterogeneous = ZVertexHeterogeneous(ZVertexSoA())
-        debug_assert(Bool(tksoa))
-        var soa = vertices.unsafe_ptr()
-        debug_assert(Bool(soa))
+        # C++ asserts tksoa/soa are non-null; borrows cannot be null.
+        ref soa = vertices[]
 
-        var ws_d = OwnedPointer(WorkSpace())
+        # C++ heap-allocates this (std::make_unique) because its columns are
+        # inline arrays; here they are Lists, so WorkSpace is 160 B and a local
+        # is cheaper than a box.
+        var ws_d = WorkSpace()
 
-        init(soa, ws_d.unsafe_ptr())
-        loadTracks(tksoa, soa, ws_d.unsafe_ptr(), ptMin)
+        init(soa, ws_d)
+        loadTracks(tksoa, soa, ws_d, ptMin)
 
         if self.useDensity_:
             clusterTracksByDensity(
-                soa, ws_d.unsafe_ptr(), self.minT, self.eps, self.errmax, self.chi2max
+                soa, ws_d, self.minT, self.eps, self.errmax, self.chi2max
             )
         elif self.useDBSCAN_:
             raise "NotImplementedError: clusterTracksDBSCAN is not yet ported"
         elif self.useIterative_:
             raise "NotImplementedError: clusterTracksIterative is not yet ported"
 
-        fitVertices(soa, ws_d.unsafe_ptr(), 50.0)
+        fitVertices(soa, ws_d, 50.0)
         # one block per vertex!
-        splitVertices(soa, ws_d.unsafe_ptr(), 9.0)
-        fitVertices(soa, ws_d.unsafe_ptr(), 5000.0)
-        sortByPt2(soa, ws_d.unsafe_ptr())
+        splitVertices(soa, ws_d, 9.0)
+        fitVertices(soa, ws_d, 5000.0)
+        sortByPt2(soa, ws_d)
 
         return vertices^
 

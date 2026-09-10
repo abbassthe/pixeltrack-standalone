@@ -66,7 +66,9 @@ def norm3(x: Float64, y: Float64, z: Float64) -> Float64:
     return sqrt(x * x + y * y + z * z)
 
 @always_inline
-def normalize3(x: Float64, y: Float64, z: Float64) -> (Float64, Float64, Float64):
+def normalize3(
+    x: Float64, y: Float64, z: Float64
+) -> Tuple[Float64, Float64, Float64]:
     var n = norm3(x, y, z)
     if n > 0.0:
         return (x / n, y / n, z / n)
@@ -74,7 +76,7 @@ def normalize3(x: Float64, y: Float64, z: Float64) -> (Float64, Float64, Float64
 
 @always_inline
 def cross3(ax: Float64, ay: Float64, az: Float64,
-          bx: Float64, by: Float64, bz: Float64) -> (Float64, Float64, Float64):
+          bx: Float64, by: Float64, bz: Float64) -> Tuple[Float64, Float64, Float64]:
     return (
         ay * bz - az * by,
         az * bx - ax * bz,
@@ -86,7 +88,7 @@ def best_of_three_vectors(
     v0x: Float64, v0y: Float64, v0z: Float64,
     v1x: Float64, v1y: Float64, v1z: Float64,
     v2x: Float64, v2y: Float64, v2z: Float64
-) -> (Float64, Float64, Float64, Float64):
+) -> Tuple[Float64, Float64, Float64, Float64]:
     # returns (x,y,z, n2)
     var n0 = v0x*v0x + v0y*v0y + v0z*v0z
     var n1 = v1x*v1x + v1y*v1y + v1z*v1z
@@ -112,7 +114,7 @@ def nullvec_from_rows_rank12(
     r0x: Float64, r0y: Float64, r0z: Float64,
     r1x: Float64, r1y: Float64, r1z: Float64,
     r2x: Float64, r2y: Float64, r2z: Float64
-) -> (Float64, Float64, Float64):
+) -> Tuple[Float64, Float64, Float64]:
     # ============================================================
     # Math: For Mv=0 in 3D:
     # - If rank(M)=2 (simple eigenvalue), nullspace is 1D.

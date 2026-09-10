@@ -4,10 +4,14 @@ Working notes and reference for the 25.5.0 → 1.0.0 migration on branch
 `mojo-serial-1.0-port`. Everything here was verified against the 1.0 compiler on
 this source or on an isolated probe — nothing is recalled from documentation.
 
-> **STATE:** the tree is at **556 errors**. Both self-referential views are gone
+> **STATE:** the tree is at **69 errors across 23 files** (discount 6 spurious
+> `main() in packages`). Both self-referential views are gone
 > (`TrackingRecHit2DSOAView` §11, `ParamsOnGPU` §13) and the whole RecHits chain
 > — `PixelCPEforGPU`, `PixelCPEFast`, `TrackingRecHit2DHeterogeneous`,
-> `PixelRecHits`, `GPUPixelRecHits`, `SiPixelRecHitCUDA` — is at zero.
+> `PixelRecHits`, `GPUPixelRecHits`, `SiPixelRecHitCUDA` — is at zero, as is the
+> `gpuVertexFinder` cluster. `OwnedPointer` fields are down from 39 to 1 (§12).
+> Two tests now *execute*: `GPUClusteringTest` matches the C++ reference
+> byte-for-byte, and a vertex-finder driver passes on hand-checked input.
 > Everything is uncommitted.
 
 ---
@@ -159,6 +163,43 @@ Non-obvious facts, each verified:
   `Pointer` needed no call-site changes at all.
 - `MutAnyOrigin`, `MutUntrackedOrigin`, `ImmUntrackedOrigin` all exist.
 
+### `Origin[mut]` is gone — declare a bare `Origin`
+
+Pre-1.0, a struct parametric over mutability declared a companion `Bool` and used
+it to index `Origin`:
+
+```mojo
+struct _MatIterator[
+    mat_mutability: Bool, //,          # inferred, never passed
+    ...
+    mat_origin: Origin[mat_mutability],
+```
+
+1.0 makes that unwritable — `error: unexpected parameter` — because its `Origin`
+puts *both* parameters behind the infer-only marker:
+
+```
+struct Origin[mut: Bool, _mlir_origin: LITOrigin[mut], //]
+```
+
+The mutability does not disappear, it moves inside. Declare the parameter as bare
+`Origin` and read the flag back off it:
+
+```mojo
+struct _MatIterator[W: DType, rows: Int, colns: Int, mat_origin: Origin, ...]:
+    var src: Pointer[Self.mat_type, Self.mat_origin]
+    # ... String(Self.mat_origin.mut) -> "True"
+```
+
+Two consequences. The companion `Bool` parameter disappears from the signature
+(and so from `dtype()` strings). And **inside a struct body every struct parameter
+must be `Self.`-qualified** — `Matrix[W, rows, colns]` becomes
+`Matrix[Self.W, Self.rows, Self.colns]`. This is by far the most common mechanical
+error in the vendored-stdlib files; `Matrix.mojo` alone had ~25 of them.
+
+Fixing just the two iterator signatures (`_VecIterator`, `_MatIterator`) cleared
+31 downstream errors on its own.
+
 ### Borrow granularity — the rule that shapes every signature
 
 Mojo checks borrows against the **signature**, not the body. A method taking
@@ -280,6 +321,86 @@ checked to learn which type is authoritative.
 
 ---
 
+## 6b. Stdlib API changes — the `MojoBridge` Eigen shim
+
+`MojoBridge/Vector.mojo` and `Matrix.mojo` are forks of the stdlib `SIMD`, so they
+absorb every stdlib API break at once. They sit at the bottom of the dependency
+graph (`EigenSoA`, `TrajectoryStateSoA`, `BrokenLine`, `RiemannFit`,
+`HelixFitOnGPU` all build on them), so fixing them cleared **137** errors
+tree-wide — 313 → 176.
+
+| 25.5 | 1.0 | Note |
+| --- | --- | --- |
+| `a < b` on `SIMD` width > 1 | `a.lt(b)` | also `.le .gt .ge .eq .ne` |
+| `Origin[mut]` | bare `Origin`, flag via `.mut` | see §4 |
+| `InlineArray(x)` splat | `InlineArray(fill=x)` | |
+| `Matrix[T, *_]` | `Matrix[T, ...]` | unbound parameters |
+| `String.write(x)` | `String(x)` | |
+| `T is target` on `DType` | `T == target` | `DType` has no `__is__` |
+| `__origin_of(x)` | `origin_of(x)` | |
+| `__type_of(x)` | `type_of(x)` | |
+| `OwnedPointer.take()` | `.into_inner()` | consuming |
+| `@doc_private`, `AnyTrivialRegType` | *removed* | |
+
+**SIMD comparison operators are now `Scalar`-only.** The constraint message is
+explicit: *"Strict inequality is only defined for `Scalar`s; did you mean to use
+`SIMD.lt(...)`?"* This is a real trap — `a < b` on a wide SIMD was elementwise in
+25.5 and is a hard error in 1.0, so there is no silent-behaviour-change risk, but
+every masked comparison in the shim had to be rewritten.
+
+**`InlineArray` is not `ImplicitlyCopyable`,** so a struct holding one can no longer
+synthesize its copy constructor:
+
+```
+error: cannot synthesize implicit copy constructor because field '_data' has
+non-implicitly-copyable type 'Array[Vector[T, colns], rows]'
+```
+
+Dropping `ImplicitlyCopyable` from `Matrix` would force `.copy()` at hundreds of
+by-value call sites in `BrokenLine`/`RiemannFit`. Verified alternative: **write the
+copy constructor by hand** and the conformance still holds.
+
+```mojo
+def __init__(out self, *, copy: Self):
+    self._data = Self._DC(uninitialized=True)
+    comptime for i in range(Self.rows):
+        self._data[i] = copy._data[i]
+```
+
+(Same trait break hit `QualityCuts.chi2Coeff`; there the fix was
+`InlineArray[Float32, 4]` → `SIMD[DType.float32, 4]`, which is implicitly copyable
+and indexes identically.)
+
+**`OwnedPointer[T]` now requires `T: Deinitable`** — `field '_inner' has
+non-'Deinitable' type 'OwnedPointer[T]'`. Add the bound to the wrapper's parameter.
+
+**`LayoutTensor` has no `UnsafePointer` constructor.** Its 1.0 overloads take a
+`Span` or a tracked `Pointer`. This turned a comment into a compiler guarantee:
+
+```mojo
+# was: -> LayoutTensor[..., MutAnyOrigin]  built from buf.unsafe_ptr()
+#      with a comment saying "buf must outlive the returned tensor"
+def to_layout_tensor[T: DType, rows: Int, cols: Int](
+    m: Matrix[T, rows, cols], mut buf: InlineArray[Scalar[T], rows * cols]
+) -> LayoutTensor[mut=True, T, Layout.col_major(rows, cols), origin_of(buf)]:
+    ...
+    return LayoutTensor[...  origin_of(buf)](Span(buf))
+```
+
+An argument's origin can be named in the return type, so the buffer's lifetime is
+now checked instead of documented.
+
+**Dropped as dead:** `DevicePassable` (declared only by `Vector`, zero callers, and
+its `_to_device_type` signature changed to an encoder form — the serial backend
+never launches a kernel); the `__mlir_type.index` constructors on `Vector` and
+`Matrix` (unreachable from nameable Mojo code); `HeterogeneousSoA`'s `Traits` /
+`CPUTraits` (`@deprecated`, no conformers, the port already collapsed the policy to
+`OwnedPointer`); and `TypeableOwnedPointer.take()`/`unsafe_ptr()` — every caller
+wanted the pointee, so `__getitem__` covers them all and one more `UnsafePointer`
+leaves the tree.
+
+---
+
 ## 7. Pitfalls and defects found
 
 **Silent-corruption near-misses in the mechanical sweep** — both produced
@@ -293,6 +414,24 @@ plausible-looking source that the error count would not have caught:
 Dry-run every rule against a copy and *read the diff*, not just the error count. A
 blanket `sizeof`→`size_of` also corrupted a C++ cross-reference comment
 (`HelixFitOnGPU.mojo:137`), which reverted; it was the only comment hit in 2,665 edits.
+
+**A third instance, later and self-inflicted.** Converting `Rfit.printIt` from
+`UnsafePointer[M]` to a borrow meant stripping `UnsafePointer(to=…)` from 56 call
+sites in `RiemannFit.mojo`, done as one `replace_all` per argument name. Three
+matches were not `printIt` calls at all:
+
+```mojo
+print("Address of p2D: ", UnsafePointer(to=p2D))   # C++: printf("... %p\n", &p2D)
+```
+
+The rule rewrote them to `print("Address of p2D: ", p2D)` — turning *print the
+address* into *print the matrix*. Caught only because `M2xN` does not conform to
+`Writable`; with a printable type it would have compiled and printed the wrong
+thing forever. Restored as `Pointer(to=…)`: still an address, still tracked.
+
+The lesson is narrower than "read the diff": **a textual rule keyed on the
+argument cannot see the enclosing call.** When converting a function's parameter
+convention, drive the edit from the *callee* name, not the argument spelling.
 
 **Byte/element confusion.** C++ `h.end(b) - h.begin(b)` is pointer subtraction on
 `IndexType*` and yields an *element* count. The port wrote
@@ -318,6 +457,27 @@ comptime for i in range(4, -1, -1):
 sibling flags (`RIEMANN_DEBUG`, `BROKENLINE_DEBUG`, `BL_DUMP_HITS`) are also
 hardcoded false.
 
+**A descending `range` from an unsigned start is silently empty.** Probed:
+`range(UInt32(5), 0, -1)` iterates **zero** times; `range(Int(5), 0, -1)`
+iterates five. No warning, no error. C++ `for (auto i = MaxNumModules; i > 0;
+i--)` is a `uint32_t` countdown, so the two `last module is …` loops in
+`GPUClusteringTest` were dead code — the C++ reference prints that line five
+times and the port printed it zero. Caught only by diffing against the C++
+binary. Fix is `range(Int(...), 0, -1)`; a sweep found only one other descending
+range in the tree and it starts from an `Int` literal.
+
+**`comptime assert False` at a function tail is evaluated unconditionally.**
+Used as an "unreachable" sentinel at the end of `signed_to_unsigned`'s
+`comptime if/elif` chain — where 1.0 removed `DType.invalid` — it rejected
+*every* `T`, including the `uint16` the chain explicitly handles, with
+*"constraint failed: signed_to_unsigned requires an integral DType"* at each
+instantiation site. The `return`s above it do not make it unreachable. Probed:
+the same assert inside an untaken `else:` branch is **not** evaluated (only an
+"unreachable code" warning), so the sentinel must live in an `else`, never at
+the tail. Note this differs from the `comptime if` behaviour below, which
+typechecks the branch it does not take — typechecking a branch and evaluating
+its asserts are not the same thing.
+
 ---
 
 ## 8. Reading the error count
@@ -334,10 +494,23 @@ Use **files-at-zero**, not the total, as the progress metric.
 
 ## 9. Status
 
-- 802 → **556** errors
-- `UnsafePointer` 598 → **398**; `Span` 2 → **152**
+- 802 → **86** errors
+- `UnsafePointer` 598 → **101**; `Span` 2 → **139**
 - self-referential views 4 → **0** — none left in the port
-- of 143 `.mojo` files, **81 still carry at least one error**
+- `OwnedPointer` fields 39 → **1** (only `TypeableOwnedPointer._inner`, the
+  Event-product mechanism; see §12)
+- of 125 `.mojo` files, **27 still carry at least one error**
+
+**Two tests now execute, not merely compile.** `test/GPUClusteringTest` is
+byte-for-byte identical to the C++ reference (`g++ -I. test/cpuClustering_t.cc`)
+across all five iterations, and a `VertexFinder_t`-style driver over the vertex
+finder passes on a hand-checked 3-vertex input. Running them is the only reason
+the two bugs in §7 (`range(UInt32, …, -1)`, and the tail `comptime assert`) were
+found — neither shows up in the error count.
+
+Count errors with `grep "error:"`, not by counting lines that merely start with
+a filename — most files now carry more *warnings* than errors, and mixing them
+overstates the remaining work.
 - 313 warnings remain, most of them the `UnsafePointer` deprecation — i.e. the
   remaining worklist restated
 
@@ -347,16 +520,43 @@ Fully converted: `SiPixelClustersSoA`, `SiPixelDigisSoA`, `HistoContainer`,
 `SiPixelRecHitCUDA`. Plus `RawToDigi_kernel`, `countModules`, `findClus`,
 `clusterChargeCut`, and the whole `cablingMap` thread.
 
+Also fully converted and pointer-free: the **`gpuVertexFinder` cluster** —
+`gpuVertexFinder`, `gpuVertexFinderImpl`, `gpuClusterTracksByDensity` /
+`DBSCAN` / `Iterative`, `gpuFitVertices`, `gpuSortByPt2`, `gpuSplitVertices`,
+plus `ZVertexSoA`. C++ passes `ZVertices* __restrict__` / `WorkSpace*
+__restrict__` — single objects, asserted non-null, never offset — so all of it
+became `mut data: ZVertices, mut ws: WorkSpace` and the `ref data = pdata[]`
+prologues disappeared. Mojo's guarantee that two `mut` borrows cannot alias is
+exactly what `__restrict__` was asserting by hand. `test/GPUClusteringTest` and
+`CUDACore/PrefixScan` are done too.
+
 ## 10. Remaining work
 
-| Item | Errors | Notes |
-|---|---|---|
-| `CUDACompat` | 7 | **next up** — tiny, all-`@deprecated` no-op shims, but it sits in the hit SoA's import closure and blocks building that code to assembly |
-| `CAHitNtupletGeneratorKernels` | 161 | holds 25 of the 50 iterator sites; largely still raw-translated |
-| `BrokenLine` | 84 | 34 are dead `CPP_DUMP` code — decide fix vs delete |
-| `OrderedMap` / `OrderedMultiSet` | 78 | container shims |
-| 50 `begin()`/`end()` iterator sites | — | Span conversion; `len(span)` makes the byte/element bug unrepresentable |
-| `Int`/`UInt32` conversions | many | not mechanically sweepable, see §6 |
+Grouped by dependency vertical rather than by size, since the fix order is forced.
+
+**The fit chain (~48)** — the last unported piece of the reconstruction spine.
+Bottom-up: `SymmetricEigen` (7), `EigenSoA` (8), `TrajectoryStateSoA` (11) →
+`RiemannFit` (7), `BrokenLine` (1) → `RiemannFitOnGPU` (1), `BrokenLineFitOnGPU` (1)
+→ `HelixFitOnGPU` (10) → `CAHitNtupletGeneratorOnGPU` (2). All of it now rests on
+the finished `Matrix`/`Vector` shim. `TrajectoryStateSoA`'s 11 errors are *all* the
+`LayoutTensor` missing-origin error solved in §6b.
+
+**The framework spine (~46)** — needed before the binary links and runs an event:
+`StreamSchedule` (9), `main` (8), `Event` / `EventSetup` / `PluginFactory` /
+`ESPluginFactory` / `EventProcessor` (5 each), `Source` (4), `ProductRegistry` (3).
+
+**Container shims (~27)** — `OrderedMultiSet` (11), `Timer` (10), `OrderedMap` (6).
+Independent of everything else; `Timer`'s errors are all one shape (mutating a
+`Dict`/`List` through a non-`mut` accessor).
+
+**Leaf files (~40)** — `SiPixelRawToClusterGPUKernel` (5), `FEDRawData` (5),
+`SiPixelDigisSoA` / `FEDTrailer` / `FEDHeader` / `SimpleVector` (4 each), and a long
+tail of 1–3.
+
+**Tests (~10)** — `HistoContainerTest` (7), plus singletons. Lowest priority.
+
+Cross-cutting, not a file: `Int`/`UInt32` conversions, not mechanically sweepable
+(§6).
 
 ---
 
@@ -537,6 +737,39 @@ Note the accessors must stay on the struct regardless — they are the API for
 scalar, non-loop access. The Span binding is a hot-loop technique, not a
 replacement.
 
+### `Int(<UInt32 comptime>)` does not fold in parameter position
+
+`Phase1PixelTopology` hit this and it is easy to misdiagnose. A list-literal
+`InlineArray` whose length is `Int(Self.numberOfLayers) + 1` fails with a bare
+*"no matching function in initialization"*; the real cause is buried in the
+candidate notes:
+
+```
+return type 'Array[UInt32, Int(11)]' parameter 'length' value 'Int(11)'
+doesn't match expected value '(SIMD(UInt32(10)) + Int(1))'
+```
+
+The literal deduces `length = Int(11)`; the annotation stays the *symbolic*
+`SIMD(UInt32(10)) + Int(1)` and the two never unify. Binding it to an
+intermediate `comptime … : Int` does not help (it becomes `Int((add SIMD(...),
+1))`), and wrapping in `comptime (…)` is rejected — *"expression is already
+evaluated at compile time"*. It is folded; it just does not **normalize** for
+parameter matching.
+
+The fix is to make the constant a plain `Int` so no SIMD appears in the
+expression. Note this only bites where a list literal must match a deduced size:
+`InlineArray[UInt8, Int(<UInt32>)](fill=0)` is fine, which is why
+`PixelCPEforGPU` never saw it.
+
+### Higher-order parametric functions no longer bind
+
+`_map_to_array[…, func: fn[Scalar[I]]() -> Scalar[R]]()` cannot be called or
+passed in 1.0 (*"parameter 'func' has `def[Scalar[I], /]() -> Scalar[R]` type,
+but value has type `def findLayerFromCompact[detId: UInt32]() thin -> UInt8`"*).
+It had a single caller, so it was deleted and the loop inlined into a
+purpose-built `_build_layer_table()`. If a future case has many callers this
+will need a real answer.
+
 ### Runtime-indexing a `comptime` table: `materialize`
 
 A `comptime InlineArray` indexed by a **runtime** value fails with *"cannot
@@ -558,6 +791,181 @@ that is only ever read.
 
 Applied to the six error tables in `errorFromSize`/`errorFromDB`.
 
+**`materialize` rebuilds the table on every call — prefer SIMD.** This is not a
+style preference. `FEDNumbering.inRange` was ported as
+`materialize[_in]()[i]` over a `comptime List[Bool]` of 4097 entries, which
+means a heap allocation and a 4097-element fill *per call* to a hot predicate.
+Three things were probed to settle the alternatives:
+
+- **Module scope does not help.** A module-level `comptime InlineArray` read at
+  a runtime index gives the same materialize error as a struct member.
+- **There is no global `var`.** *"global variables are not supported; move this
+  into a function body or use 'comptime' to declare a constant"* — so C++'s
+  `static bool in_[MAXFEDID+1]`, built once at static init, has no direct
+  equivalent.
+- **`SIMD[DType.bool, N]` does not scale.** `N = 8192` fails to instantiate.
+
+What works is a `comptime` SIMD of **`UInt64` used as a bitmask**: 4097 flags in
+128 lanes, indexed at a runtime index with no materialize. `initIn` keeps its
+original shape — 27 `comptime for` loops — with `_in[i] = True` becoming
+`_in[i // 64] |= UInt64(1) << UInt64(i % 64)`, and the lookup is
+`(_in[i // 64] >> UInt64(i % 64)) & 1 == 1`. Note the shift RHS needs an
+explicit `UInt64(...)`; a bare `i % 64` is a `_SequentialRange.Element` and is
+rejected.
+
+Verified exhaustively against an independent oracle over all 4097 ids (1147 in
+range, 0 mismatches) — the compile passes either way, so only the oracle catches
+a dropped range. An intermediate attempt that replaced the table with a
+hand-written chain of range tests silently dropped 3 of the 27 ranges, because
+the ranges were extracted with a regex that missed the ones split across lines.
+
+### `mut` on a mid-sized struct is copy-in/copy-out, not a reference
+
+Measured with `@no_inline` and a single-field write, so the numbers are the
+per-call overhead of the calling convention alone:
+
+| struct size | instrs/call | behaviour |
+|---|---|---|
+| 16 B | 3 | by-reference (register-passed) |
+| 88 B | 13 | **copy in and back out** |
+| 128 B | 17 | **copy in and back out** |
+| 256 B | 25 | **copy in and back out** |
+| 1024 B | 2 | by-reference |
+
+Inside the band the callee reads the whole struct and writes the whole struct
+back, even to touch one field. `ref [o] x: T` compiles **byte-identically** to
+`mut x: T` — there is no borrow convention that avoids it. Only
+`Pointer[T, o]` is genuinely by-reference there (7 instrs vs 16 for an 88-byte
+`Counters`, 4 memory ops vs 11).
+
+Practical rule: `mut`/`ref` are free for small structs and for large ones
+(SoA containers, `HitContainer`, `TkSoA`). For structs of roughly a few dozen
+to a few hundred bytes **on a hot path**, prefer `Pointer[T, o]` as a
+*parameter*. `Counters` (11 × UInt64 = 88 B) is in the band but every call site
+is behind `if m_params.doStats`, so it keeps `mut`.
+
+### A read-only borrow is already by-reference — `ref` adds nothing
+
+The band above is about **mutable** parameters. For a *read-only* parameter the
+default borrow is passed by reference at every size, and `ref [o] m: T` is
+byte-identical to it. Measured on a 288-byte struct (the shape of
+`Rfit.Matrix6d`), both `@no_inline`:
+
+```asm
+take_borrow(Big):              take_ref(Big%):
+  vmovsd  (%rdi), %xmm0          vmovsd  (%rdi), %xmm0
+  vaddsd  280(%rdi), %xmm0       vaddsd  280(%rdi), %xmm0
+  retq                           retq
+```
+
+The call sites are `movq %rbx, %rdi; callq …` for both — same address, no
+temporary. Only the mangled name differs (`Big` vs `Big%`).
+
+So `ref` is **never** a performance choice for a read-only parameter. What it
+buys is a **named origin**, needed only when a reference *escapes*: into the
+return type, or into a stored field. That is the rule:
+
+| situation | spelling |
+|---|---|
+| reads it, returns nothing derived from it | `m: T` |
+| returns a view/reference into it | `ref self` + `origin_of(self.field)` |
+| writes through it, small or huge | `mut m: T` |
+| writes through it, in the size band, hot | `Pointer[T, o]` |
+
+Examples in this port: `printIt(m: M)` and `Scatter_cov_line(…)` take plain
+borrows (nothing escapes); `EigenSoA.data(ref self) -> Span[…,
+origin_of(self._data)]` and `MatrixSoA.__getitem__(ref self, …) ->
+LayoutTensor[…, origin_of(self._data)]` need `ref` because the returned view
+points into `self`. Note both name **`self._data`**, not `self` — the Span is
+built from the field, and a whole-struct origin will not unify with it
+(*"cannot be converted from `Span[Scalar[T], origin_of(_mlir_origin._data)]` to
+`Span[Scalar[T], origin]`"*).
+
+### A struct cannot hold a `ref` field
+
+`var b: ref [o] Big` is rejected — *"'ref' patterns are only valid on the left
+side of an assignment"*. So when a struct needs to reference something it does
+not own there are only three options:
+
+1. `Pointer[T, o]` — tracked, but forces an origin parameter onto the struct,
+   which then spreads to every use of that type and makes construction awkward.
+2. Own it — `OwnedPointer` (heap) or a plain inline field.
+3. **Don't store it** — take `mut` as a parameter and let the caller own it.
+
+Option 3 is usually right, and it is how `counters_` was removed: C++ held
+`Counters*` pointing at the generator's counters, but the kernels object is
+rebuilt per event, so an owned field would have accumulated nothing. Passing
+`mut counters: Counters` keeps accumulation on the generator, which is what
+C++ actually does.
+
+### `OwnedPointer` is almost never worth it — SUPERSEDED
+
+The original table below justified boxing the big containers. **It no longer
+holds**: once `HistoContainer`, `ZVertexSoA` and `WorkSpace` got heap-backed
+columns (see the compile-time-bomb section above), every one of those types
+collapsed to a handful of bytes, and the boxes became pure overhead.
+
+| held type | size before | size now | verdict |
+|---|---|---|---|
+| `SimpleVector` (2×Int32 + ptr) | 16 B | 16 B | inline field |
+| `TupleMultiplicity` | ~48 KB | **56 B** | inline field |
+| `HitToTuple` | ~384 KB | **56 B** | inline field |
+| `HitContainer` | ~338 KB | **56 B** | inline field |
+| `Hist` (rechit) | 101 KB | **56 B** | inline field |
+| `ZVertexSoA` | 216 KB | **176 B** | inline field |
+| `WorkSpace` | ~600 KB | **160 B** | inline field |
+
+The old rationale — "the kernels object is stack-allocated per event, so
+inlining the big two would put ~432 KB on the stack" — evaporates at 56 B each.
+
+**`OwnedPointer[List[T]]` is always wrong.** A `List` is already a heap-backed
+handle, so the box is a second allocation and a second indirection, and §12
+above measures that indirection being *reloaded on every iteration* because the
+backend cannot hoist it. 29 of the port's 39 boxes were this shape.
+
+**38 of the port's 39 boxes are gone.** All 15 columns plus
+`m_HistStore`/`m_AverageGeometryStore` in `TrackingRecHit2DHeterogeneous`, all 7
+in `SiPixelDigisSoA`, all 4 in `SiPixelClustersSoA`, both in
+`SiPixelDigiErrorsSoA`, both containers in `CAHitNtupletGeneratorKernels`, `ws_d`
+in `gpuVertexFinder`, both in `TimerManager`, `_word`/`_fedId` in
+`WordFedAppender`, `_wordFedAppender` in `SiPixelRawToClusterCUDA`,
+`_gainForHLTonHost` in `SiPixelGainCalibrationForHLTGPU`, and `m_counters` in
+`CAHitNtupletGeneratorOnGPU`.
+
+Build cost of the two behavioural tests fell as a side effect — clustering
+704 → 299 MB, vertex finder 363 → 174 MB — and both still pass, the clustering
+one still byte-identical to the C++ reference.
+
+Two of these were not merely redundant but actively wrong:
+
+- **`TimerManager`** reached its `Dict`/`List` as `self._storage.unsafe_ptr()[]`
+  to mutate through a non-`mut` `self`. That does not work: `ptr[]` is an
+  **rvalue**, so every `__setitem__`/`append`/`clear`/`pop` through it was
+  rejected — 8 of the file's errors. Unboxing to plain fields and marking the
+  mutating methods `mut self` took the file to zero. `top()` now returns a
+  `String` copy rather than a borrow, because every caller uses it as a `Dict`
+  key while mutating `_storage`, which a live borrow of `_cur` forbids; and
+  `finalize` copies the key set out before reaching each value mutably.
+- **`SiPixelDigiErrorsSoA.error()`/`c_error()`** returned raw `UnsafePointer`s
+  into the box. They have no callers, so they are now `ref` returns.
+
+Only `TypeableOwnedPointer._inner` is left. That one is structural — it *is* the
+Event-product mechanism (`HeterogeneousSoA`), not an incidental box — so it needs
+a design decision rather than a sweep.
+
+**Sizes below which a box is never worth it.** Measured: a 24 kB struct
+(`SiPixelGainForHLTonGPU`) with 2 derefs builds in 316 MB, while 216 kB
+(`ZVertexSoA`) exhausted 6 GB. So the compile-time cliff sits somewhere between
+24 kB and 216 kB — but that only bounds the *hazard*. The allocation and
+indirection are wasted at any size where the type is a handle or the accessor
+returns a borrow, which covered every case here.
+
+Where a box *is* still wanted, note what C++'s `unique_ptr` actually buys:
+in `TrackingRecHit2DHeterogeneous` it was `Traits::unique_ptr`, i.e. a device
+allocation whose address is handed to a view — a GPU concern, not an ownership
+one (see above). Read the C++ before assuming a `unique_ptr` means "too big to
+inline".
+
 ### Origins do not become `noalias`
 
 Nothing vectorises — every variant stays scalar (`vmovss`/`vfmadd231ss`). This
@@ -569,6 +977,97 @@ So origins are erased before codegen. §4 records that they are compile-time
 only and cost nothing at runtime; the corollary is that they also **buy**
 nothing — they are a borrow-checking device, not an aliasing hint. Do not
 expect a `Span[T, _]` parameter to imply `noalias` to the backend.
+
+### `OwnedPointer` of a large inline struct is a compile-time bomb
+
+`mojo run` on a file exercising the vertex finder consumed **23 GB** and was
+OOM-killed, twice, taking the editor with it. The cause is not the code being
+compiled: it is `OwnedPointer[T]` where `T` is a struct whose columns are
+`InlineArray`, and it scales with the number of times the pointee is used.
+
+Measured with `systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0`
+around `mojo build` (**always cap these**, see the warning below):
+
+| shape | peak RSS |
+|---|---|
+| 600 kB struct on the stack, `mut` param + a field read | 308 MB |
+| `OwnedPointer(WorkSpace())`, **1** deref | 566 MB |
+| `OwnedPointer(WorkSpace())`, **2** derefs | **>6 GB** |
+| `OwnedPointer(WorkSpace())`, 1 deref + a call | **>6 GB** |
+| two `OwnedPointer`s, no call at all | **>6 GB** |
+
+What does **not** matter, all measured:
+
+- **The parameter convention.** `mut T`, `ref T` and `Pointer[mut=True, T, _]`
+  all behave identically. A stack struct passed `mut` is 308 MB, so `mut` on a
+  large struct is fine — this is not the §12 copy-in/copy-out band.
+- **Function calls.** Two derefs and a single `print`, no call, still dies.
+- **Binding once.** `ref w = wp[]` then reusing `w` does not help.
+- **`Copyable`.** A synthetic 256 kB struct dies with or without it.
+- **Nesting the arrays in sub-structs.** Also dies.
+
+**The fix: give the struct heap-backed columns.** `InlineArray[T, N]` →
+`List[T]`, allocated `List[T](length=N, fill=…)` in `__init__`. Indexing, `ref`
+bindings and capacity are unchanged, and §12 already shows hot loops should
+bind Spans regardless — a `List` binds to a Span exactly as an `InlineArray`
+does, so there is no cost at the access site.
+
+Applied to `ZVertexSoA` and `WorkSpace`:
+
+| | before | after |
+|---|---|---|
+| `size_of[ZVertexSoA]()` | 216 kB | **176 B** |
+| `size_of[WorkSpace]()` | ~600 kB | **160 B** |
+| 2 derefs / 3 derefs | KILLED / KILLED | **303 MB / 321 MB** |
+| full vertex-finder pipeline | **23 GB, OOM** | **363 MB** |
+
+No call site changed — `Producer.make` still holds both in `OwnedPointer`s, and
+the `ref data = pdata[]` bindings in the algorithms are untouched. C++ declares
+these columns inline because the SoA is one `cudaMalloc`'d blob on the device;
+that rationale does not transfer to a host serial build.
+
+Then applied to `HistoContainer` (`off` and `bins`), which fixes every user at
+once — `TrackingRecHit2DHeterogeneous.m_HistStore`, `TrackSoA`'s two
+`HitContainer`s, and the three `CAConstants` containers:
+
+| | before | after |
+|---|---|---|
+| `size_of[Hist]()` (rechit) | 103,432 B | **56 B** |
+| `size_of[TrackSoA.HitContainer]()` | 458,760 B | **56 B** |
+| `size_of[CAConstants.TupleMultiplicity]()` | 49,192 B | **56 B** |
+| construct a `TrackingRecHit2DHeterogeneous`, 2 × `phiBinner()` | **>6 GB** | **307 MB** |
+
+No call site changed: the external uses are all `hist.off[j]` / `tuples.bins[idx]`
+indexing, which reads identically on a `List`. Both behavioural tests still pass
+and `GPUClusteringTest` is still byte-identical to the C++ reference.
+
+**Why `m_HistStore` is an `OwnedPointer` at all — it is vestigial.** C++ has
+`unique_ptr<Hist> m_HistStore`, but that `unique_ptr` is `Traits::unique_ptr`, a
+*policy* type: on the CUDA path it is `make_device_unique` (a `cudaMalloc`), and
+line 96 does `m_hist = view->m_hist = m_HistStore.get()` — the point is a stable
+**device** address to stash into `TrackingRecHit2DSOAView`. Neither reason
+survives here: there is no device, and the self-referential views were removed
+(§9, §11, §13). So "it mirrors C++'s `unique_ptr`" is not a reason to keep the
+box; with `HistoContainer` now heap-backed the box is merely harmless, and could
+be dropped later.
+
+**Status of the other large SoAs**
+
+- `PixelTrack.TrackSoA` — was **measured clean** at 2 derefs (306 MB / 281 MB)
+  even at 3.8 MB with `fill=`-initialised nested `InlineArray`s. Why it escaped
+  was *never established* — `Copyable`, raw size, and nesting the arrays in
+  sub-structs were each tested and each ruled out. Do not assume a large SoA is
+  safe by analogy; measure it.
+- Remaining `InlineArray`-backed SoAs (e.g. `ScalarSoA`, still
+  `InlineArray[Scalar, S]`) are unmeasured. Any of them reached through an
+  `OwnedPointer` is a candidate.
+
+**`precompile` cannot see any of this.** It never instantiates `main`, so the
+error count stays healthy while the codebase is unbuildable — 306→241 errors
+was reported all session with this sitting underneath. Verification needs
+`mojo build`, and it must be capped: an uncapped `mojo run`/`mojo build` on an
+affected file will take the machine down, not just the compiler. This is the
+same failure mode as the `--emit asm` OOM noted above.
 
 ---
 
@@ -623,11 +1122,91 @@ Most of the residue was §6 numeric strictness, arriving exactly as described
 there — one conversion fixed uncovers the next (`range` → `__lt__` → `__ne__` →
 `__add__` → parameter type), five rounds before it settled.
 
-### Still blocked: assembly for the real `getHits`
+---
 
-`CUDACompat.mojo` (7 errors) sits in the hit SoA's import closure, so the §12
-Span change is verified on a structural probe but not yet on the real function.
-The errors are two shapes only — `OpaquePointer()` with no null spelling, and
-`UnsafePointer[Scalar[T], mut=True]` where `mut` is no longer a keyword
-parameter — in a struct that is entirely `@deprecated` no-op shims for the
-serial backend. Fixing it is the cheapest path to a real before/after.
+## 14. DONE — `CUDACompat`, and `Pointer` is non-nullable
+
+556 → **449** errors from this one small file: it sits in almost every plugin's
+import closure, so its 7 errors were masking ~100 downstream.
+
+### `Pointer` cannot be null
+
+Worth knowing before reaching for it. `Pointer` is non-nullable **by
+construction** in 1.0 — the constraint fires at instantiation:
+
+```
+constraint failed: Pointer is non-nullable.
+To construct a null pointer, use Optional[Pointer] to model nullability.
+```
+
+So there is no `Pointer` equivalent of a null `UnsafePointer`. `CUDAStreamType`
+is now `Optional[Pointer[NoneType, MutUntrackedOrigin]]` with `cudaStreamDefault
+= None`. It is a vestigial placeholder — the serial backend has no streams and
+never dereferences it — and it is passed along as a default argument in 5 files
+with no unwrapping needed.
+
+### The atomics are not atomics
+
+In the serial backend these six are plain read-modify-write. Five now take
+`mut a: Scalar[T1]` instead of a pointer, so the borrow is tracked and 18
+`UnsafePointer(to=…)` wrappers disappeared from call sites:
+
+```mojo
+CUDACompat.atomicAdd(UnsafePointer(to=noise), Int32(1))   # before
+CUDACompat.atomicAdd(noise, Int32(1))                      # after
+```
+
+`atomicCAS` is the exception and keeps a pointer, now
+`Pointer[mut=True, Scalar[T1], _]` — tracked origin rather than untracked. Its
+only two callers (`GPUCACell` lines 105 and 132) CAS on a *reinterpreted pointer
+field*, `Pointer(to=self.theOuterNeighbors).bitcast[UInt64]()`, which has no
+`Scalar` lvalue to borrow.
+
+### `comptime if` typechecks the branch it does not take
+
+Verified on an isolated probe. Those two `atomicCAS` calls sit inside
+`comptime if is_defined["__CUDACC__"]()`, dead in every serial build, and they
+*still* constrain the signature. Dead CUDA code is not free — it votes on your
+API. (`Pointer.bitcast` also warns: use `unsafe_bitcast`.)
+
+### `comptime if` selects a branch but does **not** narrow the type
+
+The corollary, and the one that decides the framework's design. Dispatching on a
+type parameter looks like it should work:
+
+```mojo
+def get[T: Movable & Named](ref self) -> ref [self.a] T:
+    comptime if T.dtype() == "A":       # folds fine, branch is selected
+        return self.a.value()           # error: cannot implicitly convert 'A' to 'T'
+```
+
+The comparison folds and the right branch is chosen, but inside it `T` is still
+the abstract parameter — the compiler does not learn `T == A`. Every branch
+therefore needs `rebind[T](...)`, an unchecked cast. Combined with the rule
+above (the untaken branch must typecheck too), *both* branches need one.
+
+There is also no type identity to test against: `T is A` fails with *"'Movable'
+does not implement the '__is__' method"*.
+
+**Consequence:** a struct of named per-type fields cannot expose a safe
+`get[T]()`. `Variant` is the only construct in 1.0 that both selects by type and
+knows the arm's concrete type on the far side, which is why §15 uses it rather
+than five named fields — even though named fields would avoid the union
+padding.
+
+### Assembly for the real `getHits`: abandoned, and why
+
+`CUDACompat`, `SOARotation`, `File` and `Phase1PixelTopology` were all cleared
+to chase this. The build then **ran the machine out of memory** — `mojo build
+--emit asm` compiles the whole import closure in one process, was killed with
+SIGKILL (exit 137), and took the user's editor down with it.
+
+> **Do not run `mojo build --emit asm` over a driver that imports the full
+> MojoSerial graph.** Emit assembly from small standalone probes only.
+
+This chase was a mistake worth recording. The §12 result was already measured on
+a probe replicating the hit SoA's 13 columns, types and store pattern exactly;
+the real function's assembly would have *confirmed* that, not added to it. Each
+file cleared revealed the next (§8), and the marginal value never justified the
+cost. If it is ever wanted, the way to get it is to extract `getHits` and its
+few dependencies into a standalone file, not to build the real closure.

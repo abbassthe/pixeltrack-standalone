@@ -1,5 +1,10 @@
 @fieldwise_init
-struct RBNode[K: Copyable & Comparable, V: Copyable](Copyable, Movable):
+struct RBNode[
+    K: ImplicitlyCopyable & Comparable & Deinitable,
+    V: ImplicitlyCopyable & Deinitable,
+](
+    Copyable, ImplicitlyCopyable, Movable
+):
     var key: Self.K
     var value: Self.V
     var parent: Int
@@ -18,7 +23,10 @@ struct RBNode[K: Copyable & Comparable, V: Copyable](Copyable, Movable):
 
 
 @fieldwise_init
-struct OrderedMap[K: Copyable & Comparable, V: Copyable](Movable, Sized):
+struct OrderedMap[
+    K: ImplicitlyCopyable & Comparable & Deinitable,
+    V: ImplicitlyCopyable & Deinitable,
+](Movable, Sized):
     # Index-based RB-tree: contiguous node storage for cache locality and low allocation overhead.
     var _nodes: List[RBNode[Self.K, Self.V]]
     var _root: Int
@@ -39,7 +47,7 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Movable, Sized):
         return self._size == 0
 
     @always_inline
-    def clear(ref self):
+    def clear(mut self):
         self._nodes.clear()
         self._root = -1
         self._size = 0
@@ -66,7 +74,9 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Movable, Sized):
             raise "KeyError: key not found"
         return self._nodes[idx].value
 
-    def try_get(self, key: Self.K, out value: V) -> Bool:
+    # `out` is reserved for __init__ in 1.0; C++'s `bool try_get(K, V&)` maps to
+    # a mutable borrow for the out-parameter.
+    def try_get(self, key: Self.K, mut value: Self.V) -> Bool:
         var idx = self._find_index(key)
         if idx == -1:
             return False
@@ -156,21 +166,21 @@ struct OrderedMap[K: Copyable & Comparable, V: Copyable](Movable, Sized):
             out.append((self._nodes[cur].key, self._nodes[cur].value))
             cur = self._nodes[cur].right
 
-        return out
+        return out^
 
     def keys(self) -> List[Self.K]:
         var out = List[Self.K]()
         var kv = self.items()
         for i in range(kv.__len__()):
             out.append(kv[i][0])
-        return out
+        return out^
 
     def values(self) -> List[Self.V]:
         var out = List[Self.V]()
         var kv = self.items()
         for i in range(kv.__len__()):
             out.append(kv[i][1])
-        return out
+        return out^
 
     @always_inline
     def _find_index(self, key: Self.K) -> Int:

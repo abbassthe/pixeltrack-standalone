@@ -95,7 +95,7 @@ def FED_MORE_HEADERS_EXTRACT(a: Int) -> Int:
 
 @fieldwise_init
 struct FEDHeader(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
-    comptime length: UInt32 = size_of[FedhType]()
+    comptime length: UInt32 = UInt32(size_of[FedhType]())
     var theHeader: UnsafePointer[FedhType]
 
     @always_inline

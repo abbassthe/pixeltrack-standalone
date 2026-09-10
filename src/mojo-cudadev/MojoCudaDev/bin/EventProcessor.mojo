@@ -45,12 +45,12 @@ struct EventProcessor(Defaultable, Typeable):
         try:
             self._registry = ProductRegistry()
             self._source = Source(
-                maxEvents, runForMinutes, self._registry, path, validation
+                Int32(maxEvents), Int32(runForMinutes), self._registry, path, validation
             )
             self._eventSetup = EventSetup()
-            self._warmupEvents = warmupEvents
-            self._maxEvents = maxEvents
-            self._runForMinutes = runForMinutes
+            self._warmupEvents = Int32(warmupEvents)
+            self._maxEvents = Int32(maxEvents)
+            self._runForMinutes = Int32(runForMinutes)
 
             self._cuda_ctx = alloc[CUDAAppContext](1)
             __get_address_as_uninit_lvalue(self._cuda_ctx.address) = CUDAAppContext()

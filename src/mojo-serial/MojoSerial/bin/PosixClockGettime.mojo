@@ -33,7 +33,7 @@ struct TimeSpec(Copyable, Defaultable, Movable, TrivialRegisterPassable):
         self.tv_sec = 0
         self.tv_nsec = 0
 struct PosixClockGettime[CLOCK: ClockIdType]:
-    comptime rep = UInt
+    comptime rep = Int
     comptime period = 10**9
 
     comptime is_steady = is_steady[Self.CLOCK]()
@@ -44,8 +44,11 @@ struct PosixClockGettime[CLOCK: ClockIdType]:
         var t = TimeSpec()
         debug_assert(
             external_call[
-                "clock_gettime", c_int, ClockIdType, UnsafePointer[TimeSpec]
-            ](CLOCK, UnsafePointer(to=t))
+                "clock_gettime",
+                c_int,
+                ClockIdType,
+                UnsafePointer[TimeSpec, origin_of(t)],
+            ](Self.CLOCK, UnsafePointer(to=t))
             == 0
         )
-        return UInt(c_long(t.tv_sec) * Self.period + t.tv_nsec)
+        return Int(c_long(t.tv_sec) * Self.period + t.tv_nsec)

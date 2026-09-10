@@ -1,10 +1,9 @@
-from std.memory import OwnedPointer
 from std.time import perf_counter_ns
 
 
-struct Timer(Copyable, Defaultable, Movable, Stringable, TrivialRegisterPassable):
-    var _start: UInt
-    var _time: UInt
+struct Timer(Copyable, Defaultable, Movable, TrivialRegisterPassable):
+    var _start: Int
+    var _time: Int
 
     @always_inline
     def __init__(out self):
@@ -12,7 +11,7 @@ struct Timer(Copyable, Defaultable, Movable, Stringable, TrivialRegisterPassable
         self._time = 0
 
     @always_inline
-    def __init__(out self, var start: UInt):
+    def __init__(out self, var start: Int):
         self._start = start
         self._time = 0
 
@@ -25,7 +24,7 @@ struct Timer(Copyable, Defaultable, Movable, Stringable, TrivialRegisterPassable
         self._time += perf_counter_ns() - self._start
 
     @always_inline
-    def get(self) -> UInt:
+    def get(self) -> Int:
         return self._time
 
     @always_inline
@@ -40,19 +39,22 @@ struct Timer(Copyable, Defaultable, Movable, Stringable, TrivialRegisterPassable
     @always_inline
     def __str__(self) -> String:
         return (
-            "Timer(" + self._start.__str__() + ", " + self._time.__str__() + ")"
+            "Timer(" + String(self._start) + ", " + String(self._time) + ")"
         )
 
 
 struct TimerManager(Defaultable, Movable, Sized):
-    var _storage: OwnedPointer[Dict[String, Timer]]
+    # Dict and List are already heap-backed handles, so the OwnedPointer only
+    # added an indirection -- and `ptr[]` yields an rvalue, which is why every
+    # mutating call through it was rejected. Plain fields plus `mut self`.
+    var _storage: Dict[String, Timer]
     # a stack
-    var _cur: OwnedPointer[List[String]]
+    var _cur: List[String]
 
     @always_inline
     def __init__(out self):
-        self._storage = OwnedPointer[Dict[String, Timer]](Dict[String, Timer]())
-        self._cur = OwnedPointer[List[String]](List[String]())
+        self._storage = Dict[String, Timer]()
+        self._cur = List[String]()
 
     @always_inline
     def __init__(out self, *, deinit move: Self):
@@ -60,64 +62,73 @@ struct TimerManager(Defaultable, Movable, Sized):
         self._cur = move._cur^
 
     @always_inline
-    def __enter__(ref self):
+    def __enter__(mut self):
         if not self.empty():
-            if self.top() not in self._storage.unsafe_ptr()[]:
-                self._storage.unsafe_ptr()[][self.top()] = Timer()
+            var key = self.top()
+            if key not in self._storage:
+                self._storage[key] = Timer()
             try:
-                self._storage.unsafe_ptr()[][self.top()].start()
+                self._storage[key].start()
             except e:
                 print(e)
 
     @always_inline
-    def __exit__(ref self):
+    def __exit__(mut self):
         try:
-            self._storage.unsafe_ptr()[][self.top()].finish()
+            var key = self.top()
+            self._storage[key].finish()
         except e:
             print(e)
         self.pop()
 
     @always_inline
-    def configure(ref self, var name: String):
-        self._cur.unsafe_ptr()[].append(name)
+    def configure(mut self, var name: String):
+        self._cur.append(name^)
 
     @always_inline
-    def start(ref self, var name: String = ""):
+    def start(mut self, var name: String = ""):
         if name:
-            self.configure(name)
+            self.configure(name^)
         self.__enter__()
 
     @always_inline
-    def stop(ref self):
+    def stop(mut self):
         self.__exit__()
 
     @always_inline
-    def clear(ref self):
-        self._storage.unsafe_ptr()[].clear()
-        self._cur.unsafe_ptr()[].clear()
+    def clear(mut self):
+        self._storage.clear()
+        self._cur.clear()
 
     @always_inline
     def empty(self) -> Bool:
-        return self._cur.unsafe_ptr()[].__len__() == 0
+        return self._cur.__len__() == 0
+
+    # Returns a copy rather than a borrow: every caller uses it as a Dict key
+    # while mutating _storage, which a live borrow of _cur would not allow.
+    @always_inline
+    def top(self) -> String:
+        return self._cur[self._cur.__len__() - 1].copy()
 
     @always_inline
-    def top(ref self) -> ref [self._cur] String:
-        return self._cur.unsafe_ptr()[][-1]
-
-    @always_inline
-    def pop(ref self):
-        _ = self._cur.unsafe_ptr()[].pop()
+    def pop(mut self):
+        _ = self._cur.pop()
 
     @always_inline
     def __len__(self) -> Int:
-        return self._storage.unsafe_ptr()[].__len__()
+        return self._storage.__len__()
 
     @always_inline
-    def finalize(ref self):
+    def finalize(mut self):
         try:
             while not self.empty():
                 self.stop()
-            for k in self._storage.unsafe_ptr()[].keys():
-                self._storage.unsafe_ptr()[][k].finalize(k)
+            # keys are copied out first: iterating the Dict borrows it, which
+            # would conflict with reaching each value mutably below
+            var names = List[String]()
+            for k in self._storage.keys():
+                names.append(k.copy())
+            for name in names:
+                self._storage[name].finalize(name.copy())
         except e:
             print(e)

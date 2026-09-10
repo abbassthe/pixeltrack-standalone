@@ -2,7 +2,11 @@ from std.pathlib import Path
 
 from MojoSerial.Framework.ProductRegistry import ProductRegistry
 from MojoSerial.Framework.EventSetup import EventSetup
-from MojoSerial.Framework.ESPluginFactory import ESPluginFactory
+from MojoSerial.Framework.ESPluginFactory import (
+    ESPluginFactory,
+    Registry as ESRegistry,
+)
+from MojoSerial.Framework.PluginFactory import Registry as EDRegistry
 from MojoSerial.MojoBridge.DTypes import Typeable
 from MojoSerial.bin.Source import Source
 from MojoSerial.bin.StreamSchedule import StreamSchedule
@@ -38,24 +42,24 @@ struct EventProcessor(Defaultable, Typeable):
         var runForMinutes: Int,
         var path: Path,
         var validation: Bool,
-        mut esreg: MojoSerial.Framework.ESPluginFactory.Registry,
-        mut edreg: MojoSerial.Framework.PluginFactory.Registry,
+        mut esreg: ESRegistry,
+        mut edreg: EDRegistry,
     ):
         try:
             self._registry = ProductRegistry()
             self._source = Source(
-                startEvent,
-                endEvent,
-                runForMinutes,
+                Int32(startEvent),
+                Int32(endEvent),
+                Int32(runForMinutes),
                 self._registry,
                 path,
                 validation,
             )
             self._eventSetup = EventSetup()
-            self._warmupEvents = warmupEvents
-            self._startEvent = startEvent
-            self._endEvent = endEvent
-            self._runForMinutes = runForMinutes
+            self._warmupEvents = Int32(warmupEvents)
+            self._startEvent = Int32(startEvent)
+            self._endEvent = Int32(endEvent)
+            self._runForMinutes = Int32(runForMinutes)
 
             for name in ESPluginFactory.getAll(esreg):
                 var esp = ESPluginFactory.create(name, path, esreg)

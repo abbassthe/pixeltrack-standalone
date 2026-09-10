@@ -82,9 +82,9 @@ def fillManyFromVector[
 
 
 def finalizeBulk(
-    apc: Pointer[AtomicPairCounter, _], mut assoc: HistoContainer[...]
+    apc: AtomicPairCounter, mut assoc: HistoContainer[...]
 ):
-    assoc.bulkFinalizeFill(apc[])
+    assoc.bulkFinalizeFill(apc)
 
 
 def forEachInBins[
@@ -150,9 +150,13 @@ struct HistoContainer[
     comptime UT = signed_to_unsigned[Self.T]()
     comptime UD = Scalar[Self.UT]
 
-    var off: InlineArray[Self.Counter, Int(Self.totbins())]
+    # Heap-backed, not InlineArray: as an inline struct this is 101 kB for the
+    # rechit Hist and 448 kB for TrackSoA's HitContainer, and an
+    # OwnedPointer of such a struct costs superlinearly in the number of
+    # derefs at compile time (doc §12). Capacity and indexing are unchanged.
+    var off: List[Self.Counter]
     var psws: Int32
-    var bins: InlineArray[Scalar[Self.IndexType], Int(Self.capacity())]
+    var bins: List[Scalar[Self.IndexType]]
 
     @staticmethod
     def ilog2(var v: UInt32) -> UInt32:
@@ -218,10 +222,10 @@ struct HistoContainer[
 
     @always_inline
     def __init__(out self):
-        self.off = InlineArray[UInt32, Int(Self.totbins())](fill=0)
+        self.off = List[Self.Counter](length=Int(Self.totbins()), fill=0)
         self.psws = 0
-        self.bins = InlineArray[Scalar[Self.IndexType], Int(Self.capacity())](
-            fill=0
+        self.bins = List[Scalar[Self.IndexType]](
+            length=Int(Self.capacity()), fill=0
         )
 
     @always_inline
@@ -318,9 +322,9 @@ struct HistoContainer[
         self.bins[w - 1] = j
 
     @always_inline
-    def finalize(self):
+    def finalize(mut self):
         debug_assert(self.off[Self.totbins() - 1] == 0)
-        blockPrefixScan(self.off.unsafe_ptr(), Self.totbins())
+        blockPrefixScan(Span(self.off), Self.totbins())
         debug_assert(
             self.off[Self.totbins() - 1] == self.off[Self.totbins() - 2]
         )

@@ -10,10 +10,18 @@ from MojoSerial.bin.PosixClockGettime import (
     CLOCK_THREAD_CPUTIME_ID,
 )
 from MojoSerial.MojoBridge.DTypes import Double
-from std.algorithm.functional import parallelize
+from MojoSerial.Framework.ESPluginFactory import Registry as ESRegistry
+from MojoSerial.Framework.PluginFactory import Registry as EDRegistry
+import MojoSerial.plugin_SiPixelClusterizer as plugin_SiPixelClusterizer
+import MojoSerial.plugin_BeamSpotProducer as plugin_BeamSpotProducer
+import MojoSerial.plugin_SiPixelRecHits as plugin_SiPixelRecHits
+import MojoSerial.plugin_PixelTriplets as plugin_PixelTriplets
+import MojoSerial.plugin_PixelVertexFinding as plugin_PixelVertexFinding
+import MojoSerial.plugin_Validation as plugin_Validation
+from std.runtime.asyncrt import TaskGroup
 
 
-def print_help(ref name: String):
+def print_help(name: StringSlice):
     print(
         "Usage:",
         name,
@@ -134,29 +142,29 @@ def main() raises:
             startEvent[t] = 0
             endEvent[t] = -1
 
-    var start = List[UInt](length=threads, fill=0)
-    var end = List[UInt](length=threads, fill=0)
+    var start = List[Int](length=threads, fill=0)
+    var end = List[Int](length=threads, fill=0)
 
     var processed = List[Int](length=threads, fill=0)
 
-    var cpu_start = List[UInt](length=threads, fill=0)
-    var cpu_end = List[UInt](length=threads, fill=0)
+    var cpu_start = List[Int](length=threads, fill=0)
+    var cpu_end = List[Int](length=threads, fill=0)
 
     var processing_error = False
 
-    def worker(i : Int) capturing:
+    async def worker(i: Int) capturing:
         ## Init plugins manually
-        var _esreg = MojoSerial.Framework.ESPluginFactory.Registry()
-        var _edreg = MojoSerial.Framework.PluginFactory.Registry()
+        var _esreg = ESRegistry()
+        var _edreg = EDRegistry()
         if not empty:
-            MojoSerial.plugin_SiPixelClusterizer.init(_esreg, _edreg)
-            MojoSerial.plugin_BeamSpotProducer.init(_esreg, _edreg)
-            MojoSerial.plugin_SiPixelRecHits.init(_esreg, _edreg)
-            MojoSerial.plugin_PixelTriplets.init(_esreg, _edreg)
-            MojoSerial.plugin_PixelVertexFinding.init(_esreg, _edreg)
+            plugin_SiPixelClusterizer.init(_esreg, _edreg)
+            plugin_BeamSpotProducer.init(_esreg, _edreg)
+            plugin_SiPixelRecHits.init(_esreg, _edreg)
+            plugin_PixelTriplets.init(_esreg, _edreg)
+            plugin_PixelVertexFinding.init(_esreg, _edreg)
 
         if validation:
-            MojoSerial.plugin_Validation.CountValidator.init(_esreg, _edreg)
+            plugin_Validation.init(_esreg, _edreg)
         var processor = EventProcessor(
             warmupEvents,
             startEvent[i],
@@ -186,14 +194,19 @@ def main() raises:
 
         processed[i] = Int(processor.processedEvents())
 
-    parallelize[worker](threads, threads)
+    # `parallelize` is gone in 1.0; TaskGroup is the replacement. One task per
+    # stream, scheduled across the async runtime's own pool.
+    var tg = TaskGroup()
+    for i in range(threads):
+        tg.create_task(worker(i))
+    tg.wait()
 
     var diff = end[0] - start[0]
     for i in range(threads):
         diff = max(diff, end[i] - start[i])
 
     # in seconds
-    var time: Double = diff / (10**9)
+    var time: Double = Float64(diff) / 1e9
 
     var cpu_begin = cpu_start[0]/threads
     var cpu_stop = cpu_end[0]/threads
@@ -202,7 +215,7 @@ def main() raises:
         cpu_stop = cpu_stop + cpu_end[i]/threads
 
     var cpu_diff = cpu_stop - cpu_begin
-    var cpu: Double = cpu_diff / (10**9)
+    var cpu: Double = Float64(cpu_diff) / 1e9
 
     var totalEvents = 0
     for i in range(threads):
@@ -214,7 +227,7 @@ def main() raises:
         " events in ",
         time,
         " seconds, throughput ",
-        (totalEvents / time),
+        (Float64(totalEvents) / time),
         " events/s, CPU usage per thread: ",
         round(cpu / time * 100),
         "%",

@@ -7,7 +7,7 @@ from MojoSerial.plugin_PixelTriplets.FitUtils import Rfit
 from MojoSerial.plugin_PixelTriplets.RiemannFit import Circle_fit, Fast_fit, Line_fit
 
 
-struct FitResult(Copyable):
+struct FitResult(Copyable, ImplicitlyCopyable):
     var fast_fit: Rfit.Vector4d
     var circle: Rfit.circle_fit
     var line: Rfit.line_fit
@@ -23,7 +23,7 @@ struct FitResult(Copyable):
         self.line = copy.line
 
 
-struct ExpectedResult(Copyable):
+struct ExpectedResult(Copyable, ImplicitlyCopyable):
     var fast_fit: Rfit.Vector4d
     var circle_par: Rfit.Vector3d
     var circle_cov: Rfit.Matrix3d

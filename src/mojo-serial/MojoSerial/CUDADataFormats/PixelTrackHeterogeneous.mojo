@@ -25,8 +25,8 @@ struct TrackSoAT[S: Int32](Defaultable, Movable, Typeable):
     comptime HIndexType = DType.uint16
     comptime HitContainer = OneToManyAssoc[
         Self.HIndexType,
-        S.cast[DType.uint32](),
-        5 * S.cast[DType.uint32](),
+        Self.S.cast[DType.uint32](),
+        5 * Self.S.cast[DType.uint32](),
     ]
 
     var m_quality: ScalarSoA[DType.uint8, Int(Self.S)]
@@ -49,13 +49,13 @@ struct TrackSoAT[S: Int32](Defaultable, Movable, Typeable):
 
     @always_inline
     def __init__(out self):
-        self.m_quality = ScalarSoA[DType.uint8, Int(S)]()
+        self.m_quality = ScalarSoA[DType.uint8, Int(Self.S)]()
 
-        self.chi2 = ScalarSoA[DType.float32, Int(S)]()
+        self.chi2 = ScalarSoA[DType.float32, Int(Self.S)]()
 
-        self.stateAtBS = TrajectoryStateSoA[S]()
-        self.eta = ScalarSoA[DType.float32, Int(S)]()
-        self.pt = ScalarSoA[DType.float32, Int(S)]()
+        self.stateAtBS = TrajectoryStateSoA[Self.S]()
+        self.eta = ScalarSoA[DType.float32, Int(Self.S)]()
+        self.pt = ScalarSoA[DType.float32, Int(Self.S)]()
 
         self.hitIndices = Self.HitContainer()
         self.detIndices = Self.HitContainer()
@@ -66,12 +66,10 @@ struct TrackSoAT[S: Int32](Defaultable, Movable, Typeable):
         return self.m_quality[i]
 
     @always_inline
-    def qualityData[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        Self.Quality, mut = origin.mut, origin=origin
-    ]:
-        return self.m_quality.data()
+    def qualityData(
+        ref self,
+    ) -> Span[Self.Quality, origin_of(self.m_quality._data)]:
+        return Span(self.m_quality._data)
 
     @always_inline
     def nHits(self, i: Int32) -> Int32:

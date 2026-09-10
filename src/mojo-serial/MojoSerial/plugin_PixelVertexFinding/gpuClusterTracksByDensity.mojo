@@ -10,8 +10,8 @@ comptime verbose: Bool = False  # in principle the compiler should optmize out i
 
 @always_inline
 def clusterTracksByDensity(
-    pdata: UnsafePointer[ZVertices],
-    pws: UnsafePointer[WorkSpace],
+    mut data: ZVertices,
+    mut ws: WorkSpace,
     minT: Int32,  # min number of neighbours to be "seed"
     eps: Float,  # max absolute distance to cluster
     errmax: Float,  # max error to be "seed"
@@ -22,18 +22,16 @@ def clusterTracksByDensity(
 
     var er2mx = errmax * errmax
 
-    ref data = pdata[]
-    ref ws = pws[]
     var nt = ws.ntrks
-    ref zt: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.zt
-    ref ezt2: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.ezt2
+    ref zt = ws.zt
+    ref ezt2 = ws.ezt2
 
-    ref nvFinal: UInt32 = data.nvFinal
-    ref nvIntermediate: UInt32 = ws.nvIntermediate
+    ref nvFinal = data.nvFinal
+    ref nvIntermediate = ws.nvIntermediate
 
-    ref izt: InlineArray[UInt8, UInt(WorkSpace.MAXTRACKS)] = ws.izt
-    ref nn: InlineArray[Int32, UInt(ZVertices.MAXTRACKS)] = data.ndof
-    ref iv: InlineArray[Int32, UInt(WorkSpace.MAXTRACKS)] = ws.iv
+    ref izt = ws.izt
+    ref nn = data.ndof
+    ref iv = ws.iv
 
     comptime Hist = HistoContainer[DType.uint8, 256, 16000, 8, DType.uint16, 1]
     var hist: Hist = Hist()
@@ -79,7 +77,7 @@ def clusterTracksByDensity(
 
         @parameter
         def countNeighbor(j: UInt16):
-            if i == Int(j):
+            if i == UInt32(j):
                 return
             var dist = abs(zt[i] - zt[Int(j)])
             if dist > eps:
@@ -147,7 +145,7 @@ def clusterTracksByDensity(
                 if dist * dist > chi2max * (ezt2[i] + ezt2[Int(j)]):
                     return
                 mdist = dist
-                minJ = Int(j)
+                minJ = UInt32(j)
 
             forEachInBins[func=debugClosest](hist, izt[i], 1)
             # should belong to the same cluster...
@@ -162,7 +160,7 @@ def clusterTracksByDensity(
         if iv[i] == Int32(i):
             if nn[i] >= minT:
                 var old = CUDACompat.atomicInc(
-                    UnsafePointer(to=foundClusters), UInt32(0xFFFFFFFF)
+                    foundClusters, UInt32(0xFFFFFFFF)
                 )
                 iv[i] = -(Int32(old) + 1)
             else:  # noise
@@ -189,11 +187,11 @@ def clusterTracksByDensity(
 
 @always_inline
 def clusterTracksByDensityKernel(
-    pdata: UnsafePointer[ZVertices],
-    pws: UnsafePointer[WorkSpace],
+    mut data: ZVertices,
+    mut ws: WorkSpace,
     minT: Int32,  # min number of neighbours to be "seed"
     eps: Float,  # max absolute distance to cluster
     errmax: Float,  # max error to be "seed"
     chi2max: Float,  # max normalized distance to cluster
 ):
-    clusterTracksByDensity(pdata, pws, minT, eps, errmax, chi2max)
+    clusterTracksByDensity(data, ws, minT, eps, errmax, chi2max)

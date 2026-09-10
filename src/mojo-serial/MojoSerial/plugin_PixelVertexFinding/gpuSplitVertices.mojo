@@ -6,21 +6,17 @@ comptime verbose: Bool = False  # in principle the compiler should optmize out i
 
 
 @always_inline
-def splitVertices(
-    pdata: UnsafePointer[ZVertices], pws: UnsafePointer[WorkSpace], maxChi2: Float
-):
-    ref data = pdata[]
-    ref ws = pws[]
+def splitVertices(mut data: ZVertices, mut ws: WorkSpace, maxChi2: Float):
     var nt = ws.ntrks
-    ref zt: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.zt
-    ref ezt2: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.ezt2
-    ref zv: InlineArray[Float, UInt(ZVertices.MAXVTX)] = data.zv
-    ref wv: InlineArray[Float, UInt(ZVertices.MAXVTX)] = data.wv
-    ref chi2: InlineArray[Float, UInt(ZVertices.MAXVTX)] = data.chi2
-    ref nvFinal: UInt32 = data.nvFinal
+    ref zt = ws.zt
+    ref ezt2 = ws.ezt2
+    ref zv = data.zv
+    ref wv = data.wv
+    ref chi2 = data.chi2
+    ref nvFinal = data.nvFinal
 
-    ref nn: InlineArray[Int32, UInt(ZVertices.MAXTRACKS)] = data.ndof
-    ref iv: InlineArray[Int32, UInt(WorkSpace.MAXTRACKS)] = ws.iv
+    ref nn = data.ndof
+    ref iv = ws.iv
 
     # one vertex per block
     for kv in range(nvFinal):
@@ -30,8 +26,8 @@ def splitVertices(
             continue
 
         comptime MAXTK: Int = 512
-        debug_assert(nn[kv] < MAXTK)
-        if nn[kv] >= MAXTK:
+        debug_assert(nn[kv] < Int32(MAXTK))
+        if nn[kv] >= Int32(MAXTK):
             continue  # too bad FIXME
         var it = InlineArray[UInt32, MAXTK](uninitialized=True)  # track index
         var zz = InlineArray[Float, MAXTK](uninitialized=True)  # z pos
@@ -44,7 +40,7 @@ def splitVertices(
         # copy to local
         for k in range(nt):
             if iv[k] == Int32(kv):
-                var old = CUDACompat.atomicInc(UnsafePointer(to=nq), UInt32(MAXTK))
+                var old = CUDACompat.atomicInc(nq, UInt32(MAXTK))
                 zz[Int(old)] = zt[k] - zv[kv]
                 newV[Int(old)] = 0 if zz[Int(old)] < 0 else 1
                 ww[Int(old)] = 1.0 / ezt2[k]
@@ -69,9 +65,9 @@ def splitVertices(
             for k in range(nq):
                 var i = newV[Int(k)]
                 _ = CUDACompat.atomicAdd(
-                    UnsafePointer(to=znew[Int(i)]), zz[Int(k)] * ww[Int(k)]
+                    znew[Int(i)], zz[Int(k)] * ww[Int(k)]
                 )
-                _ = CUDACompat.atomicAdd(UnsafePointer(to=wnew[Int(i)]), ww[Int(k)])
+                _ = CUDACompat.atomicAdd(wnew[Int(i)], ww[Int(k)])
 
             znew[0] /= wnew[0]
             znew[1] /= wnew[1]
@@ -103,7 +99,7 @@ def splitVertices(
 
         # get a new global vertex
         var igv: UInt32
-        igv = CUDACompat.atomicAdd(UnsafePointer(to=ws.nvIntermediate), UInt32(1))
+        igv = CUDACompat.atomicAdd(ws.nvIntermediate, UInt32(1))
 
         for k in range(nq):
             if newV[Int(k)] == 1:
@@ -113,7 +109,5 @@ def splitVertices(
 
 
 @always_inline
-def splitVerticesKernel(
-    pdata: UnsafePointer[ZVertices], pws: UnsafePointer[WorkSpace], maxChi2: Float
-):
-    splitVertices(pdata, pws, maxChi2)
+def splitVerticesKernel(mut data: ZVertices, mut ws: WorkSpace, maxChi2: Float):
+    splitVertices(data, ws, maxChi2)

@@ -32,7 +32,7 @@ struct ProductRegistry(Movable, Sized, Typeable):
 
     @always_inline
     def __init__(out self):
-        self._currentModuleIndex = Self.kSourceIndex
+        self._currentModuleIndex = Int32(Self.kSourceIndex)
         self._consumedModules = Set[UInt]()
         self._typeToIndex = Dict[String, Indices]()
 
@@ -45,7 +45,7 @@ struct ProductRegistry(Movable, Sized, Typeable):
     def produces[T: Typeable](mut self) raises -> EDPutTokenT[T]:
         if T.dtype() in self._typeToIndex:
             raise "RuntimeError: Product of type " + T.dtype() + " already exists."
-        var ind = self.__len__()
+        var ind = UInt(self.__len__())
         self._typeToIndex[T.dtype()] = Indices(
             UInt(self._currentModuleIndex), ind
         )

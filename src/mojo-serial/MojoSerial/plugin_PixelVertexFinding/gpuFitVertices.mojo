@@ -7,23 +7,21 @@ comptime verbose: Bool = False  # in principle the compiler should optmize out i
 
 @always_inline
 def fitVertices(
-    pdata: UnsafePointer[ZVertices],
-    pws: UnsafePointer[WorkSpace],
+    mut data: ZVertices,
+    mut ws: WorkSpace,
     chi2Max: Float,  # for outlier rejection
 ):
-    ref data = pdata[]
-    ref ws = pws[]
     var nt = ws.ntrks
-    ref zt: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.zt
-    ref ezt2: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.ezt2
-    ref zv: InlineArray[Float, UInt(ZVertices.MAXVTX)] = data.zv
-    ref wv: InlineArray[Float, UInt(ZVertices.MAXVTX)] = data.wv
-    ref chi2: InlineArray[Float, UInt(ZVertices.MAXVTX)] = data.chi2
-    ref nvFinal: UInt32 = data.nvFinal
+    ref zt = ws.zt
+    ref ezt2 = ws.ezt2
+    ref zv = data.zv
+    ref wv = data.wv
+    ref chi2 = data.chi2
+    ref nvFinal = data.nvFinal
     var nvIntermediate: UInt32 = ws.nvIntermediate
 
-    ref nn: InlineArray[Int32, UInt(ZVertices.MAXTRACKS)] = data.ndof
-    ref iv: InlineArray[Int32, UInt(WorkSpace.MAXTRACKS)] = ws.iv
+    ref nn = data.ndof
+    ref iv = ws.iv
 
     debug_assert(nvFinal <= nvIntermediate)
     nvFinal = nvIntermediate
@@ -46,13 +44,13 @@ def fitVertices(
         if iv[i] > 9990:
 
             comptime if verbose:
-                _ = CUDACompat.atomicAdd(UnsafePointer(to=noise), Int32(1))
+                _ = CUDACompat.atomicAdd(noise, Int32(1))
             continue
         debug_assert(iv[i] >= 0)
         debug_assert(iv[i] < Int32(foundClusters))
         var w = 1.0 / ezt2[i]
-        _ = CUDACompat.atomicAdd(UnsafePointer(to=zv[Int(iv[i])]), zt[i] * w)
-        _ = CUDACompat.atomicAdd(UnsafePointer(to=wv[Int(iv[i])]), w)
+        _ = CUDACompat.atomicAdd(zv[Int(iv[i])], zt[i] * w)
+        _ = CUDACompat.atomicAdd(wv[Int(iv[i])], w)
 
     # reuse nn
     for i in range(foundClusters):
@@ -70,8 +68,8 @@ def fitVertices(
         if c2 > chi2Max:
             iv[i] = 9999
             continue
-        _ = CUDACompat.atomicAdd(UnsafePointer(to=chi2[Int(iv[i])]), c2)
-        _ = CUDACompat.atomicAdd(UnsafePointer(to=nn[Int(iv[i])]), Int32(1))
+        _ = CUDACompat.atomicAdd(chi2[Int(iv[i])], c2)
+        _ = CUDACompat.atomicAdd(nn[Int(iv[i])], Int32(1))
 
     for i in range(foundClusters):
         if nn[i] > 0:
@@ -86,8 +84,8 @@ def fitVertices(
 
 @always_inline
 def fitVerticesKernel(
-    pdata: UnsafePointer[ZVertices],
-    pws: UnsafePointer[WorkSpace],
+    mut data: ZVertices,
+    mut ws: WorkSpace,
     chi2Max: Float,  # for outlier rejection
 ):
-    fitVertices(pdata, pws, chi2Max)
+    fitVertices(data, ws, chi2Max)

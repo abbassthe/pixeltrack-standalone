@@ -12,7 +12,7 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
     """
 
     comptime Data = List[UChar]
-    comptime Iterator = _ListIter[Self.Data.T, Self.Data.hint_trivial_type]
+    comptime Iterator = _ListIter[Self.Data.T]
     var _data: Self.Data
 
     @always_inline
@@ -28,11 +28,11 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
             + " is not a multiple of 8 bytes.",
         )
 
-        self._data = Self.Data(length=UInt(newsize), fill=0)
+        self._data = Self.Data(length=Int(newsize), fill=0)
 
     @always_inline
     def __init__(out self, *, copy: Self):
-        self._data = copy._data
+        self._data = copy._data.copy()
 
     @always_inline
     def __init__(out self, *, deinit move: Self):
@@ -48,7 +48,7 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
 
     @always_inline
     def size(self) -> SizeType:
-        return self._data.__len__()
+        return SizeType(self._data.__len__())
 
     @always_inline
     def __len__(self) -> Int:
@@ -66,7 +66,7 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
         if self.size() == newsize:
             return
 
-        self._data.resize(UInt(newsize), 0)
+        self._data.resize(Int(newsize), 0)
 
     @always_inline
     @staticmethod

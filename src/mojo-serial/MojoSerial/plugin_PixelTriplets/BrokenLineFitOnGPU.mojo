@@ -6,6 +6,7 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
     TrackingRecHit2DHeterogeneous,
 )
 from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import PixelTrack as pixelTrack
+from MojoSerial.CondFormats.PixelCPEFast import PixelCPEFast
 from std.atomic import Atomic
 from MojoSerial.MojoBridge.Matrix import to_layout_tensor
 
@@ -19,31 +20,30 @@ comptime BROKENLINE_DEBUG = False
 comptime BL_DUMP_HITS = False
 
 
+# C++ reads `hhp->cpeParams()`; that field went with the view (§11).
 def kernelBLFastFit[N: Int](
-    foundNtuplets: UnsafePointer[Tuples],
-    tupleMultiplicity: UnsafePointer[CAConstants.TupleMultiplicity],
-    hhp: UnsafePointer[HitsOnGPU],
-    phits: UnsafePointer[Float64],
-    phits_ge: UnsafePointer[Float32],
-    pfast_fit: UnsafePointer[Float64],
+    foundNtuplets: Tuples,
+    tupleMultiplicity: CAConstants.TupleMultiplicity,
+    hhp: HitsOnGPU,
+    cpeParams: PixelCPEFast,
+    phits: Span[mut=True, Float64, _],
+    phits_ge: Span[mut=True, Float32, _],
+    pfast_fit: Span[mut=True, Float64, _],
     nHits: UInt32,
     offset: UInt32,
 ):
-    var hitsInFit: UInt32 = N
+    var hitsInFit: UInt32 = UInt32(N)
     debug_assert(hitsInFit <= nHits)
-
-    debug_assert(hhp)
-    debug_assert(pfast_fit)
-    debug_assert(foundNtuplets)
-    debug_assert(tupleMultiplicity)
+    # C++ asserts hhp/pfast_fit/foundNtuplets/tupleMultiplicity are non-null;
+    # a borrow cannot be null, so those four assertions are gone.
 
     var local_start = 0
 
     comptime if BROKENLINE_DEBUG:
         if local_start == 0:
-            var nbins_val = foundNtuplets[].nbins()
+            var nbins_val = foundNtuplets.nbins()
             print(nbins_val, "total Ntuple")
-            var tsize_val = tupleMultiplicity[].size(nHits)
+            var tsize_val = tupleMultiplicity.size(nHits)
             print(
                 tsize_val, "Ntuple of size", nHits, "for", hitsInFit, "hits to fit"
             )
@@ -53,44 +53,44 @@ def kernelBLFastFit[N: Int](
 
     while local_idx < nt:
         var tuple_idx = local_idx + Int(offset)
-        if tuple_idx >= Int(tupleMultiplicity[].size(nHits)):
+        if tuple_idx >= Int(tupleMultiplicity.size(nHits)):
             break
 
-        var tkid = UInt32((tupleMultiplicity[].begin(nHits) + tuple_idx)[])
-        debug_assert(tkid < foundNtuplets[].nbins())
-        debug_assert(foundNtuplets[].size(tkid) == nHits)
+        var tkid = UInt32(tupleMultiplicity.begin(nHits)[tuple_idx])
+        debug_assert(tkid < foundNtuplets.nbins())
+        debug_assert(foundNtuplets.size(tkid) == nHits)
 
-        var hits = Rfit.Map3xNd[N](phits + local_idx)
-        var fast_fit = Rfit.Map4d(pfast_fit + local_idx)
-        var hits_ge = Rfit.Map6xNf[N](phits_ge + local_idx)
+        var hits = Rfit.Map3xNd[N](phits[local_idx:])
+        var fast_fit = Rfit.Map4d(pfast_fit[local_idx:])
+        var hits_ge = Rfit.Map6xNf[N](phits_ge[local_idx:])
 
         var dump: Bool = False
 
         comptime if BL_DUMP_HITS:
             var done = Atomic[DType.int64](0)
             dump = (
-                foundNtuplets[].size(tkid) == 5 and done.fetch_add(1) == 0
+                foundNtuplets.size(tkid) == 5 and done.fetch_add(1) == 0
             )
 
-        var hitId = foundNtuplets[].begin(tkid)
+        var hitId = foundNtuplets.begin(tkid)
         var i: UInt32 = 0
         while i < hitsInFit:
             var idx = Int(i)
             var hit = Int(hitId[idx])
             var ge = InlineArray[Float32, 6](fill=0)
-            hhp[].cpeParams().detParams(Int32(hhp[].detectorIndex(hit))).frame.toGlobal(
-                hhp[].xerrLocal(hit),
+            cpeParams.detParams(Int(hhp.detectorIndex(hit))).frame.toGlobal(
+                hhp.xerrLocal(hit),
                 0,
-                hhp[].yerrLocal(hit),
-                ge.unsafe_ptr(),
+                hhp.yerrLocal(hit),
+                Span(ge),
             )
 
             comptime if BL_DUMP_HITS:
                 if dump:
-                    var det_idx = hhp[].detectorIndex(hit)
-                    var xg = hhp[].xGlobal(hit)
-                    var yg = hhp[].yGlobal(hit)
-                    var zg = hhp[].zGlobal(hit)
+                    var det_idx = hhp.detectorIndex(hit)
+                    var xg = hhp.xGlobal(hit)
+                    var yg = hhp.yGlobal(hit)
+                    var zg = hhp.zGlobal(hit)
                     print(
                         "Hit global:", tkid, ":", det_idx, "hits.col(", i, ") <<",
                         xg, ",", yg, ",", zg,
@@ -100,9 +100,9 @@ def kernelBLFastFit[N: Int](
                         ge[0], ",", ge[1], ",", ge[2], ",", ge[3], ",", ge[4], ",", ge[5],
                     )
 
-            hits[0, idx] = hhp[].xGlobal(hit).cast[DType.float64]()
-            hits[1, idx] = hhp[].yGlobal(hit).cast[DType.float64]()
-            hits[2, idx] = hhp[].zGlobal(hit).cast[DType.float64]()
+            hits[0, idx] = hhp.xGlobal(hit).cast[DType.float64]()
+            hits[1, idx] = hhp.yGlobal(hit).cast[DType.float64]()
+            hits[2, idx] = hhp.zGlobal(hit).cast[DType.float64]()
             hits_ge[0, idx] = ge[0]
             hits_ge[1, idx] = ge[1]
             hits_ge[2, idx] = ge[2]
@@ -123,34 +123,32 @@ def kernelBLFastFit[N: Int](
 
 
 def kernelBLFit[N: Int](
-    tupleMultiplicity: UnsafePointer[CAConstants.TupleMultiplicity],
+    tupleMultiplicity: CAConstants.TupleMultiplicity,
     B: Float64,
-    results: UnsafePointer[OutputSoA],
-    phits: UnsafePointer[Float64],
-    phits_ge: UnsafePointer[Float32],
-    pfast_fit: UnsafePointer[Float64],
+    mut results: OutputSoA,
+    phits: Span[mut=True, Float64, _],
+    phits_ge: Span[mut=True, Float32, _],
+    pfast_fit: Span[mut=True, Float64, _],
     nHits: UInt32,
     offset: UInt32,
 ):
     debug_assert(N <= Int(nHits))
-
-    debug_assert(results)
-    debug_assert(pfast_fit)
+    # C++ asserts results/pfast_fit are non-null; borrows cannot be null.
 
     var local_start = 0
     var local_idx: Int = local_start
     var nt = Int(Rfit.maxNumberOfConcurrentFits())
-    var tuples_for_size = Int(tupleMultiplicity[].size(nHits))
+    var tuples_for_size = Int(tupleMultiplicity.size(nHits))
     while local_idx < nt:
         var tuple_idx = local_idx + Int(offset)
         if tuple_idx >= tuples_for_size:
             break
 
-        var tkid = UInt32((tupleMultiplicity[].begin(nHits) + tuple_idx)[])
+        var tkid = UInt32(tupleMultiplicity.begin(nHits)[tuple_idx])
 
-        var hits = Rfit.Map3xNd[N](phits + local_idx)
-        var fast_fit = Rfit.Map4d(pfast_fit + local_idx)
-        var hits_ge = Rfit.Map6xNf[N](phits_ge + local_idx)
+        var hits = Rfit.Map3xNd[N](phits[local_idx:])
+        var fast_fit = Rfit.Map4d(pfast_fit[local_idx:])
+        var hits_ge = Rfit.Map6xNf[N](phits_ge[local_idx:])
 
         var data = BrokenLine.PreparedBrokenLineData[N]()
         var Jacob = Rfit.Matrix3d()
@@ -166,7 +164,7 @@ def kernelBLFit[N: Int](
         var ccov_buf = InlineArray[Scalar[DType.float64], 9](uninitialized=True)
         var lp_buf = InlineArray[Scalar[DType.float64], 2](uninitialized=True)
         var lcov_buf = InlineArray[Scalar[DType.float64], 4](uninitialized=True)
-        results[].stateAtBS.copyFromCircle(
+        results.stateAtBS.copyFromCircle(
             to_layout_tensor(circle.par, cp_buf),
             to_layout_tensor(circle.cov, ccov_buf),
             to_layout_tensor(line.par, lp_buf),
@@ -174,10 +172,10 @@ def kernelBLFit[N: Int](
             Float32(1.0 / B),
             Int32(track_idx),
         )
-        results[].pt[track_idx] = Float32(B) / Float32(abs(circle.par[2]))
-        results[].eta[track_idx] = Float32(math.asinh(line.par[0]))
+        results.pt[track_idx] = Float32(B) / Float32(abs(circle.par[2]))
+        results.eta[track_idx] = Float32(math.asinh(line.par[0]))
         var chi2 = Float64(circle.chi2) + line.chi2
-        results[].chi2[track_idx] = Float32(
+        results.chi2[track_idx] = Float32(
             chi2 / Float64(2 * N - 5)
         )
 

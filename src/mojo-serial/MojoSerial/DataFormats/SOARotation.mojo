@@ -1,3 +1,5 @@
+from std.collections import Span
+
 from MojoSerial.MojoBridge.DTypes import Typeable
 
 
@@ -46,7 +48,7 @@ struct SOARotation[T: DType](Copyable, Defaultable, Movable, TrivialRegisterPass
         self.R33 = 1
 
     @always_inline
-    def __init__(out self, p: UnsafePointer[Scalar[Self.T]]):
+    def __init__(out self, p: Span[Scalar[Self.T], _]):
         self.R11 = p[0]
         self.R12 = p[1]
         self.R13 = p[2]
@@ -151,7 +153,7 @@ struct SOARotation[T: DType](Copyable, Defaultable, Movable, TrivialRegisterPass
     @always_inline
     @staticmethod
     def dtype() -> String:
-        return "SOARotation[" + Self.T.__repr__() + "]"
+        return "SOARotation[" + String(Self.T) + "]"
 
 
 @fieldwise_init
@@ -219,7 +221,7 @@ struct SOAFrame[T: DType](Copyable, Defaultable, Movable, Typeable, TrivialRegis
         var cxx: Scalar[Self.T],
         var cxy: Scalar[Self.T],
         var cyy: Scalar[Self.T],
-        gl: UnsafePointer[Scalar[Self.T]],
+        gl: Span[mut=True, Scalar[Self.T], _],
     ):
         var r = self.rot
 
@@ -245,7 +247,7 @@ struct SOAFrame[T: DType](Copyable, Defaultable, Movable, Typeable, TrivialRegis
     @always_inline
     def toLocal(
         self,
-        ge: UnsafePointer[Scalar[Self.T]],
+        ge: Span[Scalar[Self.T], _],
         mut lxx: Scalar[Self.T],
         mut lxy: Scalar[Self.T],
         mut lyy: Scalar[Self.T],
@@ -291,4 +293,4 @@ struct SOAFrame[T: DType](Copyable, Defaultable, Movable, Typeable, TrivialRegis
     @always_inline
     @staticmethod
     def dtype() -> String:
-        return "SOAFrame[" + Self.T.__repr__() + "]"
+        return "SOAFrame[" + String(Self.T) + "]"

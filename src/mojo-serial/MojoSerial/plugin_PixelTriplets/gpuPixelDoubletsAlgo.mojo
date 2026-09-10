@@ -15,18 +15,18 @@ comptime CellTracksVector = CAConstants.CellTracksVector
 
 
 def doubletsFromHisto(
-    layerPairs: UnsafePointer[UInt8],
+    layerPairs: Span[UInt8, _],
     nPairs: UInt32,
-    cells: UnsafePointer[GPUCACell],
-    nCells: UnsafePointer[UInt32],
-    cellNeighbors: UnsafePointer[CellNeighborsVector],
-    cellTracks: UnsafePointer[CellTracksVector],
+    cells: Span[mut=True, GPUCACell, _],
+    mut nCells: UInt32,
+    mut cellNeighbors: CellNeighborsVector,
+    mut cellTracks: CellTracksVector,
     hh: TrackingRecHit2DHeterogeneous,
-    isOuterHitOfCell: UnsafePointer[GPUCACell.OuterHitOfCell],
-    phicuts: UnsafePointer[Int16],
-    minz: UnsafePointer[Float32],
-    maxz: UnsafePointer[Float32],
-    maxr: UnsafePointer[Float32],
+    isOuterHitOfCell: Span[mut=True, GPUCACell.OuterHitOfCell, _],
+    phicuts: Span[Int16, _],
+    minz: Span[Float32, _],
+    maxz: Span[Float32, _],
+    maxr: Span[Float32, _],
     ideal_cond: Bool,
     doClusterCut: Bool,
     doZ0Cut: Bool,
@@ -45,8 +45,9 @@ def doubletsFromHisto(
     var isOuterLadder: Bool = ideal_cond
 
     ref hist = hh.phiBinner()
-    var offsets : UnsafePointer[UInt32] = hh.hitsLayerStart()
-    debug_assert(offsets)
+    # hitsLayerStart() already returns a Span; C++ asserts it is non-null, which
+    # a Span cannot be.
+    var offsets = hh.hitsLayerStart()
 
     def layerSize(li: UInt8) -> UInt32:
         var idx = Int(li)
@@ -252,8 +253,8 @@ def doubletsFromHisto(
                     _ = CUDACompat.atomicSub(nCells, UInt32(1))
                     break
                 cells[Int(ind)].init(
-                    cellNeighbors[],
-                    cellTracks[],
+                    cellNeighbors,
+                    cellTracks,
                     hh,
                     Int32(pairLayerId),
                     Int32(ind),

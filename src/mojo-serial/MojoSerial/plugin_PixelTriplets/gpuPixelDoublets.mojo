@@ -118,33 +118,34 @@ comptime CellNeighborsVector = CAConstants.CellNeighborsVector
 comptime CellTracksVector = CAConstants.CellTracksVector
 
 def initDoublets(
-    isOuterHitOfCell: UnsafePointer[GPUCACell.OuterHitOfCell],
+    isOuterHitOfCell: Span[mut=True, GPUCACell.OuterHitOfCell, _],
     nHits: UInt32,
-    cellNeighbors: UnsafePointer[CellNeighborsVector],
+    mut cellNeighbors: CellNeighborsVector,
+    # the two *Container params stay pointers: SimpleVector.construct() stores
+    # them in its own m_data field, so they follow SimpleVector's field decision
     cellNeighborsContainer: UnsafePointer[CellNeighbors],
-    cellTracks: UnsafePointer[CellTracksVector],
+    mut cellTracks: CellTracksVector,
     cellTracksContainer: UnsafePointer[CellTracks],
 ):
-    debug_assert(isOuterHitOfCell)
     var first: UInt32 = 0
     for i in range(first, nHits):
         isOuterHitOfCell[Int(i)].reset()
 
     if first == 0:
-        cellNeighbors[].construct(
+        cellNeighbors.construct(
             Int32(CAConstants.maxNumOfActiveDoublets()),
             cellNeighborsContainer,
         )
-        cellTracks[].construct(
+        cellTracks.construct(
             Int32(CAConstants.maxNumOfActiveDoublets()),
             cellTracksContainer,
         )
-        var i = cellNeighbors[].extend()
+        var i = cellNeighbors.extend()
         debug_assert(i == 0)
-        cellNeighbors[][0].reset()
-        i = cellTracks[].extend()
+        cellNeighbors[0].reset()
+        i = cellTracks.extend()
         debug_assert(i == 0)
-        cellTracks[][0].reset()
+        cellTracks[0].reset()
 
 
 comptime getDoubletsFromHistoMaxBlockSize: Int = 64
@@ -154,12 +155,12 @@ comptime getDoubletsFromHistoMinBlocksPerMP: Int = 16
 # __launch_bounds__(getDoubletsFromHistoMaxBlockSize, getDoubletsFromHistoMinBlocksPerMP)
 ##endif
 def getDoubletsFromHisto(
-    cells: UnsafePointer[GPUCACell],
-    nCells: UnsafePointer[UInt32],
-    cellNeighbors: UnsafePointer[CellNeighborsVector],
-    cellTracks: UnsafePointer[CellTracksVector],
+    cells: Span[mut=True, GPUCACell, _],
+    mut nCells: UInt32,
+    mut cellNeighbors: CellNeighborsVector,
+    mut cellTracks: CellTracksVector,
     hh: TrackingRecHit2DHeterogeneous,
-    isOuterHitOfCell: UnsafePointer[GPUCACell.OuterHitOfCell],
+    isOuterHitOfCell: Span[mut=True, GPUCACell.OuterHitOfCell, _],
     nActualPairs: Int,
     ideal_cond: Bool,
     doClusterCut: Bool,
@@ -172,7 +173,7 @@ def getDoubletsFromHisto(
     comptime assert nPairs <= Int(CAConstants.maxNumberOfLayerPairs())
 
     gpuPixelDoubleAlgo.doubletsFromHisto(
-        layerPairs.unsafe_ptr(),
+        Span(layerPairs),
         UInt32(nActualPairs),
         cells,
         nCells,
@@ -180,10 +181,10 @@ def getDoubletsFromHisto(
         cellTracks,
         hh,
         isOuterHitOfCell,
-        phicuts.unsafe_ptr(),
-        minz.unsafe_ptr(),
-        maxz.unsafe_ptr(),
-        maxr.unsafe_ptr(),
+        Span(phicuts),
+        Span(minz),
+        Span(maxz),
+        Span(maxr),
         ideal_cond,
         doClusterCut,
         doZ0Cut,

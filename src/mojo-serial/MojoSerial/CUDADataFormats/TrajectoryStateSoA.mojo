@@ -8,11 +8,13 @@ from MojoSerial.MojoBridge.Matrix import Matrix
 # WARNING: THIS STRUCT IS 128-ALIGNED
 @fieldwise_init
 struct TrajectoryStateSoA[S: Int32](Copyable, Defaultable, Movable, Typeable):
-    comptime Vector5f = LayoutTensor[DType.float32, Layout.col_major(5, 1)]
-    comptime Vector15f = LayoutTensor[DType.float32, Layout.col_major(15, 1)]
+    comptime Vector5f = LayoutTensor[DType.float32, Layout.col_major(5, 1), _]
+    comptime Vector15f = LayoutTensor[
+        DType.float32, Layout.col_major(15, 1), _
+    ]
 
-    comptime Vector5d = LayoutTensor[DType.float64, Layout.col_major(5, 1)]
-    comptime Matrix5d = LayoutTensor[DType.float64, Layout.col_major(5, 5)]
+    comptime Vector5d = LayoutTensor[DType.float64, Layout.col_major(5, 1), _]
+    comptime Matrix5d = LayoutTensor[DType.float64, Layout.col_major(5, 5), _]
 
     var state: MatrixSoA[DType.float32, 5, 1, Int(Self.S)]
     var covariance: MatrixSoA[DType.float32, 15, 1, Int(Self.S)]
@@ -30,10 +32,10 @@ struct TrajectoryStateSoA[S: Int32](Copyable, Defaultable, Movable, Typeable):
     @always_inline
     def copyFromCircle[T: DType](
         mut self,
-        cp: LayoutTensor[T, Layout.col_major(3, 1)],
-        ccov: LayoutTensor[T, Layout.col_major(3, 3)],
-        lp: LayoutTensor[T, Layout.col_major(2, 1)],
-        lcov: LayoutTensor[T, Layout.col_major(2, 2)],
+        cp: LayoutTensor[T, Layout.col_major(3, 1), _],
+        ccov: LayoutTensor[T, Layout.col_major(3, 3), _],
+        lp: LayoutTensor[T, Layout.col_major(2, 1), _],
+        lcov: LayoutTensor[T, Layout.col_major(2, 2), _],
         b: Float,
         i: Int32,
     ):
@@ -59,8 +61,8 @@ struct TrajectoryStateSoA[S: Int32](Copyable, Defaultable, Movable, Typeable):
     @always_inline
     def copyFromDense(
         mut self,
-        v: LayoutTensor[_, Layout.col_major(5, 1)],
-        cov: LayoutTensor[_, Layout.col_major(5, 5)],
+        v: LayoutTensor[_, Layout.col_major(5, 1), ...],
+        cov: LayoutTensor[_, Layout.col_major(5, 5), ...],
         i: Int32,
     ):
         self.state.__setitem__(i, v)
@@ -69,14 +71,18 @@ struct TrajectoryStateSoA[S: Int32](Copyable, Defaultable, Movable, Typeable):
         comptime for j in range(5):
 
             comptime for k in range(j, 5):
-                self.covariance[i][ind, 0] = cov[j, k].cast[DType.float32]()
+                self.covariance[i][ind, 0] = rebind[Scalar[DType.float32]](
+                    cov[j, k].cast[DType.float32]()
+                )
                 ind += 1
 
     @always_inline
+    # C++ takes `V5& v, M5& cov`; writing through a LayoutTensor needs `mut=True`
+    # on the tensor's own origin, not `mut` on the binding.
     def copyToDense(
         self,
-        mut v: LayoutTensor,
-        mut cov: LayoutTensor[DType.float32, _],
+        v: LayoutTensor[mut=True, ...],
+        cov: LayoutTensor[mut=True, DType.float32, _, ...],
         i: Int32,
     ):
         var wx = self.state[i]
@@ -88,11 +94,15 @@ struct TrajectoryStateSoA[S: Int32](Copyable, Defaultable, Movable, Typeable):
         var ind: Int = 0
 
         comptime for j in range(5):
-            cov[j, j] = self.covariance[i][ind, 0]
+            cov[j, j] = rebind[Scalar[DType.float32]](
+                self.covariance[i][ind, 0]
+            )
             ind += 1
 
             comptime for k in range(j + 1, 5):
-                cov[j, k] = self.covariance[i][ind, 0]
+                cov[j, k] = rebind[Scalar[DType.float32]](
+                    self.covariance[i][ind, 0]
+                )
                 cov[k, j] = cov[j, k]
                 ind += 1
 

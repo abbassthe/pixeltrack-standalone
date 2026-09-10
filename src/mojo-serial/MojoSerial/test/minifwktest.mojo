@@ -4,16 +4,23 @@ from MojoSerial.plugin_SiPixelClusterizer.SiPixelFedCablingMapGPUWrapperESProduc
     SiPixelFedCablingMapGPUWrapperESProducer,
 )
 from MojoSerial.Framework.EventSetup import EventSetup
-from MojoSerial.Framework.ESPluginFactory import ESPluginFactory
-from MojoSerial.Framework.PluginFactory import PluginFactory
+from MojoSerial.Framework.ESPluginFactory import (
+    ESPluginFactory,
+    Registry as ESRegistry,
+)
+from MojoSerial.Framework.PluginFactory import (
+    PluginFactory,
+    Registry as EDRegistry,
+)
+import MojoSerial.plugin_SiPixelClusterizer as plugin_SiPixelClusterizer
 from MojoSerial.Framework.ESProducer import ESProducer
 from MojoSerial.MojoBridge.DTypes import Typeable
 
 
 def main() raises:
-    var _esreg = MojoSerial.Framework.ESPluginFactory.Registry()
-    var _edreg = MojoSerial.Framework.PluginFactory.Registry()
-    MojoSerial.plugin_SiPixelClusterizer.init(_esreg, _edreg)
+    var _esreg = ESRegistry()
+    var _edreg = EDRegistry()
+    plugin_SiPixelClusterizer.init(_esreg, _edreg)
     var evt = EventSetup()
 
     for plugin in ESPluginFactory.getAll(_esreg):

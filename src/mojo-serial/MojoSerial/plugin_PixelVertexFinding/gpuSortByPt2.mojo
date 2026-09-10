@@ -4,16 +4,14 @@ from MojoSerial.plugin_PixelVertexFinding.gpuVertexFinder import ZVertices, Work
 
 
 @always_inline
-def sortByPt2(pdata: UnsafePointer[ZVertices], pws: UnsafePointer[WorkSpace]):
-    ref data: ZVertices = pdata[]
-    ref ws: WorkSpace = pws[]
+def sortByPt2(mut data: ZVertices, mut ws: WorkSpace):
     var nt: UInt32 = ws.ntrks
-    ref ptt2: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.ptt2
+    ref ptt2 = ws.ptt2
     var nvFinal: UInt32 = data.nvFinal
 
-    ref iv: InlineArray[Int32, UInt(WorkSpace.MAXTRACKS)] = ws.iv
-    ref ptv2: InlineArray[Float, UInt(ZVertices.MAXVTX)] = data.ptv2
-    ref sortInd: InlineArray[UInt16, UInt(ZVertices.MAXVTX)] = data.sortInd
+    ref iv = ws.iv
+    ref ptv2 = data.ptv2
+    ref sortInd = data.sortInd
 
     if nvFinal < 1:
         return
@@ -29,7 +27,7 @@ def sortByPt2(pdata: UnsafePointer[ZVertices], pws: UnsafePointer[WorkSpace]):
     for i in range(nt):
         if iv[i] > 9990:
             continue
-        _ = CUDACompat.atomicAdd(UnsafePointer(to=ptv2[Int(iv[i])]), ptt2[i])
+        _ = CUDACompat.atomicAdd(ptv2[Int(iv[i])], ptt2[i])
 
     if nvFinal == 1:
         sortInd[0] = 0
@@ -38,9 +36,8 @@ def sortByPt2(pdata: UnsafePointer[ZVertices], pws: UnsafePointer[WorkSpace]):
     for i in range(nvFinal):
         sortInd[i] = UInt16(i)
 
-    var sortIndSpan = Span[UInt16, origin_of(sortInd)](
-        ptr=sortInd.unsafe_ptr(), length=Int(nvFinal)
-    )
+    # C++ sorts [sortInd, sortInd + nvFinal); the slice is that same range.
+    var sortIndSpan = Span(sortInd)[: Int(nvFinal)]
 
     @parameter
     def less_than(i: UInt16, j: UInt16) -> Bool:

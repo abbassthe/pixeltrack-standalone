@@ -63,10 +63,8 @@ struct PixelVertexProducerCUDA(Defaultable, EDProducer, Typeable):
             ref tracks = iEvent.get[PixelTrackHeterogeneous](
                 self._tokenCPUTrack
             )
-            var tksoa_ptr = tracks.unsafe_ptr()
-            debug_assert(Bool(tksoa_ptr))
-
-            var vertices = self._gpuAlgo.make(tksoa_ptr, self._ptMin)
+            # C++ asserts tksoa is non-null; a borrow cannot be null.
+            var vertices = self._gpuAlgo.make(tracks[], self._ptMin)
             iEvent.put[ZVertexHeterogeneous](self._tokenCPUVertex, vertices^)
         except e:
             print("Error during produce in PixelVertexProducerCUDA, ", e)

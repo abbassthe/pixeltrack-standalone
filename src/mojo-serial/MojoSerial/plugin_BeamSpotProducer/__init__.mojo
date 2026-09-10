@@ -1,5 +1,11 @@
-from MojoSerial.Framework.ESPluginFactory import fwkEventSetupModule
-from MojoSerial.Framework.PluginFactory import fwkModule
+from MojoSerial.Framework.ESPluginFactory import (
+    fwkEventSetupModule,
+    Registry as ESRegistry,
+)
+from MojoSerial.Framework.PluginFactory import (
+    fwkModule,
+    Registry as EDRegistry,
+)
 
 from MojoSerial.plugin_BeamSpotProducer.BeamSpotESProducer import (
     BeamSpotESProducer,
@@ -10,8 +16,8 @@ from MojoSerial.plugin_BeamSpotProducer.BeamSpotToPOD import (
 
 
 def init(
-    mut esreg: MojoSerial.Framework.ESPluginFactory.Registry,
-    mut edreg: MojoSerial.Framework.PluginFactory.Registry,
+    mut esreg: ESRegistry,
+    mut edreg: EDRegistry,
 ):
     fwkEventSetupModule[BeamSpotESProducer](esreg)
     fwkModule[BeamSpotToPOD](edreg)

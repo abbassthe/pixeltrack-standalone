@@ -1,5 +1,5 @@
 struct FEDNumbering:
-    comptime _in: List[Bool] = initIn()
+    comptime _in = initIn()
 
     comptime NOT_A_FEDID = -1
     comptime MAXFEDID = 4096  # must be larger than largest used FED id
@@ -114,7 +114,9 @@ struct FEDNumbering:
     @staticmethod
     @always_inline
     def inRange(var i: Int) -> Bool:
-        return FEDNumbering._in[i]
+        return (
+            FEDNumbering._in[i // 64] >> UInt64(i % 64)
+        ) & 1 == 1
 
     @staticmethod
     @always_inline
@@ -127,136 +129,140 @@ struct FEDNumbering:
             and i <= FEDNumbering.MAXTriggerEGTPFEDID
         ):
             return False
-        return FEDNumbering._in[i]
+        return FEDNumbering.inRange(i)
 
 
-def initIn() -> List[Bool]:
-    var _in: List[Bool] = List[Bool](
-        length=FEDNumbering.MAXFEDID + 1, fill=False
-    )
+# C++ memoizes this as `static bool in_[MAXFEDID+1]`. Mojo has no global `var`
+# ("global variables are not supported; use 'comptime'"), and a `comptime`
+# container read at a runtime index needs `materialize`, which would rebuild the
+# whole table on every call. A `comptime` SIMD *does* index at a runtime index
+# with no ceremony (doc §12), so the table is one: 4097 flags as a bitmask,
+# 8192 bits in 128 UInt64 lanes.
+def initIn() -> SIMD[DType.uint64, 128]:
+    var _in = SIMD[DType.uint64, 128](0)
 
     comptime for i in range(
         FEDNumbering.MINSiPixelFEDID, FEDNumbering.MAXSiPixelFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINSiStripFEDID, FEDNumbering.MAXSiStripFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINPreShowerFEDID, FEDNumbering.MAXPreShowerFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(FEDNumbering.MINECALFEDID, FEDNumbering.MAXECALFEDID + 1):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINCASTORFEDID, FEDNumbering.MAXCASTORFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(FEDNumbering.MINHCALFEDID, FEDNumbering.MAXHCALFEDID + 1):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINLUMISCALERSFEDID, FEDNumbering.MAXLUMISCALERSFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(FEDNumbering.MINCSCFEDID, FEDNumbering.MAXCSCFEDID + 1):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(FEDNumbering.MINCSCTFFEDID, FEDNumbering.MAXCSCTFFEDID + 1):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(FEDNumbering.MINDTFEDID, FEDNumbering.MAXDTFEDID + 1):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(FEDNumbering.MINDTTFFEDID, FEDNumbering.MAXDTTFFEDID + 1):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(FEDNumbering.MINRPCFEDID, FEDNumbering.MAXRPCFEDID + 1):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINTriggerGTPFEDID, FEDNumbering.MAXTriggerGTPFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINTriggerEGTPFEDID, FEDNumbering.MAXTriggerEGTPFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINTriggerGCTFEDID, FEDNumbering.MAXTriggerGCTFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINTriggerLTCFEDID, FEDNumbering.MAXTriggerLTCFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINTriggerLTCmtccFEDID,
         FEDNumbering.MAXTriggerLTCmtccFEDID + 1,
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINCSCDDUFEDID, FEDNumbering.MAXCSCDDUFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINCSCContingencyFEDID,
         FEDNumbering.MAXCSCContingencyFEDID + 1,
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINCSCTFSPFEDID, FEDNumbering.MAXCSCTFSPFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINDAQeFEDFEDID, FEDNumbering.MAXDAQeFEDFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINDAQmFEDFEDID, FEDNumbering.MAXDAQmFEDFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINTCDSuTCAFEDID, FEDNumbering.MAXTCDSuTCAFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINHCALuTCAFEDID, FEDNumbering.MAXHCALuTCAFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINSiPixeluTCAFEDID, FEDNumbering.MAXSiPixeluTCAFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINDTUROSFEDID, FEDNumbering.MAXDTUROSFEDID + 1
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
     comptime for i in range(
         FEDNumbering.MINTriggerUpgradeFEDID,
         FEDNumbering.MAXTriggerUpgradeFEDID + 1,
     ):
-        _in[i] = True
+        _in[i // 64] |= UInt64(1) << UInt64(i % 64)
 
-    return _in^
+    return _in

@@ -28,8 +28,8 @@ def generate_clusters(
         for x in range(0, 140, 3):
             for y in range(0, 400, 3):
                 h_id[n] = id
-                h_x[n] = x
-                h_y[n] = y
+                h_x[n] = UInt16(x)
+                h_y[n] = UInt16(y)
                 h_adc[n] = 1000
 
                 n += 1
@@ -46,50 +46,50 @@ def generate_clusters(
         var x = 10
 
         ncl += 1
-        h_id[n] = id
-        h_x[n] = x
-        h_y[n] = x
+        h_id[n] = UInt16(id)
+        h_x[n] = UInt16(x)
+        h_y[n] = UInt16(x)
         h_adc[n] = 100 if kn == 0 else 5000
         n += 1
 
         # first column
         ncl += 1
-        h_id[n] = id
-        h_x[n] = x
+        h_id[n] = UInt16(id)
+        h_x[n] = UInt16(x)
         h_y[n] = 0
         h_adc[n] = 5000
         n += 1
 
         # first columns
         ncl += 1
-        h_id[n] = id
-        h_x[n] = x + 80
+        h_id[n] = UInt16(id)
+        h_x[n] = UInt16(x + 80)
         h_y[n] = 2
         h_adc[n] = 5000
         n += 1
-        h_id[n] = id
-        h_x[n] = x + 80
+        h_id[n] = UInt16(id)
+        h_x[n] = UInt16(x + 80)
         h_y[n] = 1
         h_adc[n] = 5000
         n += 1
 
         # last column
         ncl += 1
-        h_id[n] = id
-        h_x[n] = x
+        h_id[n] = UInt16(id)
+        h_x[n] = UInt16(x)
         h_y[n] = 415
         h_adc[n] = 5000
         n += 1
 
         # last columns
         ncl += 1
-        h_id[n] = id
-        h_x[n] = x + 80
+        h_id[n] = UInt16(id)
+        h_x[n] = UInt16(x + 80)
         h_y[n] = 415
         h_adc[n] = 2500
         n += 1
-        h_id[n] = id
-        h_x[n] = x + 80
+        h_id[n] = UInt16(id)
+        h_x[n] = UInt16(x + 80)
         h_y[n] = 414
         h_adc[n] = 2500
         n += 1
@@ -98,9 +98,9 @@ def generate_clusters(
         ncl += 1
 
         comptime for x in range(20, 25):
-            h_id[n] = id
-            h_x[n] = x
-            h_y[n] = x
+            h_id[n] = UInt16(id)
+            h_x[n] = UInt16(x)
+            h_y[n] = UInt16(x)
             h_adc[n] = 1000
             n += 1
 
@@ -108,9 +108,9 @@ def generate_clusters(
         ncl += 1
 
         comptime for x in range(45, 40, -1):
-            h_id[n] = id
-            h_x[n] = x
-            h_y[n] = x
+            h_id[n] = UInt16(id)
+            h_x[n] = UInt16(x)
+            h_y[n] = UInt16(x)
             h_adc[n] = 1000
             n += 1
 
@@ -122,9 +122,9 @@ def generate_clusters(
         var xx: InlineArray[Int, 5] = [21, 25, 23, 24, 22]
 
         comptime for k in range(5):
-            h_id[n] = id
-            h_x[n] = xx[k]
-            h_y[n] = 20 + xx[k]
+            h_id[n] = UInt16(id)
+            h_x[n] = UInt16(xx[k])
+            h_y[n] = UInt16(20 + xx[k])
             h_adc[n] = 1000
             n += 1
 
@@ -132,15 +132,15 @@ def generate_clusters(
         ncl += 1
 
         comptime for k in range(5):
-            h_id[n] = id
-            h_x[n] = xx[k]
+            h_id[n] = UInt16(id)
+            h_x[n] = UInt16(xx[k])
             h_y[n] = 100
             h_adc[n] = 100 if kn == 2 else 1000
             n += 1
 
             if xx[k] % 2 == 0:
-                h_id[n] = id
-                h_x[n] = xx[k]
+                h_id[n] = UInt16(id)
+                h_x[n] = UInt16(xx[k])
                 h_y[n] = 101
                 h_adc[n] = 1000
                 n += 1
@@ -150,9 +150,9 @@ def generate_clusters(
         var x = 10
 
         ncl += 1
-        h_id[n] = id
-        h_x[n] = x
-        h_y[n] = x
+        h_id[n] = UInt16(id)
+        h_x[n] = UInt16(x)
+        h_y[n] = UInt16(x)
         h_adc[n] = 5000
         n += 1
 
@@ -167,22 +167,22 @@ def generate_clusters(
             if (id // 10) % 2 == 1:
 
                 comptime for k in range(10):
-                    h_id[n] = id
-                    h_x[n] = x
-                    h_y[n] = x + y[k]
+                    h_id[n] = UInt16(id)
+                    h_x[n] = UInt16(x)
+                    h_y[n] = UInt16(x + y[k])
                     h_adc[n] = 100
                     n += 1
-                    h_id[n] = id
-                    h_x[n] = x + 1
-                    h_y[n] = x + y[k] + 2
+                    h_id[n] = UInt16(id)
+                    h_x[n] = UInt16(x + 1)
+                    h_y[n] = UInt16(x + y[k] + 2)
                     h_adc[n] = 1000
                     n += 1
             else:
 
                 comptime for k in range(10):
-                    h_id[n] = id
-                    h_x[n] = x
-                    h_y[n] = x + y[9 - k]
+                    h_id[n] = UInt16(id)
+                    h_x[n] = UInt16(x)
+                    h_y[n] = UInt16(x + y[9 - k])
                     h_adc[n] = 10 if kn == 2 else 1000
                     n += 1
                     if y[k] == 3:  # hole
@@ -192,9 +192,9 @@ def generate_clusters(
                         n += 1
                         h_id[n] = GPUClusteringConstants.InvId
                         n += 1
-                    h_id[n] = id
-                    h_x[n] = x + 1
-                    h_y[n] = x + y[k] + 2
+                    h_id[n] = UInt16(id)
+                    h_x[n] = UInt16(x + 1)
+                    h_y[n] = UInt16(x + y[k] + 2)
                     h_adc[n] = 10 if kn == 2 else 1000
                     n += 1
 
@@ -232,10 +232,10 @@ def main() raises:
 
         h_moduleStart[0] = nModules
         GPUClustering.countModules(
-            h_id.unsafe_ptr(),
-            h_moduleStart.unsafe_ptr(),
-            h_clus.unsafe_ptr(),
-            n,
+            Span(h_id),
+            Span(h_moduleStart),
+            Span(h_clus),
+            Int32(n),
         )
         memset(
             h_clusInModule.unsafe_ptr(),
@@ -243,17 +243,16 @@ def main() raises:
             Int(GPUClusteringConstants.MaxNumModules),
         )
         GPUClustering.findClus(
-            h_id.unsafe_ptr(),
-            h_x.unsafe_ptr(),
-            h_y.unsafe_ptr(),
-            h_moduleStart.unsafe_ptr(),
-            h_clusInModule.unsafe_ptr(),
-            h_moduleId.unsafe_ptr(),
-            h_clus.unsafe_ptr(),
-            n,
+            Span(h_id),
+            Span(h_x),
+            Span(h_y),
+            Span(h_moduleStart),
+            Span(h_clusInModule),
+            Span(h_moduleId),
+            Span(h_clus),
+            Int32(n),
         )
         nModules = h_moduleStart[0]
-        var nclus = h_clusInModule.unsafe_ptr()
 
         var s = 0
         for i in range(Int(GPUClusteringConstants.MaxNumModules)):
@@ -261,7 +260,8 @@ def main() raises:
 
         print("before charge cut found", s, "clusters")
 
-        for i in range(GPUClusteringConstants.MaxNumModules, 0, -1):
+        # Int(): a descending range from an unsigned start yields no iterations
+        for i in range(Int(GPUClusteringConstants.MaxNumModules), 0, -1):
             if h_clusInModule[i - 1] > 0:
                 print("last module is", i - 1, h_clusInModule[i - 1])
                 break
@@ -270,13 +270,13 @@ def main() raises:
             print("ERROR!!!!! wrong number of cluster found")
 
         GPUClustering.clusterChargeCut(
-            h_id.unsafe_ptr(),
-            h_adc.unsafe_ptr(),
-            h_moduleStart.unsafe_ptr(),
-            h_clusInModule.unsafe_ptr(),
-            h_moduleId.unsafe_ptr(),
-            h_clus.unsafe_ptr(),
-            n,
+            Span(h_id),
+            Span(h_adc),
+            Span(h_moduleStart),
+            Span(h_clusInModule),
+            Span(h_moduleId),
+            Span(h_clus),
+            UInt32(n),
         )
 
         print("found", nModules, "Modules active")
@@ -288,7 +288,7 @@ def main() raises:
             if h_id[i] == GPUClusteringConstants.InvId:
                 continue
             debug_assert(h_clus[i] >= 0)
-            debug_assert(h_clus[i] < Int(h_clusInModule[h_id[i]]))
+            debug_assert(h_clus[i] < Int32(h_clusInModule[h_id[i]]))
             clids_set.add(UInt(h_id[i]) * 1000 + UInt(h_clus[i]))
 
         var clids = List[UInt](capacity=clids_set.__len__())
@@ -299,7 +299,7 @@ def main() raises:
         # verify no hole in numbering
         var p = clids[0]
         var cmid = p // 1000
-        debug_assert(0 == p % 1000)
+        debug_assert(p % 1000 == 0)
 
         print(
             "first clusters",
@@ -308,10 +308,12 @@ def main() raises:
             h_clusInModule[cmid],
             h_clusInModule[clids[1] // 1000],
         )
+        # C++ reads *clids.rbegin(); 1.0's List has no negative indexing
+        var last = clids[clids.__len__() - 1]
         print(
             "last cluster",
-            clids[-1],
-            h_clusInModule[clids[-1] // 1000],
+            last,
+            h_clusInModule[last // 1000],
         )
 
         for i in range(1, clids.__len__()):
@@ -323,8 +325,8 @@ def main() raises:
             var nc = cc % 1000
 
             if mid != cmid:
-                debug_assert(0 == cc % 1000)
-                debug_assert(h_clusInModule[cmid] - 1 == pp % 1000)
+                debug_assert(cc % 1000 == 0)
+                debug_assert(UInt(h_clusInModule[cmid]) - 1 == pp % 1000)
                 cmid = mid
                 p = c
                 continue
@@ -339,7 +341,8 @@ def main() raises:
 
         print("found", s, clids.__len__(), "clusters")
 
-        for i in range(GPUClusteringConstants.MaxNumModules, 0, -1):
+        # Int(): a descending range from an unsigned start yields no iterations
+        for i in range(Int(GPUClusteringConstants.MaxNumModules), 0, -1):
             if h_clusInModule[i - 1] > 0:
                 print("last module is", i - 1, h_clusInModule[i - 1])
                 break

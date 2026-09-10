@@ -1,4 +1,3 @@
-from std.memory import OwnedPointer
 
 import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
 from MojoSerial.plugin_PixelTriplets.CAHitNtupletGeneratorKernels import (
@@ -16,6 +15,7 @@ from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
 from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
     TrackingRecHit2DCPU,
 )
+from MojoSerial.CondFormats.PixelCPEFast import PixelCPEFast
 from MojoSerial.Framework.Event import Event
 from MojoSerial.Framework.EventSetup import EventSetup
 from MojoSerial.Framework.ProductRegistry import ProductRegistry
@@ -32,7 +32,9 @@ struct CAHitNtupletGeneratorOnGPU:
     comptime Counters = KernelCounters
 
     var m_params: Self.Params
-    var m_counters: OwnedPointer[Self.Counters]
+    # Counters is 88 B (11 x UInt64); inline, since the box only added an
+    # allocation and an indirection.
+    var m_counters: Self.Counters
 
     # C++: CAHitNtupletGeneratorOnGPU::CAHitNtupletGeneratorOnGPU (CAHitNtupletGeneratorOnGPU.cc)
     def __init__(out self, mut reg: ProductRegistry):
@@ -57,59 +59,57 @@ struct CAHitNtupletGeneratorOnGPU:
             0.15000000596,  # dcaCutInnerTriplet
             0.25,  # dcaCutOuterTriplet
         )
-        self.m_counters = OwnedPointer(Self.Counters())
+        self.m_counters = Self.Counters()
 
     # C++: CAHitNtupletGeneratorOnGPU::~CAHitNtupletGeneratorOnGPU (CAHitNtupletGeneratorOnGPU.cc)
-    def __deinit__(owned self):
+    def __deinit__(var self):
         if self.m_params.doStats:
-            CAHitNtupletGeneratorKernelsCPU.print_counters(
-                self.m_counters.unsafe_ptr()
-            )
+            CAHitNtupletGeneratorKernelsCPU.print_counters(self.m_counters)
 
     # C++: CAHitNtupletGeneratorOnGPU::makeTuples (CAHitNtupletGeneratorOnGPU.cc)
+    # cpeParams threaded in: C++ reads it off the hits view (§11). C++ is
+    # `const` only because m_counters is a raw pointer; an owned field is not.
     def make_tuples(
-        self,
+        mut self,
         hits_d: TrackingRecHit2DCPU,
+        cpeParams: PixelCPEFast,
         bfield: Float32,
     ) raises -> PixelTrackHeterogeneous:
         var tracks = PixelTrackHeterogeneous(Self.OutputSoA())
 
-        var soa = tracks.unsafe_ptr()
-        debug_assert(Bool(soa))
-
         var kernels = CAHitNtupletGeneratorKernelsCPU(self.m_params)
-        kernels.counters_ = self.m_counters.unsafe_ptr()
         kernels.allocate_on_gpu(Stream())
 
         kernels.build_doublets(hits_d, Stream())
-        kernels.launch_kernels(hits_d, soa, Stream())
+        kernels.launch_kernels(hits_d, tracks[], Stream(), self.m_counters)
         # in principle needed only if Hits not "available"
-        kernels.fill_hit_det_indices(hits_d.view(), soa, Stream())
+        kernels.fill_hit_det_indices(hits_d, tracks[], Stream())
 
         if hits_d.nHits() == 0:
             return tracks^
 
         # now fit
         var fitter = HelixFitOnGPU(bfield, self.m_params.fit5as4)
-        fitter.allocateOnGPU(
-            UnsafePointer(to=soa[].hitIndices),
-            kernels.tuple_multiplicity(),
-            soa,
-        )
 
         if self.m_params.useRiemannFit:
             fitter.launchRiemannKernelsOnCPU(
-                hits_d.view(),
+                hits_d,
+                cpeParams,
+                kernels.tuple_multiplicity(),
+                tracks[],
                 hits_d.nHits(),
                 CAConstants.maxNumberOfQuadruplets(),
             )
         else:
             fitter.launchBrokenLineKernelsOnCPU(
-                hits_d.view(),
+                hits_d,
+                cpeParams,
+                kernels.tuple_multiplicity(),
+                tracks[],
                 hits_d.nHits(),
                 CAConstants.maxNumberOfQuadruplets(),
             )
 
-        kernels.classify_tuples(hits_d, soa, Stream())
+        kernels.classify_tuples(hits_d, tracks[], Stream(), self.m_counters)
 
         return tracks^

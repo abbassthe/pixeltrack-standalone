@@ -18,10 +18,10 @@ struct FEDRawDataCollection(Copyable, Defaultable, Movable, Typeable):
 
     @always_inline
     def __init__(out self, *, copy: Self):
-        self._data = copy._data
+        self._data = copy._data.copy()
 
     @always_inline
-    def FEDData(ref self, fedid: Int) -> ref [self._data] FEDRawData:
+    def FEDData(ref self, fedid: Int) -> ref [self._data[fedid]] FEDRawData:
         return self._data[fedid]
 
     @always_inline

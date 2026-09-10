@@ -71,7 +71,7 @@ def Scatter_cov_line[
     VNd2: MatrixLike,
     N: Int,
 ](
-    cov_sz: UnsafePointer[Rfit.Matrix2d],
+    cov_sz: Span[Rfit.Matrix2d, _],
     fast_fit: V4,
     s_arcs: VNd1,
     z_values: VNd2,
@@ -81,7 +81,7 @@ def Scatter_cov_line[
 ):
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=s_arcs), "Scatter_cov_line - s_arcs: ")
+        Rfit.printIt[RFIT_DEBUG=True](s_arcs, "Scatter_cov_line - s_arcs: ")
 
     comptime n: Int = N
     # limit pt to avoid too small error!!!
@@ -115,7 +115,7 @@ def Scatter_cov_line[
         i += 1
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](cov_sz, "Scatter_cov_line - cov_sz: ")
+        Rfit.printIt[RFIT_DEBUG=True](cov_sz[0], "Scatter_cov_line - cov_sz: ")
 
 
 
@@ -148,7 +148,7 @@ def Scatter_cov_line[
     # We are interested only in the errors orthogonal to the rotated s-axis
     # which, in our formalism, are in the lower square matrix.
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=tmp), "Scatter_cov_line - tmp: ")
+        Rfit.printIt[RFIT_DEBUG=True](tmp, "Scatter_cov_line - tmp: ")
 
     for i in range(n):
         for j in range(n):
@@ -231,7 +231,7 @@ def Scatter_cov_rad[
             scatter_cov_rad[l, k] = scatter_cov_rad[k, l]
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=scatter_cov_rad), "Scatter_cov_rad - scatter_cov_rad: ")
+        Rfit.printIt[RFIT_DEBUG=True](scatter_cov_rad, "Scatter_cov_rad - scatter_cov_rad: ")
 
     return scatter_cov_rad
 
@@ -252,7 +252,7 @@ def cov_radtocart[
     rad: Rfit.VectorNd[N],
 ) -> Rfit.Matrix2Nd[N]:
     comptime if is_defined["RFIT_DEBUG"]():
-        print("Address of p2D: ", UnsafePointer(to=p2D))
+        print("Address of p2D: ", Pointer(to=p2D))
 
     comptime n: Int = N
     var cov_cart = Rfit.Matrix2Nd[N].Zero()
@@ -262,8 +262,8 @@ def cov_radtocart[
 
     #####
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=p2D), "cov_radtocart - p2D:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=rad_inv), "cov_radtocart - rad_inv:")
+        Rfit.printIt[RFIT_DEBUG=True](p2D, "cov_radtocart - p2D:")
+        Rfit.printIt[RFIT_DEBUG=True](rad_inv, "cov_radtocart - rad_inv:")
 
 
 
@@ -504,7 +504,7 @@ def Fast_fit[
     var n = M3xN.ColsAtCompileTime()
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=hits), "Fast_fit - hits: ")
+        Rfit.printIt[RFIT_DEBUG=True](hits, "Fast_fit - hits: ")
 
     # CIRCLE FIT
     # Make segments between middle-to-first(b) and last-to-first(c) hits
@@ -528,8 +528,8 @@ def Fast_fit[
     c[1] = c1
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=b), "Fast_fit - b: ")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=c), "Fast_fit - c: ")
+        Rfit.printIt[RFIT_DEBUG=True](b, "Fast_fit - b: ")
+        Rfit.printIt[RFIT_DEBUG=True](c, "Fast_fit - c: ")
 
     # The algebra has been verified (MR). The usual approach has been followed:
     # * use an orthogonal reference frame passing from the first point.
@@ -554,7 +554,7 @@ def Fast_fit[
     result[2] = math.sqrt(Rfit.sqr(X0) + Rfit.sqr(Y0)).cast[V4.ElemType]()
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=result), "Fast_fit - result: ")
+        Rfit.printIt[RFIT_DEBUG=True](result, "Fast_fit - result: ")
 
     # LINE FIT
     var result_0 = result[0].cast[DType.float64]()
@@ -572,8 +572,8 @@ def Fast_fit[
     e[1] = e1
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=e), "Fast_fit - e: ")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=d), "Fast_fit - d: ")
+        Rfit.printIt[RFIT_DEBUG=True](e, "Fast_fit - e: ")
+        Rfit.printIt[RFIT_DEBUG=True](d, "Fast_fit - d: ")
 
     var cross = Rfit.cross2D(d, e)
     var dot = d0 * e0 + d1 * e1
@@ -635,8 +635,8 @@ def Circle_fit[
     comptime n: Int = N
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=hits2D), "circle_fit - hits2D:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=hits_cov2D), "circle_fit - hits_cov2D:")
+        Rfit.printIt[RFIT_DEBUG=True](hits2D, "circle_fit - hits2D:")
+        Rfit.printIt[RFIT_DEBUG=True](hits_cov2D, "circle_fit - hits_cov2D:")
 
     comptime if is_defined["RFIT_DEBUG"]():
         print("circle_fit - WEIGHT COMPUTATION")
@@ -655,19 +655,19 @@ def Circle_fit[
     var scatter_cov_rad = Scatter_cov_rad[M2xN, V4, N](hits2D, fast_fit, rad, B)
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=scatter_cov_rad), "circle_fit - scatter_cov_rad:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=hits2D), "circle_fit - hits2D bis:")
-        print("Address of hits2D: a) ", UnsafePointer(to=hits2D))
+        Rfit.printIt[RFIT_DEBUG=True](scatter_cov_rad, "circle_fit - scatter_cov_rad:")
+        Rfit.printIt[RFIT_DEBUG=True](hits2D, "circle_fit - hits2D bis:")
+        print("Address of hits2D: a) ", Pointer(to=hits2D))
 
     V += cov_radtocart[M2xN, N](hits2D, scatter_cov_rad, rad)
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=V), "circle_fit - V:")
+        Rfit.printIt[RFIT_DEBUG=True](V, "circle_fit - V:")
 
     cov_rad += scatter_cov_rad
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=cov_rad), "circle_fit - cov_rad:")
+        Rfit.printIt[RFIT_DEBUG=True](cov_rad, "circle_fit - cov_rad:")
 
     choleskyInversion.invert(cov_rad, G)
     # G = cov_rad.inverse();
@@ -679,11 +679,11 @@ def Circle_fit[
     weight = Weight_circle[N](G)
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=weight), "circle_fit - weight:")
+        Rfit.printIt[RFIT_DEBUG=True](weight, "circle_fit - weight:")
         # SPACE TRANSFORMATION
         print("circle_fit - SPACE TRANSFORMATION")
         # center
-        print("Address of hits2D: b) ", UnsafePointer(to=hits2D))
+        print("Address of hits2D: b) ", Pointer(to=hits2D))
 
 
 
@@ -698,7 +698,7 @@ def Circle_fit[
     h_[1] = sum1 / Float64(n)
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=h_), "circle_fit - h_:")
+        Rfit.printIt[RFIT_DEBUG=True](h_, "circle_fit - h_:")
 
     var p3D = Rfit.Matrix3xNd[N]()
     for i in range(n):
@@ -706,7 +706,7 @@ def Circle_fit[
         p3D[1, i] = hits2D[1, i].cast[DType.float64]() - h_[1]
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=p3D), "circle_fit - p3D: a)")
+        Rfit.printIt[RFIT_DEBUG=True](p3D, "circle_fit - p3D: a)")
 
     # centered hits, used in error computation
     var mc = Rfit.Vector2Nd[N]()
@@ -715,7 +715,7 @@ def Circle_fit[
         mc[i + n] = p3D[1, i]
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=mc), "circle_fit - mc(centered hits):")
+        Rfit.printIt[RFIT_DEBUG=True](mc, "circle_fit - mc(centered hits):")
 
     # scale
     var q: Float64 = 0.0
@@ -733,7 +733,7 @@ def Circle_fit[
         p3D[2, i] = p3D[0, i] * p3D[0, i] + p3D[1, i] * p3D[1, i]
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=p3D), "circle_fit - p3D: b)")
+        Rfit.printIt[RFIT_DEBUG=True](p3D, "circle_fit - p3D: b)")
         print("circle_fit - COST FUNCTION")
 
     # COST FUNCTION
@@ -754,7 +754,7 @@ def Circle_fit[
     var A = (X @ G) @ X.transpose()
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=A), "circle_fit - A:")
+        Rfit.printIt[RFIT_DEBUG=True](A, "circle_fit - A:")
         print("circle_fit - MINIMIZE")
 
     # minimize
@@ -763,7 +763,7 @@ def Circle_fit[
 
     comptime if is_defined["RFIT_DEBUG"]():
         print("circle_fit - AFTER MIN_EIGEN")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=v), "v BEFORE INVERSION")
+        Rfit.printIt[RFIT_DEBUG=True](v, "v BEFORE INVERSION")
 
     # TO FIX dovrebbe essere N(3)>0
     if v[2] <= 0.0:
@@ -772,7 +772,7 @@ def Circle_fit[
         v[2] = -v[2]
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=v), "v AFTER INVERSION")
+        Rfit.printIt[RFIT_DEBUG=True](v, "v AFTER INVERSION")
 
     # This hack to be able to run on GPU where the automatic assignment to a
     # double from the vector multiplication is not working.
@@ -815,8 +815,8 @@ def Circle_fit[
     circle.chi2 = (abs(chi2) * renorm * 1.0 / Rfit.sqr(2.0 * v[2] * par_uvr_[2] * s)).cast[DType.float32]()
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=circle.par), "circle_fit - CIRCLE PARAMETERS:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=circle.cov), "circle_fit - CIRCLE COVARIANCE:")
+        Rfit.printIt[RFIT_DEBUG=True](circle.par, "circle_fit - CIRCLE PARAMETERS:")
+        Rfit.printIt[RFIT_DEBUG=True](circle.cov, "circle_fit - CIRCLE COVARIANCE:")
         print("circle_fit - CIRCLE CHARGE: ", circle.q)
         print("circle_fit - ERROR PROPAGATION")
 
@@ -855,7 +855,7 @@ def Circle_fit[
                 Vcs[i, j] = Rfit.sqr(s) * V[i, j] + scale_vcs * mc[i] * mc[j]
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=Vcs), "circle_fit - Vcs:")
+            Rfit.printIt[RFIT_DEBUG=True](Vcs, "circle_fit - Vcs:")
 
         for i in range(n):
             for j in range(n):
@@ -867,7 +867,7 @@ def Circle_fit[
                 Vcs_[1][0][i, j] = Vcs_[0][1][j, i]
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=Vcs), "circle_fit - Vcs:")
+            Rfit.printIt[RFIT_DEBUG=True](Vcs, "circle_fit - Vcs:")
 
         var t0 = Rfit.ArrayNd[N]()
         var t1 = Rfit.ArrayNd[N]()
@@ -918,7 +918,7 @@ def Circle_fit[
         C[2][2] = tmp
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=C[0][0]), "circle_fit - C[0][0]:")
+            Rfit.printIt[RFIT_DEBUG=True](C[0][0], "circle_fit - C[0][0]:")
 
         # cov matrix of center of gravity (r0.x,r0.y,r0.z)
         var C0 = Rfit.Matrix3d()
@@ -933,7 +933,7 @@ def Circle_fit[
                 C0[j, i] = sum
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=C0), "circle_fit - C0:")
+            Rfit.printIt[RFIT_DEBUG=True](C0, "circle_fit - C0:")
 
         var W = Rfit.MatrixNd[N]()
         for i in range(n):
@@ -948,9 +948,9 @@ def Circle_fit[
         var s_v = H @ p3D.transpose()
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=W), "circle_fit - W:")
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=H), "circle_fit - H:")
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=s_v), "circle_fit - s_v:")
+            Rfit.printIt[RFIT_DEBUG=True](W, "circle_fit - W:")
+            Rfit.printIt[RFIT_DEBUG=True](H, "circle_fit - H:")
+            Rfit.printIt[RFIT_DEBUG=True](s_v, "circle_fit - s_v:")
 
         # cov(s_v)
         var D_ = InlineArray[InlineArray[Rfit.MatrixNd[N], 3], 3](
@@ -977,7 +977,7 @@ def Circle_fit[
         D_[2][1] = D_[1][2].transpose()
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=D_[0][0]), "circle_fit - D_[0][0]:")
+            Rfit.printIt[RFIT_DEBUG=True](D_[0][0], "circle_fit - D_[0][0]:")
 
         comptime nu: InlineArray[InlineArray[UInt32, 2], 6] = [
             [0, 0],
@@ -987,15 +987,17 @@ def Circle_fit[
             [1, 2],
             [2, 2],
         ]
+        # runtime-indexed below; materialized once rather than per access
+        var nu_rt = materialize[nu]()
 
         # cov matrix of the 6 independent elements of A
         var E = Rfit.Matrix6d()
         for a in range(6):
-            var i = Int(nu[a][0])
-            var j = Int(nu[a][1])
+            var i = Int(nu_rt[a][0])
+            var j = Int(nu_rt[a][1])
             for b in range(a, 6):
-                var k = Int(nu[b][0])
-                var l = Int(nu[b][1])
+                var k = Int(nu_rt[b][0])
+                var l = Int(nu_rt[b][1])
 
                 var t0 = Rfit.VectorNd[N]()
                 var t1 = Rfit.VectorNd[N]()
@@ -1049,13 +1051,13 @@ def Circle_fit[
                     E[b, a] = E[a, b]
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=E), "circle_fit - E:")
+            Rfit.printIt[RFIT_DEBUG=True](E, "circle_fit - E:")
 
         # Jacobian of min_eigen() (numerically computed)
         var J2 = Matrix[DType.float64, 3, 6]()
         for a in range(6):
-            var i : Int = Int(nu[a][0])
-            var j : Int = Int(nu[a][1])
+            var i : Int = Int(nu_rt[a][0])
+            var j : Int = Int(nu_rt[a][1])
             var Delta = Rfit.Matrix3d.Zero()
             var delta_val = abs(A[i, j] * Rfit.d)
             Delta[i, j] = delta_val
@@ -1069,7 +1071,7 @@ def Circle_fit[
                 J2[r, a] = J2_col[r]
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=J2), "circle_fit - J2:")
+            Rfit.printIt[RFIT_DEBUG=True](J2, "circle_fit - J2:")
 
         # joint cov matrix of (v0,v1,v2,c)
         var Cvc = Rfit.Matrix4d()
@@ -1102,7 +1104,7 @@ def Circle_fit[
         # (v.transpose() * C0 * v) + (C0.cwiseProduct(t0)).sum() + (r0.transpose() * t0 * r0);
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=Cvc), "circle_fit - Cvc:")
+            Rfit.printIt[RFIT_DEBUG=True](Cvc, "circle_fit - Cvc:")
 
         # Jacobian (v0,v1,v2,c)->(X0,Y0,R)
         var J3 = Matrix[DType.float64, 3, 4]()
@@ -1121,7 +1123,7 @@ def Circle_fit[
         J3[2, 3] = -t
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=J3), "circle_fit - J3:")
+            Rfit.printIt[RFIT_DEBUG=True](J3, "circle_fit - J3:")
 
         # var(q)
         var Jq = Rfit.RowVector2Nd[N]()
@@ -1129,7 +1131,7 @@ def Circle_fit[
             Jq[0, i] = mc[i] * s / Float64(n)
 
         comptime if is_defined["RFIT_DEBUG"]():
-            Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=Jq), "circle_fit - Jq:")
+            Rfit.printIt[RFIT_DEBUG=True](Jq, "circle_fit - Jq:")
 
         # cov(X0,Y0,R)
         var cov_uvr = (J3 @ Cvc) @ J3.transpose()
@@ -1153,7 +1155,7 @@ def Circle_fit[
         circle.cov = cov_uvr
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=circle.cov), "Circle cov:")
+        Rfit.printIt[RFIT_DEBUG=True](circle.cov, "Circle cov:")
         print("circle_fit - exit")
 
     return circle
@@ -1211,9 +1213,9 @@ def Line_fit[
 
     comptime if is_defined["RFIT_DEBUG"]():
         print("Line_fit - B: ", B)
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=hits), "Line_fit points: ")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=hits_ge), "Line_fit covs: ")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=rot), "Line_fit rot: ")
+        Rfit.printIt[RFIT_DEBUG=True](hits, "Line_fit points: ")
+        Rfit.printIt[RFIT_DEBUG=True](hits_ge, "Line_fit covs: ")
+        Rfit.printIt[RFIT_DEBUG=True](rot, "Line_fit rot: ")
 
     # x & associated Jacobian
     # cfr https://indico.cern.ch/event/663159/contributions/2707659/attachments/1517175/2368189/Riemann_fit.pdf
@@ -1307,7 +1309,7 @@ def Line_fit[
     # component only, with the Multiple Scattering properly treated!!
     var cov_with_ms = Rfit.MatrixNd[N]()
     Scatter_cov_line(
-        cov_sz.unsafe_ptr().as_noalias_ptr(),
+        Span(cov_sz),
         fast_fit,
         s_arcs,
         z_values,
@@ -1317,8 +1319,8 @@ def Line_fit[
     )
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](cov_sz.unsafe_ptr(), "line_fit - cov_sz:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=cov_with_ms), "line_fit - cov_with_ms: ")
+        Rfit.printIt[RFIT_DEBUG=True](cov_sz[0], "line_fit - cov_sz:")
+        Rfit.printIt[RFIT_DEBUG=True](cov_with_ms, "line_fit - cov_with_ms: ")
 
     # Rotate Points with the shape [2, n]
     var p2D_rot : Rfit.Matrix2xNd[N]= rot @ p2D
@@ -1326,9 +1328,9 @@ def Line_fit[
     comptime if is_defined["RFIT_DEBUG"]():
         print("Fast fit Tan(theta): ", fast_fit[3])
         print("Rotation angle: ", theta)
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=rot), "Rotation Matrix:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=p2D), "Original Hits(s,z):")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=p2D_rot), "Rotated hits(S3D, Z'):")
+        Rfit.printIt[RFIT_DEBUG=True](rot, "Rotation Matrix:")
+        Rfit.printIt[RFIT_DEBUG=True](p2D, "Original Hits(s,z):")
+        Rfit.printIt[RFIT_DEBUG=True](p2D_rot, "Rotated hits(S3D, Z'):")
 
     var p2D_rot_row1 = Rfit.VectorNd[N]()
     for i in range(n):
@@ -1342,7 +1344,7 @@ def Line_fit[
         A[1, i] = p2D_rot[0, i]
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=A), "A Matrix:")
+        Rfit.printIt[RFIT_DEBUG=True](A, "A Matrix:")
 
     # Build A^T V-1 A, where V-1 is the covariance of only the Y components.
     var Vy_inv = Rfit.MatrixNd[N]()
@@ -1360,7 +1362,7 @@ def Line_fit[
     var sol = (Cov_params @ A) @ (Vy_inv @ p2D_rot_row1)
 
     comptime if is_defined["RFIT_DEBUG"]():
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=sol), "Rotated solutions:")
+        Rfit.printIt[RFIT_DEBUG=True](sol, "Rotated solutions:")
 
     # We need now to transfer back the results in the original s-z plane
     var common_factor = 1.0 / (math.sin(theta) - sol[1, 0] * math.cos(theta))
@@ -1385,12 +1387,12 @@ def Line_fit[
 
     comptime if is_defined["RFIT_DEBUG"]():
         print("Common_factor: ", common_factor)
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=J), "Jacobian:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=sol), "Rotated solutions:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=Cov_params), "Cov_params:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=cov_mq), "Rotated Covariance Matrix:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=line.par), "Real Parameters:")
-        Rfit.printIt[RFIT_DEBUG=True](UnsafePointer(to=line.cov), "Real Covariance Matrix:")
+        Rfit.printIt[RFIT_DEBUG=True](J, "Jacobian:")
+        Rfit.printIt[RFIT_DEBUG=True](sol, "Rotated solutions:")
+        Rfit.printIt[RFIT_DEBUG=True](Cov_params, "Cov_params:")
+        Rfit.printIt[RFIT_DEBUG=True](cov_mq, "Rotated Covariance Matrix:")
+        Rfit.printIt[RFIT_DEBUG=True](line.par, "Real Parameters:")
+        Rfit.printIt[RFIT_DEBUG=True](line.cov, "Real Covariance Matrix:")
         print("Chi2: ", chi2)
 
     return line

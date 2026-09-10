@@ -229,7 +229,9 @@ struct GPUClustering:
                     continue
                 if clusterId[i] >= 0:
                     # mark each pixel in a cluster with the same id as the first one
-                    clusterId[i] = clusterId[clusterId[i]]
+                    # (read before write: one Span cannot be borrowed both ways)
+                    var seed = clusterId[Int(clusterId[i])]
+                    clusterId[i] = seed
 
             # adjust the cluster id to be a positive value starting from 0
             for i in range(Int(first), Int(msize)):
@@ -350,7 +352,7 @@ struct GPUClustering:
 
             # renumber
 
-            blockPrefixScan(newclusId.unsafe_ptr(), nclus)
+            blockPrefixScan(Span(newclusId), nclus)
 
             debug_assert(nclus >= newclusId[nclus - 1].cast[DType.uint32]())
 

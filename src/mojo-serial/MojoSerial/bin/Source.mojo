@@ -26,7 +26,7 @@ struct Source(Defaultable, Movable, Typeable):
     var _endEvent: Int32
 
     var _runForMinutes: Int32
-    var _startTime: UInt
+    var _startTime: Int
     # don't need a mutex
     var _numEventsTimeLastCheck: Int32
     var _shouldStop: Bool
@@ -50,7 +50,7 @@ struct Source(Defaultable, Movable, Typeable):
         self._runForMinutes = 0
         self._startTime = 0
         self._numEventsTimeLastCheck = 0
-        self._shouldStop = 0
+        self._shouldStop = False
 
         self._numEvents = 0
         self._rawToken = EDPutTokenT[FEDRawDataCollection]()
@@ -79,7 +79,7 @@ struct Source(Defaultable, Movable, Typeable):
             self._runForMinutes = runForMinutes
             self._startTime = 0
             self._numEventsTimeLastCheck = 0
-            self._shouldStop = 0
+            self._shouldStop = False
 
             self._numEvents = 0
             self._rawToken = reg.produces[FEDRawDataCollection]()
@@ -211,7 +211,7 @@ struct Source(Defaultable, Movable, Typeable):
                 > self._raw.__len__()
             ):
                 # this is in nanoseconds
-                var processingTime: UInt = perf_counter_ns() - self._startTime
+                var processingTime: Int = perf_counter_ns() - self._startTime
                 if (processingTime // (6 * 10**10)) >= UInt(
                     self._runForMinutes
                 ):

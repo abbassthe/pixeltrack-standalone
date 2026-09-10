@@ -16,13 +16,15 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
 
     if NBINS != 128:
         rmin = 0
-        rmax = NBINS * 2 - 1
+        rmax = Scalar[T](NBINS * 2 - 1)
 
     comptime N: Int = 12000
     var v = InlineArray[Scalar[T], N](uninitialized=True)
 
-    comptime Hist = HistoContainer[T, NBINS, N, S]
-    comptime Hist4 = HistoContainer[T, NBINS, N, S, DType.uint16, 4]
+    comptime Hist = HistoContainer[T, UInt32(NBINS), UInt32(N), UInt32(S)]
+    comptime Hist4 = HistoContainer[
+        T, UInt32(NBINS), UInt32(N), UInt32(S), DType.uint16, 4
+    ]
 
     print(
         "HistoContainer ",
@@ -34,7 +36,7 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
         " ",
         Hist.capacity(),
         " ",
-        Int(rmax - rmin) // Hist.nbins(),
+        Int(rmax - rmin) // Int(Hist.nbins()),
         sep="",
     )
     print("bins ", Hist.bin(0), " ", Hist.bin(rmin), " ", Hist.bin(rmax))
@@ -48,18 +50,18 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
         " ",
         Hist4.capacity(),
         " ",
-        Int(rmax - rmin) // Hist.nbins(),
+        Int(rmax - rmin) // Int(Hist.nbins()),
         sep="",
     )
 
     for nh in range(4):
         print(
             "bins ",
-            Int(Hist4.bin(0)) + Hist4.histOff(nh),
+            Int(Hist4.bin(0)) + Int(Hist4.histOff(UInt32(nh))),
             " ",
-            Int(Hist.bin(rmin)) + Hist4.histOff(nh),
+            Int(Hist.bin(rmin)) + Int(Hist4.histOff(UInt32(nh))),
             " ",
-            Int(Hist.bin(rmax)) + Hist4.histOff(nh),
+            Int(Hist.bin(rmax)) + Int(Hist4.histOff(UInt32(nh))),
             sep="",
         )
 
@@ -71,9 +73,8 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
         t2: UInt32,
         v: InlineArray[Scalar[T], N],
     ):
-        var N = 50
-        debug_assert(t1 < N)
-        debug_assert(t2 < N)
+        debug_assert(Int32(t1) < Int32(N))
+        debug_assert(Int32(t2) < Int32(N))
         if (i != j) and (Scalar[T](v[t1] - v[t2]) <= 0):
             print("for ", i, ":", v[k], " failed ", v[t1], " ", v[t2], sep="")
 
@@ -104,8 +105,8 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
         h.finalize()
         h4.finalize()
 
-        debug_assert(h.size() == N)
-        debug_assert(h4.size() == N)
+        debug_assert(h.size() == UInt32(N))
+        debug_assert(h4.size() == UInt32(N))
 
         for j in range(N):
             h.fill(v[j], j)
@@ -116,25 +117,25 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
 
         debug_assert(h.off[0] == 0)
         debug_assert(h4.off[0] == 0)
-        debug_assert(h.size() == N)
-        debug_assert(h4.size() == N)
+        debug_assert(h.size() == UInt32(N))
+        debug_assert(h4.size() == UInt32(N))
 
         for i in range(Hist.nbins()):
             if h.size(i) == 0:
                 continue
 
             var k = h.begin(i)[]
-            debug_assert(k < N)
+            debug_assert(k < UInt32(N))
 
             var kl = (
-                h.bin(max(rmin, v[k] - DELTA))
+                h.bin(max(rmin, v[k] - Scalar[T](DELTA)))
                 .cast[DType.uint32]() if (NBINS != 128) else h.bin(
                     v[k] - Scalar[T](DELTA)
                 )
                 .cast[DType.uint32]()
             )
             var kh = (
-                h.bin(min(rmax, v[k] + DELTA))
+                h.bin(min(rmax, v[k] + Scalar[T](DELTA)))
                 .cast[DType.uint32]() if (NBINS != 128) else h.bin(
                     v[k] + Scalar[T](DELTA)
                 )
@@ -162,7 +163,7 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
                 j += 1
 
     def ftest(mut tot: Int, k: UInt32):
-        debug_assert(k >= 0 and k < N)
+        debug_assert(k >= 0 and k < UInt32(N))
         tot += 1
 
     for j in range(N):
@@ -178,13 +179,13 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
         w = 1
         tot = 0
         Histo.forEachInBins(h, v[j], w, ftest, tot)
-        var bp = b0 + 1
-        var bm = b0 - 1
+        var bp: Int = Int(b0) + 1
+        var bm: Int = Int(b0) - 1
 
         if bp < Int(h.nbins()):
-            rtot += Int(h.size(bp.cast[DType.uint32]()))
+            rtot += Int(h.size(UInt32(bp)))
         if bm >= 0:
-            rtot += Int(h.size(bm.cast[DType.uint32]()))
+            rtot += Int(h.size(UInt32(bm)))
 
         debug_assert(tot == rtot)
         w = 2
@@ -194,9 +195,9 @@ def go[T: DType, NBINS: Int = 128, S: Int = 8 * size_of[T](), DELTA: Int = 1000]
         bm -= 1
 
         if bp < Int(h.nbins()):
-            rtot += Int(h.size(bp.cast[DType.uint32]()))
+            rtot += Int(h.size(UInt32(bp)))
         if bm >= 0:
-            rtot += Int(h.size(bm.cast[DType.uint32]()))
+            rtot += Int(h.size(UInt32(bm)))
 
         debug_assert(tot == rtot)
 

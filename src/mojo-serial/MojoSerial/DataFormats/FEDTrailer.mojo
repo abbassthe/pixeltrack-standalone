@@ -117,7 +117,7 @@ def FED_WRONG_FEDID_EXTRACT(a: Int) -> Int:
 
 @fieldwise_init
 struct FEDTrailer(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
-    comptime length: UInt32 = size_of[FedtType]()
+    comptime length: UInt32 = UInt32(size_of[FedtType]())
     var theTrailer: UnsafePointer[FedtType]
 
     @always_inline

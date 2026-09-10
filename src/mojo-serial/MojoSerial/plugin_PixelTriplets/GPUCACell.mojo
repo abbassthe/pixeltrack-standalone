@@ -400,16 +400,18 @@ struct GPUCACell(Copyable, Defaultable, Movable):
 
     # trying to free the track building process from hardcoded layers, leaving
     # the visit of the graph based on the neighborhood connections between cells.
+    # `self` is read-only here and callers pass a *copy* of the cell, so the
+    # array can be a Span: a borrow of `self` would conflict with `cells`.
     def find_ntuplets[
-        origin: MutOrigin, //, DEPTH: Int
+        DEPTH: Int
     ](
         self,
         hh: Self.Hits,
-        cells: UnsafePointer[GPUCACell, mut=True, origin=origin],
+        cells: Span[mut=True, GPUCACell, _],
         mut cellTracks: Self.CellTracksVector,
         mut foundNtuplets: Self.HitContainer,
         mut apc: AtomicPairCounter,
-        quality: UnsafePointer[Self.Quality],
+        quality: Span[mut=True, Self.Quality, _],
         mut tmpNtuplet: Self.TmpTuple,
         minHitsPerNtuplet: UInt32,
         startAt0: Bool,
@@ -436,12 +438,12 @@ struct GPUCACell(Copyable, Defaultable, Movable):
             while j < nNeighbors:
                 var otherCell = self.outerNeighbors()[Int32(j)]
                 var otherIdx = Int(otherCell)
-                if (cells + otherIdx)[].theDoubletId < 0:
+                if cells[otherIdx].theDoubletId < 0:
                     # killed by earlyFishbone
                     j += 1
                     continue
                 last = False
-                var otherCellCopy = (cells + otherIdx)[]
+                var otherCellCopy = cells[otherIdx]
                 otherCellCopy.find_ntuplets[DEPTH - 1](
                     hh,
                     cells,
@@ -462,7 +464,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
                     comptime if is_defined["ONLY_TRIPLETS_IN_HOLE"]():
                         # triplets accepted only pointing to the hole
                         var firstCell = tmpNtuplet[0]
-                        var inner = (cells + Int(firstCell))[]
+                        var inner = cells[Int(firstCell)]
                         accept = (
                             len(tmpNtuplet) >= 3
                             or (startAt0 and self.hole4(hh, inner))
@@ -475,9 +477,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
                         var i: Int = 0
                         while i < tupleSize:
                             var cellIdx = tmpNtuplet[Int32(i)]
-                            hits[Int(nh)] = (
-                                cells + Int(cellIdx)
-                            )[].theInnerHitId
+                            hits[Int(nh)] = cells[Int(cellIdx)].theInnerHitId
                             nh += 1
                             i += 1
                         hits[Int(nh)] = self.theOuterHitId
@@ -490,7 +490,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
                             i = 0
                             while i < tupleSize:
                                 var cellIdx = tmpNtuplet[Int32(i)]
-                                _ = (cells + Int(cellIdx))[].addTrack(
+                                _ = cells[Int(cellIdx)].addTrack(
                                     UInt16(it), cellTracks
                                 )
                                 i += 1

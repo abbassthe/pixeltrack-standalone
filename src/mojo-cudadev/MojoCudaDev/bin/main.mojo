@@ -113,7 +113,7 @@ fn main() raises:
 
     print(
         "Processed", nevents, "events in", time, "seconds, throughput",
-        nevents / time, "events/s, CPU usage:",
+        Float64(nevents) / time, "events/s, CPU usage:",
         round(cpu / time * 100), "%",
     )
     exit(0)

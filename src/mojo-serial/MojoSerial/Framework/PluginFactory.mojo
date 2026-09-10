@@ -52,7 +52,7 @@ struct EDProducerWrapperT[T: Typeable & EDProducer](Movable, Typeable):
         return "EDProducerWrapperT[" + Self.T.dtype() + "]"
 
 
-struct EDProducerConcrete(Copyable, Movable, Typeable):
+struct EDProducerConcrete(Copyable, ImplicitlyCopyable, Movable, Typeable):
     comptime _C = def (mut ProductRegistry) raises -> EDProducerWrapper
     comptime _P = def (mut EDProducerWrapper, mut Event, EventSetup)
     comptime _E = def (mut EDProducerWrapper) raises
@@ -119,9 +119,8 @@ struct Registry(Typeable):
 
     @always_inline
     def delete(mut self):
-        for i in range(self._pluginRegistry._entries.__len__()):
-            if self._pluginRegistry._entries[i]:
-                self._pluginRegistry._entries[i].unsafe_value().value.delete()
+        for ref producer in self._pluginRegistry.values():
+            producer.delete()
 
     @staticmethod
     @always_inline

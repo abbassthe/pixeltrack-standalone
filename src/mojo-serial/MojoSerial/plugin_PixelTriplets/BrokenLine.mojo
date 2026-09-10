@@ -18,20 +18,20 @@ comptime karimaki_circle_fit = Rfit.circle_fit
 #\brief data needed for the Broken Line fit procedure.
 struct PreparedBrokenLineData[N: Int]:
     var q: Int                     #!< particle charge
-    var radii: Rfit.Matrix2xNd[N]  #!< xy data in the system in which the pre-fitted center is the origin
-    var s: Rfit.VectorNd[N]        #!< total distance traveled in the transverse plane
+    var radii: Rfit.Matrix2xNd[Self.N]  #!< xy data in the system in which the pre-fitted center is the origin
+    var s: Rfit.VectorNd[Self.N]        #!< total distance traveled in the transverse plane
                                    #   starting from the pre-fitted closest approach
-    var S: Rfit.VectorNd[N]        #!< total distance traveled (three-dimensional)
-    var Z: Rfit.VectorNd[N]        #!< orthogonal coordinate to the pre-fitted line in the sz plane
-    var VarBeta: Rfit.VectorNd[N]  #!< kink angles in the SZ plane
+    var S: Rfit.VectorNd[Self.N]        #!< total distance traveled (three-dimensional)
+    var Z: Rfit.VectorNd[Self.N]        #!< orthogonal coordinate to the pre-fitted line in the sz plane
+    var VarBeta: Rfit.VectorNd[Self.N]  #!< kink angles in the SZ plane
 
     def __init__(out self):
         self.q = 0
-        self.radii = Rfit.Matrix2xNd[N]()
-        self.s = Rfit.VectorNd[N]()
-        self.S = Rfit.VectorNd[N]()
-        self.Z = Rfit.VectorNd[N]()
-        self.VarBeta = Rfit.VectorNd[N]()
+        self.radii = Rfit.Matrix2xNd[Self.N]()
+        self.s = Rfit.VectorNd[Self.N]()
+        self.S = Rfit.VectorNd[Self.N]()
+        self.Z = Rfit.VectorNd[Self.N]()
+        self.VarBeta = Rfit.VectorNd[Self.N]()
 
 
 #!
@@ -262,7 +262,7 @@ def BL_Circle_fit[M3xN: MatrixLike, M6xN: MatrixLike, V4: MatrixLike, N: Int](
     var n: Int = N
     var i: Int = 0
 
-    circle_results.q = data.q
+    circle_results.q = Int32(data.q)
     var radii = data.radii
     var s = data.s
     var S = data.S

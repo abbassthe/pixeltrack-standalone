@@ -4,7 +4,7 @@ from layout import Layout, LayoutTensor, IntTuple
 from MojoSerial.MojoBridge.DTypes import Typeable
 
 
-def isPowerOf2(v: Int32) -> Bool:
+def isPowerOf2(v: Int) -> Bool:
     return v and not (v & (v - 1))
 
 
@@ -17,50 +17,42 @@ struct ScalarSoA[T: DType, S: Int](
 
     @always_inline
     def __init__(out self):
-        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert isPowerOf2(Self.S), "SoA stride not a power of 2"
         comptime assert (
-            S * size_of[T]() % 128 == 0
+            Self.S * size_of[Self.T]() % 128 == 0
         ), "SoA size not a multiple of 128"
         self._data = InlineArray[Self.Scalar, Self.S](fill=0)
 
     @always_inline
     def __init__(out self, var list: InlineArray[Self.Scalar, Self.S]):
-        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert isPowerOf2(Self.S), "SoA stride not a power of 2"
         comptime assert (
-            S * size_of[T]() % 128 == 0
+            Self.S * size_of[Self.T]() % 128 == 0
         ), "SoA size not a multiple of 128"
         self._data = list^
 
+    # Was UnsafePointer + a `cp` flag; a Span borrow can only copy.
     @always_inline
-    def __init__(
-        out self, var ptr: UnsafePointer[Self.Scalar], *, var cp: Bool = False
-    ):
-        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+    def __init__(out self, src: Span[Self.Scalar, _]):
+        comptime assert isPowerOf2(Self.S), "SoA stride not a power of 2"
         comptime assert (
-            S * size_of[T]() % 128 == 0
+            Self.S * size_of[Self.T]() % 128 == 0
         ), "SoA size not a multiple of 128"
+        debug_assert(len(src) >= Self.S)
 
-        self._data = InlineArray[Self.Scalar, S](uninitialized=True)
+        self._data = InlineArray[Self.Scalar, Self.S](uninitialized=True)
 
-        for i in range(S):
-            if cp:
-                (self._data.unsafe_ptr() + i).init_pointee_copy((ptr + i)[])
-            else:
-                (self._data.unsafe_ptr() + i).init_pointee_move(
-                    (ptr + i).take_pointee()
-                )
+        for i in range(Self.S):
+            self._data[i] = src[i]
 
     @always_inline
     def __len__(self) -> Int:
         return Self.S
 
+    # C++: Scalar* data() / Scalar const* data() -- one span, origin carries const.
     @always_inline
-    def data[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        Self.Scalar, mut = origin.mut, origin=origin
-    ]:
-        return self._data.unsafe_ptr()
+    def data(ref self) -> Span[Self.Scalar, origin_of(self._data)]:
+        return Span(self._data)
 
     @always_inline
     def __getitem__(ref self, i: Int) -> ref [self._data] Self.Scalar:
@@ -73,7 +65,7 @@ struct ScalarSoA[T: DType, S: Int](
     @always_inline
     @staticmethod
     def dtype() -> String:
-        return "ScalarSoA[" + Self.T.__repr__() + ", " + String(Self.S) + "]"
+        return "ScalarSoA[" + repr(Self.T) + ", " + String(Self.S) + "]"
 
 
 # WARNING: THIS STRUCT IS 128-ALIGNED
@@ -88,52 +80,53 @@ struct MatrixSoA[T: DType, R: Int, C: Int, S: Int](
 
     @always_inline
     def __init__(out self):
-        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert isPowerOf2(Self.S), "SoA stride not a power of 2"
         comptime assert (
-            R * C * S * size_of[T]() % 128 == 0
+            Self.R * Self.C * Self.S * size_of[Self.T]() % 128 == 0
         ), "SoA size not a multiple of 128"
         self._data = Self._D(fill=0)
 
     @always_inline
     def __init__(out self, var list: Self._D):
-        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+        comptime assert isPowerOf2(Self.S), "SoA stride not a power of 2"
         comptime assert (
-            R * C * S * size_of[T]() % 128 == 0
+            Self.R * Self.C * Self.S * size_of[Self.T]() % 128 == 0
         ), "SoA size not a multiple of 128"
         self._data = list^
 
+    # Was UnsafePointer + a `cp` flag; a Span borrow can only copy.
     @always_inline
-    def __init__(
-        out self, var ptr: UnsafePointer[Self.Scalar], *, var cp: Bool = False
-    ):
-        comptime assert isPowerOf2(S), "SoA stride not a power of 2"
+    def __init__(out self, src: Span[Self.Scalar, _]):
+        comptime assert isPowerOf2(Self.S), "SoA stride not a power of 2"
         comptime assert (
-            R * C * S * size_of[T]() % 128 == 0
+            Self.R * Self.C * Self.S * size_of[Self.T]() % 128 == 0
         ), "SoA size not a multiple of 128"
+        debug_assert(len(src) >= Self.R * Self.C * Self.S)
 
         self._data = Self._D(uninitialized=True)
 
-        for i in range(R * C * S):
-            if cp:
-                (self._data.unsafe_ptr() + i).init_pointee_copy((ptr + i)[])
-            else:
-                (self._data.unsafe_ptr() + i).init_pointee_move(
-                    (ptr + i).take_pointee()
-                )
+        for i in range(Self.R * Self.C * Self.S):
+            self._data[i] = src[i]
 
     @always_inline
     def __len__(self) -> Int:
         return Self.R * Self.C * Self.S
 
+    # C++: Map operator[](int32_t i) { return Map(data_ + i); }
+    # Origin must name the field, not `self`, or the Span will not unify.
     @always_inline
-    def __getitem__[
-        origin: Origin, //
-    ](ref [origin]self, i: Int32) -> LayoutTensor[
-        mut = origin.mut, Self.T, Self.Map, origin
+    def __getitem__(ref self, i: Int32) -> LayoutTensor[
+        mut = origin_of(self._data).mut,
+        Self.T,
+        Self.Map,
+        origin_of(self._data),
     ]:
-        return LayoutTensor[mut = origin.mut, Self.T, Self.Map, origin](
-            self._data.unsafe_ptr() + i
-        )
+        return LayoutTensor[
+            mut = origin_of(self._data).mut,
+            Self.T,
+            Self.Map,
+            origin_of(self._data),
+        ](Span(self._data)[Int(i) :])
 
     @always_inline
     def __setitem__(mut self, idx: Int32, val: LayoutTensor):
@@ -196,7 +189,7 @@ struct MatrixSoA[T: DType, R: Int, C: Int, S: Int](
     def dtype() -> String:
         return (
             "MatrixSoA["
-            + Self.T.__repr__()
+            + repr(Self.T)
             + ", "
             + String(Self.R)
             + ", "

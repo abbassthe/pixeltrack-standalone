@@ -135,7 +135,7 @@ struct Source(Defaultable, Movable, Typeable):
                 debug_assert(self._raw.__len__() == self._vertices.__len__())
 
             if self._runForMinutes < 0 and self._maxEvents < 0:
-                self._maxEvents = self._raw.__len__()
+                self._maxEvents = Int32(self._raw.__len__())
         except e:
             print("Error occurred in Bin/Source.mojo,", e)
             return Self()
@@ -203,7 +203,7 @@ struct Source(Defaultable, Movable, Typeable):
         else:
             if (
                 self._numEvents - self._numEventsTimeLastCheck
-                > self._raw.__len__()
+                > Int32(self._raw.__len__())
             ):
                 # this is in nanoseconds
                 var processingTime: UInt = perf_counter_ns() - self._startTime
@@ -212,14 +212,14 @@ struct Source(Defaultable, Movable, Typeable):
                 ):
                     self._shouldStop = True
                 self._numEventsTimeLastCheck = (
-                    self._numEvents // self._raw.__len__()
-                ) * self._raw.__len__()
+                    self._numEvents // Int32(self._raw.__len__())
+                ) * Int32(self._raw.__len__())
             if self._shouldStop:
                 self._numEvents -= 1
                 return res
 
-        var ev = Event(Int(streamId), Int(self._numEvents), reg)
-        var index = (self._numEvents - 1) % self._raw.__len__()
+        var ev = Event(streamId, self._numEvents, reg)
+        var index = (self._numEvents - 1) % Int32(self._raw.__len__())
 
         ev.put[FEDRawDataCollection](self._rawToken, self._raw[index])
         if self._validation:

@@ -3,7 +3,11 @@ from std.collections import Deque
 from MojoSerial.Framework.Event import Event
 from MojoSerial.Framework.EventSetup import EventSetup
 from MojoSerial.Framework.ProductRegistry import ProductRegistry
-from MojoSerial.Framework.PluginFactory import PluginFactory, EDProducerConcrete
+from MojoSerial.Framework.PluginFactory import (
+    PluginFactory,
+    EDProducerConcrete,
+    Registry as EDRegistry,
+)
 from MojoSerial.MojoBridge.DTypes import Typeable
 from MojoSerial.bin.Source import Source
 
@@ -26,7 +30,7 @@ struct StreamSchedule(Defaultable, Movable, Typeable):
         mut reg: ProductRegistry,
         source: UnsafePointer[Source],
         eventSetup: UnsafePointer[EventSetup],
-        mut edreg: MojoSerial.Framework.PluginFactory.Registry,
+        mut edreg: EDRegistry,
         streamId: Int32 = 0,
     ):
         try:

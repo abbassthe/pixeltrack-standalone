@@ -1,10 +1,21 @@
-comptime CUDAStreamType = OpaquePointer
-comptime cudaStreamDefault: OpaquePointer = OpaquePointer()
+from std.memory import Pointer
+
+# Vestigial: the serial backend has no streams, so this is only ever a
+# placeholder default argument and is never dereferenced. `Pointer` is
+# non-nullable in 1.0, so the null stream is an empty Optional.
+comptime CUDAStreamType = Optional[Pointer[NoneType, MutUntrackedOrigin]]
+comptime cudaStreamDefault = CUDAStreamType(None)
+
+
 @deprecated(
     "Any methods using CUDACompat should be redirected to perform the regular"
     " operations since we are not in a CUDA environment."
 )
 struct CUDACompat:
+    # Serial backend: these are plain read-modify-write, not atomics. They take
+    # `mut` rather than a pointer so the borrow is tracked. atomicCAS is the
+    # exception -- GPUCACell's CUDA-only branch CASes on a reinterpreted
+    # pointer field, which has no Scalar lvalue to borrow.
     @staticmethod
     @deprecated(
         "Any methods using CUDACompat should be redirected to perform the"
@@ -13,7 +24,7 @@ struct CUDACompat:
     def atomicCAS[
         T1: DType, //
     ](
-        address: UnsafePointer[Scalar[T1], mut=True],
+        address: Pointer[mut=True, Scalar[T1], _],
         compare: Scalar[T1],
         val: Scalar[T1],
     ) -> Scalar[T1]:
@@ -28,10 +39,10 @@ struct CUDACompat:
     )
     def atomicInc[
         T1: DType, //
-    ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
-        var ret = a[]
-        if a[] < b:
-            a[] += 1
+    ](mut a: Scalar[T1], b: Scalar[T1]) -> Scalar[T1]:
+        var ret = a
+        if a < b:
+            a += 1
         return ret
 
     @staticmethod
@@ -41,9 +52,9 @@ struct CUDACompat:
     )
     def atomicAdd[
         T1: DType, //
-    ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
-        var ret = a[]
-        a[] += b
+    ](mut a: Scalar[T1], b: Scalar[T1]) -> Scalar[T1]:
+        var ret = a
+        a += b
         return ret
 
     @staticmethod
@@ -53,9 +64,9 @@ struct CUDACompat:
     )
     def atomicSub[
         T1: DType, //
-    ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
-        var ret = a[]
-        a[] -= b
+    ](mut a: Scalar[T1], b: Scalar[T1]) -> Scalar[T1]:
+        var ret = a
+        a -= b
         return ret
 
     @staticmethod
@@ -65,9 +76,9 @@ struct CUDACompat:
     )
     def atomicMin[
         T1: DType, //
-    ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
-        var ret = a[]
-        a[] = min(a[], b)
+    ](mut a: Scalar[T1], b: Scalar[T1]) -> Scalar[T1]:
+        var ret = a
+        a = min(a, b)
         return ret
 
     @staticmethod
@@ -77,7 +88,7 @@ struct CUDACompat:
     )
     def atomicMax[
         T1: DType, //
-    ](a: UnsafePointer[Scalar[T1], mut=True], b: Scalar[T1]) -> Scalar[T1]:
-        var ret = a[]
-        a[] = max(a[], b)
+    ](mut a: Scalar[T1], b: Scalar[T1]) -> Scalar[T1]:
+        var ret = a
+        a = max(a, b)
         return ret

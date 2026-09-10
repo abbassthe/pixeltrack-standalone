@@ -63,6 +63,6 @@ struct PixelGPUDetails:
     comptime MAX_LINK: UInt32 = 48  # maximum links/channels for Phase 1
     comptime MAX_ROC: UInt32 = 8
     comptime MAX_SIZE = Self.MAX_FED * Self.MAX_LINK * Self.MAX_ROC
-    comptime MAX_SIZE_BYTE_BOOL = Self.MAX_SIZE * size_of[UChar]()
+    comptime MAX_SIZE_BYTE_BOOL = Self.MAX_SIZE * UInt32(size_of[UChar]())
     # number of words for all the FEDs
     comptime MAX_FED_WORDS = Self.MAX_FED * Self.MAX_WORD

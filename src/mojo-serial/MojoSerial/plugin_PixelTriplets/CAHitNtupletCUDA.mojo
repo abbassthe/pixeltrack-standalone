@@ -14,6 +14,7 @@ from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import (
 from MojoSerial.plugin_PixelTriplets.CAHitNtupletGeneratorOnGPU import (
     CAHitNtupletGeneratorOnGPU,
 )
+from MojoSerial.CondFormats.PixelCPEFast import PixelCPEFast
 from MojoSerial.MojoBridge.DTypes import Typeable
 
 
@@ -45,7 +46,11 @@ struct CAHitNtupletCUDA(Defaultable, EDProducer, Typeable):
         ref hits = iEvent.get(self.tokenHitCPU_)
 
         try:
-            iEvent.put(self.tokenTrackCPU_, self.gpuAlgo_.make_tuples(hits, bf))
+            # C++ gets the CPE params from the hits view; see make_tuples.
+            iEvent.put(
+                self.tokenTrackCPU_,
+                self.gpuAlgo_.make_tuples(hits, es.get[PixelCPEFast](), bf),
+            )
         except e:
             print("Error during produce in CAHitNtupletCUDA, ", e)
 

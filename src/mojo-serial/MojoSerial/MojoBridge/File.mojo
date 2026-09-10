@@ -21,16 +21,18 @@ def read_simd_eof[
 @always_inline
 def read_obj[T: Movable](mut file: FileHandle) raises -> T:
     var obj = file.read_bytes(size_of[T]())
-    return obj.steal_data().bitcast[T]().take_pointee()
+    return obj.steal_data().unsafe_bitcast[T]().unsafe_take_pointee()
 
 
 @always_inline
 def read_list[
     T: Movable & Copyable
 ](mut file: FileHandle, var num: Int) raises -> List[T]:
-    var ret = List[T](unsafe_uninit_length=num)
     var elements = file.read_bytes(num * size_of[T]())
-    var data = elements.steal_data().bitcast[T]()
+    var data = elements.steal_data().unsafe_bitcast[T]()
+    # capacity + append rather than filling ret._data directly: Pointer has no
+    # move_pointee_into, and this keeps the list's internals out of it.
+    var ret = List[T](capacity=num)
     for i in range(num):
-        (data + i).move_pointee_into(ret._data + i)
+        ret.append(data.unsafe_offset(i).unsafe_take_pointee())
     return ret^

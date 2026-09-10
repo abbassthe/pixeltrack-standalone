@@ -1,5 +1,4 @@
 from std.sys import size_of
-from std.memory import OwnedPointer
 
 from MojoSerial.CondFormats.SiPixelFedCablingMapGPUWrapper import (
     SiPixelFedCablingMapGPUWrapper,
@@ -34,7 +33,8 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
     var _clusterPutToken: EDPutTokenT[SiPixelClustersSoA]
 
     var _gpuAlgo: SiPixelRawToClusterGPUKernel
-    var _wordFedAppender: OwnedPointer[WordFedAppender]
+    # WordFedAppender is 16 B (two List handles); the box was pure overhead.
+    var _wordFedAppender: WordFedAppender
     var _errors: PixelFormatterErrors
 
     var _isRun2: Bool
@@ -49,7 +49,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
         self._clusterPutToken = EDPutTokenT[SiPixelClustersSoA]()
 
         self._gpuAlgo = SiPixelRawToClusterGPUKernel()
-        self._wordFedAppender = OwnedPointer(WordFedAppender())
+        self._wordFedAppender = WordFedAppender()
         self._errors = PixelFormatterErrors()
 
         self._isRun2 = False
@@ -64,7 +64,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
             self._clusterPutToken = reg.produces[SiPixelClustersSoA]()
 
             self._gpuAlgo = SiPixelRawToClusterGPUKernel()
-            self._wordFedAppender = OwnedPointer(WordFedAppender())
+            self._wordFedAppender = WordFedAppender()
             self._errors = PixelFormatterErrors()
 
             self._isRun2 = True
@@ -83,7 +83,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
         try:
             ref hgpuMap = iSetup.get[SiPixelFedCablingMapGPUWrapper]()
             if hgpuMap.hasQuality() != self._useQuality:
-                raise "UseQuality of the module (" + self._useQuality.__str__() + ") differs the one from SiPixelFedCablingMapGPUWrapper. Please fix your configuration."
+                raise "UseQuality of the module (" + String(self._useQuality) + ") differs the one from SiPixelFedCablingMapGPUWrapper. Please fix your configuration."
             ref gpuMap = hgpuMap.getCPUProduct()
             var gpuModulesToUnpack = hgpuMap.getModToUnpAll()
 
@@ -116,8 +116,8 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
                 ref rawData = buffers.FEDData(Int(fedId))
 
                 # GPU specific
-                var nWords: Int32 = (
-                    rawData.size().cast[DType.int32]() / size_of[DType.uint64]()
+                var nWords: Int32 = Int32(
+                    rawData.size() / UInt32(size_of[DType.uint64]())
                 )
                 if nWords == 0:
                     continue
@@ -162,7 +162,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
                 var ew = trailer.bitcast[UInt32]()
                 var le = (Int(ew) - Int(bw)) // size_of[DType.uint32]()
                 debug_assert(le % 2 == 0)
-                self._wordFedAppender[].initializeWordFed(
+                self._wordFedAppender.initializeWordFed(
                     fedId.cast[DType.int32](),
                     wordCounterGPU,
                     bw,
@@ -175,7 +175,7 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
                 gpuMap,
                 gpuModulesToUnpack,
                 gpuGains,
-                self._wordFedAppender[],
+                self._wordFedAppender,
                 self._errors^,
                 wordCounterGPU,
                 fedCounter,

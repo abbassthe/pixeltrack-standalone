@@ -26,13 +26,12 @@ def loadCov(e: Vector5d) -> Matrix5d:
 comptime TS = TrajectoryStateSoA[128]
 
 
-def testTSSoA(pts: UnsafePointer[TS], n: Int64):
+def testTSSoA(mut ts: TS, n: Int64):
     debug_assert(n <= 128)
 
     var par0: Vector5d = Vector5d(0.2, 0.1, 3.5, 0.8, 0.1)
     var e0: Vector5d = Vector5d(0.01, 0.01, 0.035, -0.03, -0.01)
     var cov0 = loadCov(e0)
-    ref ts = pts[]
 
     for i in range(n):
         ts.copyFromDense(par0, cov0, i.cast[DType.int32]())
@@ -51,4 +50,4 @@ def testTSSoA(pts: UnsafePointer[TS], n: Int64):
 
 def main():
     var ts: TS = TS()
-    testTSSoA(UnsafePointer(to=ts), 128)
+    testTSSoA(ts, 128)

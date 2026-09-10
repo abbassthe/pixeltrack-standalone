@@ -3,7 +3,7 @@ from MojoSerial.MojoBridge.Matrix import Matrix, MatrixLike, MatrixXd, VectorXd
 from MojoSerial.MojoBridge.DTypes import DType
 
 @fieldwise_init
-struct _Rfit_circle_fit(Copyable, Defaultable, Movable):
+struct _Rfit_circle_fit(Copyable, Defaultable, ImplicitlyCopyable, Movable):
     var par: Matrix[DType.float64, 3, 1]  # (X0, Y0, R)
     var cov: Matrix[DType.float64, 3, 3]
     var q: Int32  # particle charge
@@ -17,7 +17,7 @@ struct _Rfit_circle_fit(Copyable, Defaultable, Movable):
 
 
 @fieldwise_init
-struct _Rfit_line_fit(Copyable, Defaultable, Movable):
+struct _Rfit_line_fit(Copyable, Defaultable, ImplicitlyCopyable, Movable):
     var par: Matrix[DType.float64, 2, 1]  # (cotan(theta), Zip)
     var cov: Matrix[DType.float64, 2, 2]
     var chi2: Float64
@@ -29,7 +29,7 @@ struct _Rfit_line_fit(Copyable, Defaultable, Movable):
 
 
 @fieldwise_init
-struct _Rfit_helix_fit(Copyable, Defaultable, Movable):
+struct _Rfit_helix_fit(Copyable, Defaultable, ImplicitlyCopyable, Movable):
     var par: Matrix[DType.float64, 5, 1]  # (phi, Tip, pt, cotan(theta), Zip)
     var cov: Matrix[DType.float64, 5, 5]
     var chi2_circle: Float32
@@ -90,14 +90,16 @@ struct Rfit:
 
     comptime u_int = UInt32
 
+    # C++ takes `M const*`; a borrow is the direct equivalent and needs no
+    # wrapper at the 56 call sites.
     @staticmethod
-    def printIt[M: MatrixLike, RFIT_DEBUG: Bool = False](m: UnsafePointer[M], prefix: String = ""):
+    def printIt[M: MatrixLike, RFIT_DEBUG: Bool = False](m: M, prefix: String = ""):
         comptime if RFIT_DEBUG:
             var r: Int = 0
-            while r < m[].num_rows():
+            while r < m.num_rows():
                 var c: Int = 0
                 while c < M.ColsAtCompileTime():
-                    print(prefix, "Matrix(", r, ",", c, ") =", m[][r, c])
+                    print(prefix, "Matrix(", r, ",", c, ") =", m[r, c])
                     c += 1
                 r += 1
 

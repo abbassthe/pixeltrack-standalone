@@ -1,0 +1,103 @@
+% ---------------------------------------------------------------------------
+% Table of contents skeleton for the Mojo pixeltrack-standalone report.
+% Class `report` gives \chapter; for a shorter document map
+% \chapter->\section and \section->\subsection throughout.
+% ---------------------------------------------------------------------------
+\documentclass[11pt,a4paper]{report}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+
+\title{Porting the CMS Pixel-Track Reconstruction to Mojo:\\
+       Vertex Finding, a Language-Version Migration, and a GPU Backend}
+\author{Abbas Naim}
+\date{September 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+% ===========================================================================
+\chapter{Introduction}
+\section{Pixeltrack-standalone and the reconstruction chain}
+% Surface level only: raw -> digis -> clusters -> rechits -> tracks -> vertices,
+% and the fact that the repository carries one backend per programming model.
+\section{Motivation for a Mojo implementation}
+\section{Scope and contributions}
+% Three strands, how they connect, and what "complete" means for each.
+
+% ===========================================================================
+\chapter{Porting PixelVertexFinding}
+\section{The vertex-finding algorithm}
+\section{Translating the kernels to Mojo}
+\subsection{Mapping the block/thread decomposition to serial execution}
+\subsection{Workspace layout and producer wiring}
+\section{Verification against the C++ serial backend}
+\section{Outcome}
+
+% ===========================================================================
+\chapter{Migrating \texttt{mojo-serial} to Mojo 1.0}
+\section{Motivation: the two donor ports do not share a dialect}
+% The hinge of the whole report. Discovered while starting cudadev: the two
+% Mojo ports of byte-identical C++ do not compile together.
+\section{Mechanical changes and compiler fix-its}
+\subsection{Semantics proven before trusting the sweep}
+\section{The pointer and origin model}
+\subsection{Origins are compile-time only}
+\subsection{Mutability lives in the origin, not the binding}
+\subsection{Borrow granularity and what it forces on every signature}
+\section{Eliminating \texttt{UnsafePointer}}
+\subsection{Conversion recipes}
+\subsection{Removing the self-referential views}
+\section{Numeric strictness}
+\section{Type erasure in the framework}
+% The last genuinely new design problem: function types became traits and
+% cannot be struct fields, so the void*-plus-vtable design is unfixable as
+% written rather than merely in need of casts.
+\section{Code generation: measured, not assumed}
+\section{Results}
+
+% ===========================================================================
+\chapter{Porting \texttt{cudadev} to Mojo}
+\section{Starting point and file classification}
+\section{The GPU runtime layer}
+\section{Re-atomicising the concurrent primitives}
+% A safety argument, not a transcription log: the serial port had silently
+% removed device atomics, so copied files compile and race.
+\section{Containers, data formats, and memory management}
+\subsection{The association-container inversion}
+\subsection{The caching allocators and what still bypasses them}
+\section{Plugins ported}
+\section{PixelVertexFinding on the GPU}
+\section{State at handover}
+
+% ===========================================================================
+\chapter{Defects Found}
+\section{Defects in the existing ports}
+\section{Defects introduced by mechanical rewriting}
+\section{Concurrency defects}
+
+% ===========================================================================
+\chapter{Conclusions and Future Work}
+\section{Summary of results}
+\section{Outstanding validation gaps}
+% Honest accounting: what has never been executed or compared end to end.
+\section{Recommended order of work for a successor}
+\section{Assessment of Mojo for reconstruction code}
+
+% ===========================================================================
+\appendix
+
+\chapter{Mojo 25.5 to 1.0 Reference}
+\section{Language changes}
+\section{Standard-library relocation map}
+\section{Removed facilities and their replacements}
+
+\chapter{File Inventory and Status}
+
+\end{document}

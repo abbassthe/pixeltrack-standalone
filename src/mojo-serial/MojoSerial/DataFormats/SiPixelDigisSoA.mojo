@@ -1,3 +1,5 @@
+from std.collections import Span
+
 from MojoSerial.MojoBridge.DTypes import SizeType, Typeable
 
 
@@ -16,25 +18,27 @@ struct SiPixelDigisSoA(Copyable, Defaultable, Movable, Sized, Typeable):
         self._adc = List[UInt16]()
         self._clus = List[Int32]()
 
-    # unsafe constructor for constructing the SoA object from C-style arrays
+    # C++ takes four `T const*` here; the columns are array bases, so they are
+    # Spans (doc §5) and the copy is a plain indexed loop.
     def __init__(
         out self,
         var nDigis: SizeType,
-        pdigi: UnsafePointer[UInt32],
-        rawIdArr: UnsafePointer[UInt32],
-        adc: UnsafePointer[UInt16],
-        clus: UnsafePointer[Int32],
+        pdigi: Span[UInt32, _],
+        rawIdArr: Span[UInt32, _],
+        adc: Span[UInt16, _],
+        clus: Span[Int32, _],
     ):
-        self._pdigi = List[UInt32](unsafe_uninit_length=UInt(nDigis))
-        self._rawIdArr = List[UInt32](unsafe_uninit_length=UInt(nDigis))
-        self._adc = List[UInt16](unsafe_uninit_length=UInt(nDigis))
-        self._clus = List[Int32](unsafe_uninit_length=UInt(nDigis))
-        for i in range(UInt(nDigis)):
-            (self._pdigi.unsafe_ptr() + i).init_pointee_copy(pdigi[i])
-            (self._rawIdArr.unsafe_ptr() + i).init_pointee_copy(rawIdArr[i])
-            (self._adc.unsafe_ptr() + i).init_pointee_copy(adc[i])
-            (self._clus.unsafe_ptr() + i).init_pointee_copy(clus[i])
-        debug_assert(self._pdigi.__len__() == UInt(nDigis))
+        var n = Int(nDigis)
+        self._pdigi = List[UInt32](length=n, fill=0)
+        self._rawIdArr = List[UInt32](length=n, fill=0)
+        self._adc = List[UInt16](length=n, fill=0)
+        self._clus = List[Int32](length=n, fill=0)
+        for i in range(n):
+            self._pdigi[i] = pdigi[i]
+            self._rawIdArr[i] = rawIdArr[i]
+            self._adc[i] = adc[i]
+            self._clus[i] = clus[i]
+        debug_assert(self._pdigi.__len__() == n)
 
     @always_inline
     def __len__(self) -> Int:

@@ -12,8 +12,8 @@ comptime verbose: Bool = False  # in principle the compiler should optmize out i
 # enough for <10K tracks we have
 @always_inline
 def clusterTracksIterative(
-    pdata: UnsafePointer[ZVertices],
-    pws: UnsafePointer[WorkSpace],
+    mut data: ZVertices,
+    mut ws: WorkSpace,
     minT: Int32,  # min number of neighbours to be "core"
     eps: Float,  # max absolute distance to cluster
     errmax: Float,  # max error to be "seed"
@@ -24,18 +24,16 @@ def clusterTracksIterative(
 
     var er2mx = errmax * errmax
 
-    ref data = pdata[]
-    ref ws = pws[]
     var nt = ws.ntrks
-    ref zt: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.zt
-    ref ezt2: InlineArray[Float, UInt(WorkSpace.MAXTRACKS)] = ws.ezt2
+    ref zt = ws.zt
+    ref ezt2 = ws.ezt2
 
-    ref nvFinal: UInt32 = data.nvFinal
-    ref nvIntermediate: UInt32 = ws.nvIntermediate
+    ref nvFinal = data.nvFinal
+    ref nvIntermediate = ws.nvIntermediate
 
-    ref izt: InlineArray[UInt8, UInt(WorkSpace.MAXTRACKS)] = ws.izt
-    ref nn: InlineArray[Int32, UInt(ZVertices.MAXTRACKS)] = data.ndof
-    ref iv: InlineArray[Int32, UInt(WorkSpace.MAXTRACKS)] = ws.iv
+    ref izt = ws.izt
+    ref nn = data.ndof
+    ref iv = ws.iv
 
     comptime Hist = HistoContainer[DType.uint8, 256, 16000, 8, DType.uint16, 1]
     var hist: Hist = Hist()
@@ -81,7 +79,7 @@ def clusterTracksIterative(
 
         @parameter
         def countNeighbor(j: UInt16):
-            if i == Int(j):
+            if i == UInt32(j):
                 return
             var dist = abs(zt[i] - zt[Int(j)])
             if dist > eps:
@@ -122,13 +120,11 @@ def clusterTracksIterative(
                         return
                     if dist * dist > chi2max * (ezt2[i] + ezt2[Int(j)]):
                         return
-                    var old = CUDACompat.atomicMin(
-                        UnsafePointer(to=iv[Int(j)]), iv[i]
-                    )
+                    var old = CUDACompat.atomicMin(iv[Int(j)], iv[i])
                     if old != iv[i]:
                         # end the loop only if no changes were applied
                         more = True
-                    _ = CUDACompat.atomicMin(UnsafePointer(to=iv[i]), old)
+                    _ = CUDACompat.atomicMin(iv[i], old)
 
                 p += 1
                 while p < hist.end(UInt32(be)):
@@ -165,7 +161,7 @@ def clusterTracksIterative(
         if iv[i] == Int32(i):
             if nn[i] >= minT:
                 var old = CUDACompat.atomicInc(
-                    UnsafePointer(to=foundClusters), UInt32(0xFFFFFFFF)
+                    foundClusters, UInt32(0xFFFFFFFF)
                 )
                 iv[i] = -(Int32(old) + 1)
             else:  # noise

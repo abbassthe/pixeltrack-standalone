@@ -311,22 +311,22 @@ def symmetrize66[T: DType, rows: Int, cols: Int](mut dst: Matrix[T, rows, cols])
 struct Inverter[T: DType, rows: Int, cols: Int, N: Int]:
     @staticmethod
     @always_inline
-    def eval(src: Matrix[T, rows, cols], mut dst: Matrix[T, rows, cols]):
-        comptime if N == 1:
+    def eval(src: Matrix[Self.T, Self.rows, Self.cols], mut dst: Matrix[Self.T, Self.rows, Self.cols]):
+        comptime if Self.N == 1:
             invert11(src, dst)
-        elif N == 2:
+        elif Self.N == 2:
             invert22(src, dst)
             symmetrize22(dst)
-        elif N == 3:
+        elif Self.N == 3:
             invert33(src, dst)
             symmetrize33(dst)
-        elif N == 4:
+        elif Self.N == 4:
             invert44(src, dst)
             symmetrize44(dst)
-        elif N == 5:
+        elif Self.N == 5:
             invert55(src, dst)
             symmetrize55(dst)
-        elif N == 6:
+        elif Self.N == 6:
             invert66(src, dst)
             symmetrize66(dst)
         else:

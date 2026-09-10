@@ -7,6 +7,7 @@ from MojoSerial.CUDADataFormats.TrackingRecHit2DHeterogeneous import (
     TrackingRecHit2DHeterogeneous,
 )
 from MojoSerial.CUDADataFormats.PixelTrackHeterogeneous import PixelTrack as pixelTrack
+from MojoSerial.CondFormats.PixelCPEFast import PixelCPEFast
 from MojoSerial.plugin_PixelTriplets.FitUtils import Rfit as FitUtilsRfit
 from MojoSerial.plugin_PixelTriplets.RiemannFitOnGPU import (
     kernelFastFit,
@@ -32,42 +33,50 @@ struct Rfit:
     def stride() -> UInt32:
         return Rfit.maxNumberOfConcurrentFits()
 
+    # Each Map alias carries the backing buffer's origin; it is inferred from
+    # the Span passed at the call site, so use sites still read `Map3xNd[N](s)`.
     comptime Matrix3x4d = Matrix[DType.float64, 3, 4]
-    comptime Map3x4d = Map[
+    comptime Map3x4d[origin: MutOrigin] = Map[
         DType.float64,
         3,
         4,
+        origin,
         Int(Self.stride()),
     ]
     comptime Matrix6x4f = Matrix[DType.float32, 6, 4]
-    comptime Map6x4f = Map[
+    comptime Map6x4f[origin: MutOrigin] = Map[
         DType.float32,
         6,
         4,
+        origin,
         Int(Self.stride()),
     ]
 
     # hits
     comptime Matrix3xNd[N: Int] = Matrix[DType.float64, 3, N]
-    comptime Map3xNd[N: Int] = Map[
+    comptime Map3xNd[N: Int, origin: MutOrigin] = Map[
         DType.float64,
         3,
         N,
+        origin,
         Int(Self.stride()),
     ]
 
     # errors
     comptime Matrix6xNf[N: Int] = Matrix[DType.float32, 6, N]
-    comptime Map6xNf[N: Int] = Map[
+    comptime Map6xNf[N: Int, origin: MutOrigin] = Map[
         DType.float32,
         6,
         N,
+        origin,
         Int(Self.stride()),
     ]
 
     # fast fit
     comptime Vector4d = Matrix[DType.float64, 4, 1]
-    comptime Map4d = Map[DType.float64, 4, 1, Int(Self.stride())]
+    comptime Map4d[origin: MutOrigin] = Map[
+        DType.float64, 4, 1, origin, Int(Self.stride())
+    ]
 
     comptime Matrix3d = Matrix[DType.float64, 3, 3]
     comptime line_fit = FitUtilsRfit.line_fit
@@ -87,19 +96,14 @@ struct HelixFitOnGPU:
 
     comptime maxNumberOfConcurrentFits_ = Rfit.maxNumberOfConcurrentFits()
 
-    var tuples_d: UnsafePointer[Self.Tuples]
-    var tupleMultiplicity_d: UnsafePointer[Self.TupleMultiplicity]
-    var outputSoa_d: UnsafePointer[Self.OutputSoA]
-
+    # C++ stores three pointers forwarded by allocateOnGPU; passed to the launch
+    # methods instead, so allocateOnGPU/deallocateOnGPU are gone. See §16.
     var bField_: Float32
     var fit5as4_: Bool
 
     def __init__(out self, bf: Float32, fit5as4: Bool):
         self.bField_ = bf
         self.fit5as4_ = fit5as4
-        self.tuples_d = UnsafePointer[Self.Tuples]()
-        self.tupleMultiplicity_d = UnsafePointer[Self.TupleMultiplicity]()
-        self.outputSoa_d = UnsafePointer[Self.OutputSoA]()
 
     def setBField(mut self, bField: Float64):
         self.bField_ = Float32(bField)
@@ -109,7 +113,7 @@ struct HelixFitOnGPU:
     # the *OnCPU variants below instead (see CAHitNtupletGeneratorOnGPU.cc).
     def launchRiemannKernels(
         self,
-        hv: UnsafePointer[Self.HitsView],
+        hv: Self.HitsView,
         nhits: UInt32,
         maxNumberOfTuples: UInt32,
         cudaStream: cudaStream_t
@@ -118,7 +122,7 @@ struct HelixFitOnGPU:
 
     def launchBrokenLineKernels(
         self,
-        hv: UnsafePointer[Self.HitsView],
+        hv: Self.HitsView,
         nhits: UInt32,
         maxNumberOfTuples: UInt32,
         cudaStream: cudaStream_t
@@ -126,14 +130,17 @@ struct HelixFitOnGPU:
         pass
 
     # C++: HelixFitOnGPU::launchRiemannKernelsOnCPU (RiemannFitOnGPU.cc)
+    # C++'s `tuples_d = &soa->hitIndices` aliases `outputSoa_d = soa`; derived
+    # from `outputSoa` here instead.
     def launchRiemannKernelsOnCPU(
         self,
-        hv: UnsafePointer[Self.HitsView],
+        hv: Self.HitsView,
+        cpeParams: PixelCPEFast,
+        tupleMultiplicity: Self.TupleMultiplicity,
+        mut outputSoa: Self.OutputSoA,
         nhits: UInt32,
         maxNumberOfTuples: UInt32
     ) raises:
-        debug_assert(Bool(self.tuples_d))
-
         var nConcurrent = Int(Self.maxNumberOfConcurrentFits_)
         # Fit internals -- C++ sizes these as
         # maxNumberOfConcurrentFits_ * sizeof(Rfit::Matrix3xNd<4>) / sizeof(double)
@@ -146,85 +153,68 @@ struct HelixFitOnGPU:
             length=nConcurrent, fill=FitUtilsRfit.circle_fit()
         )
 
+        var phits = Span(hitsGPU_)
+        var phits_ge = Span(hits_geGPU_)
+        var pfast_fit = Span(fast_fit_resultsGPU_)
+        var pcircle_fit = Span(circle_fit_resultsGPU_)
+
         var offset: UInt32 = 0
         while offset < maxNumberOfTuples:
             # triplets
             kernelFastFit[3](
-                self.tuples_d, self.tupleMultiplicity_d, 3, hv,
-                hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                fast_fit_resultsGPU_.unsafe_ptr(), offset,
+                outputSoa.hitIndices, tupleMultiplicity, 3, hv, cpeParams,
+                phits, phits_ge, pfast_fit, offset,
             )
             kernelCircleFit[3](
-                self.tupleMultiplicity_d, 3, Float64(self.bField_),
-                hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                fast_fit_resultsGPU_.unsafe_ptr(),
-                circle_fit_resultsGPU_.unsafe_ptr(), offset,
+                tupleMultiplicity, 3, Float64(self.bField_),
+                phits, phits_ge, pfast_fit, pcircle_fit, offset,
             )
             kernelLineFit[3](
-                self.tupleMultiplicity_d, 3, Float64(self.bField_),
-                self.outputSoa_d, hitsGPU_.unsafe_ptr(),
-                hits_geGPU_.unsafe_ptr(), fast_fit_resultsGPU_.unsafe_ptr(),
-                circle_fit_resultsGPU_.unsafe_ptr(), offset,
+                tupleMultiplicity, 3, Float64(self.bField_),
+                outputSoa, phits, phits_ge, pfast_fit, pcircle_fit, offset,
             )
 
             # quads
             kernelFastFit[4](
-                self.tuples_d, self.tupleMultiplicity_d, 4, hv,
-                hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                fast_fit_resultsGPU_.unsafe_ptr(), offset,
+                outputSoa.hitIndices, tupleMultiplicity, 4, hv, cpeParams,
+                phits, phits_ge, pfast_fit, offset,
             )
             kernelCircleFit[4](
-                self.tupleMultiplicity_d, 4, Float64(self.bField_),
-                hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                fast_fit_resultsGPU_.unsafe_ptr(),
-                circle_fit_resultsGPU_.unsafe_ptr(), offset,
+                tupleMultiplicity, 4, Float64(self.bField_),
+                phits, phits_ge, pfast_fit, pcircle_fit, offset,
             )
             kernelLineFit[4](
-                self.tupleMultiplicity_d, 4, Float64(self.bField_),
-                self.outputSoa_d, hitsGPU_.unsafe_ptr(),
-                hits_geGPU_.unsafe_ptr(), fast_fit_resultsGPU_.unsafe_ptr(),
-                circle_fit_resultsGPU_.unsafe_ptr(), offset,
+                tupleMultiplicity, 4, Float64(self.bField_),
+                outputSoa, phits, phits_ge, pfast_fit, pcircle_fit, offset,
             )
 
             if self.fit5as4_:
                 # penta (only first 4)
                 kernelFastFit[4](
-                    self.tuples_d, self.tupleMultiplicity_d, 5, hv,
-                    hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(), offset,
+                    outputSoa.hitIndices, tupleMultiplicity, 5, hv, cpeParams,
+                    phits, phits_ge, pfast_fit, offset,
                 )
                 kernelCircleFit[4](
-                    self.tupleMultiplicity_d, 5, Float64(self.bField_),
-                    hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(),
-                    circle_fit_resultsGPU_.unsafe_ptr(), offset,
+                    tupleMultiplicity, 5, Float64(self.bField_),
+                    phits, phits_ge, pfast_fit, pcircle_fit, offset,
                 )
                 kernelLineFit[4](
-                    self.tupleMultiplicity_d, 5, Float64(self.bField_),
-                    self.outputSoa_d, hitsGPU_.unsafe_ptr(),
-                    hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(),
-                    circle_fit_resultsGPU_.unsafe_ptr(), offset,
+                    tupleMultiplicity, 5, Float64(self.bField_),
+                    outputSoa, phits, phits_ge, pfast_fit, pcircle_fit, offset,
                 )
             else:
                 # penta (all 5)
                 kernelFastFit[5](
-                    self.tuples_d, self.tupleMultiplicity_d, 5, hv,
-                    hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(), offset,
+                    outputSoa.hitIndices, tupleMultiplicity, 5, hv, cpeParams,
+                    phits, phits_ge, pfast_fit, offset,
                 )
                 kernelCircleFit[5](
-                    self.tupleMultiplicity_d, 5, Float64(self.bField_),
-                    hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(),
-                    circle_fit_resultsGPU_.unsafe_ptr(), offset,
+                    tupleMultiplicity, 5, Float64(self.bField_),
+                    phits, phits_ge, pfast_fit, pcircle_fit, offset,
                 )
                 kernelLineFit[5](
-                    self.tupleMultiplicity_d, 5, Float64(self.bField_),
-                    self.outputSoa_d, hitsGPU_.unsafe_ptr(),
-                    hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(),
-                    circle_fit_resultsGPU_.unsafe_ptr(), offset,
+                    tupleMultiplicity, 5, Float64(self.bField_),
+                    outputSoa, phits, phits_ge, pfast_fit, pcircle_fit, offset,
                 )
 
             offset += Self.maxNumberOfConcurrentFits_
@@ -232,86 +222,63 @@ struct HelixFitOnGPU:
     # C++: HelixFitOnGPU::launchBrokenLineKernelsOnCPU (BrokenLineFitOnGPU.cc)
     def launchBrokenLineKernelsOnCPU(
         self,
-        hv: UnsafePointer[Self.HitsView],
+        hv: Self.HitsView,
+        cpeParams: PixelCPEFast,
+        tupleMultiplicity: Self.TupleMultiplicity,
+        mut outputSoa: Self.OutputSoA,
         nhits: UInt32,
         maxNumberOfTuples: UInt32
     ) raises:
-        debug_assert(Bool(self.tuples_d))
-
         var nConcurrent = Int(Self.maxNumberOfConcurrentFits_)
         var hitsGPU_ = List[Float64](length=nConcurrent * 3 * 4, fill=0.0)
         var hits_geGPU_ = List[Float32](length=nConcurrent * 6 * 4, fill=0.0)
         var fast_fit_resultsGPU_ = List[Float64](length=nConcurrent * 4, fill=0.0)
 
+        var phits = Span(hitsGPU_)
+        var phits_ge = Span(hits_geGPU_)
+        var pfast_fit = Span(fast_fit_resultsGPU_)
+
         var offset: UInt32 = 0
         while offset < maxNumberOfTuples:
             # fit triplets
             kernelBLFastFit[3](
-                self.tuples_d, self.tupleMultiplicity_d, hv,
-                hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                fast_fit_resultsGPU_.unsafe_ptr(), 3, offset,
+                outputSoa.hitIndices, tupleMultiplicity, hv, cpeParams,
+                phits, phits_ge, pfast_fit, 3, offset,
             )
             kernelBLFit[3](
-                self.tupleMultiplicity_d, Float64(self.bField_),
-                self.outputSoa_d, hitsGPU_.unsafe_ptr(),
-                hits_geGPU_.unsafe_ptr(), fast_fit_resultsGPU_.unsafe_ptr(),
-                3, offset,
+                tupleMultiplicity, Float64(self.bField_),
+                outputSoa, phits, phits_ge, pfast_fit, 3, offset,
             )
 
             # fit quads
             kernelBLFastFit[4](
-                self.tuples_d, self.tupleMultiplicity_d, hv,
-                hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                fast_fit_resultsGPU_.unsafe_ptr(), 4, offset,
+                outputSoa.hitIndices, tupleMultiplicity, hv, cpeParams,
+                phits, phits_ge, pfast_fit, 4, offset,
             )
             kernelBLFit[4](
-                self.tupleMultiplicity_d, Float64(self.bField_),
-                self.outputSoa_d, hitsGPU_.unsafe_ptr(),
-                hits_geGPU_.unsafe_ptr(), fast_fit_resultsGPU_.unsafe_ptr(),
-                4, offset,
+                tupleMultiplicity, Float64(self.bField_),
+                outputSoa, phits, phits_ge, pfast_fit, 4, offset,
             )
 
             if self.fit5as4_:
                 # fit penta (only first 4)
                 kernelBLFastFit[4](
-                    self.tuples_d, self.tupleMultiplicity_d, hv,
-                    hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(), 5, offset,
+                    outputSoa.hitIndices, tupleMultiplicity, hv, cpeParams,
+                    phits, phits_ge, pfast_fit, 5, offset,
                 )
                 kernelBLFit[4](
-                    self.tupleMultiplicity_d, Float64(self.bField_),
-                    self.outputSoa_d, hitsGPU_.unsafe_ptr(),
-                    hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(), 5, offset,
+                    tupleMultiplicity, Float64(self.bField_),
+                    outputSoa, phits, phits_ge, pfast_fit, 5, offset,
                 )
             else:
                 # fit penta (all 5)
                 kernelBLFastFit[5](
-                    self.tuples_d, self.tupleMultiplicity_d, hv,
-                    hitsGPU_.unsafe_ptr(), hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(), 5, offset,
+                    outputSoa.hitIndices, tupleMultiplicity, hv, cpeParams,
+                    phits, phits_ge, pfast_fit, 5, offset,
                 )
                 kernelBLFit[5](
-                    self.tupleMultiplicity_d, Float64(self.bField_),
-                    self.outputSoa_d, hitsGPU_.unsafe_ptr(),
-                    hits_geGPU_.unsafe_ptr(),
-                    fast_fit_resultsGPU_.unsafe_ptr(), 5, offset,
+                    tupleMultiplicity, Float64(self.bField_),
+                    outputSoa, phits, phits_ge, pfast_fit, 5, offset,
                 )
 
             offset += Self.maxNumberOfConcurrentFits_
-
-    def allocateOnGPU(
-        mut self,
-        tuples: UnsafePointer[Self.Tuples],
-        tupleMultiplicity: UnsafePointer[Self.TupleMultiplicity],
-        outputSoA: UnsafePointer[Self.OutputSoA]
-    ):
-        self.tuples_d = tuples
-        self.tupleMultiplicity_d = tupleMultiplicity
-        self.outputSoa_d = outputSoA
-        debug_assert(Bool(self.tuples_d))
-        debug_assert(Bool(self.tupleMultiplicity_d))
-        debug_assert(Bool(self.outputSoa_d))
-
-    def deallocateOnGPU(mut self):
-        pass

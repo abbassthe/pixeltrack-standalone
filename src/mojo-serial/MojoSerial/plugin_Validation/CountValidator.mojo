@@ -86,7 +86,7 @@ struct CountValidator (
         self.goodEvents_ += 1
 
     @staticmethod
-    def strformat[Ty: Stringable & Representable](str: StringSlice, arg: Ty) -> String:
+    def strformat[Ty: Writable](str: StringSlice, arg: Ty) -> String:
         # Simple implementation of format function
         try:
             return str.format(arg)
@@ -94,7 +94,7 @@ struct CountValidator (
             return str + " <== Format error: " + String(e)
 
     @staticmethod
-    def strformat[Ty: Stringable & Representable](str: StringSlice, arg: Ty, arg1: Ty) -> String:
+    def strformat[Ty: Writable](str: StringSlice, arg: Ty, arg1: Ty) -> String:
         # Simple implementation of format function
         try:
             return str.format(arg, arg1)
@@ -125,7 +125,7 @@ struct CountValidator (
 
         ref trackCount = iEvent.get(self.trackCountToken_)
         ref trackWrapper = iEvent.get(self.trackToken_)
-        ref tracks = trackWrapper.unsafe_ptr()[]
+        ref tracks = trackWrapper[]
 
         var nTracks: Int32 = 0
         for i in range(tracks.stride()):
@@ -149,7 +149,7 @@ struct CountValidator (
 
         ref vertexCount = iEvent.get(self.vertexCountToken_)
         ref vertexWrapper = iEvent.get(self.vertexToken_)
-        ref vertices = vertexWrapper.unsafe_ptr()[]
+        ref vertices = vertexWrapper[]
 
         var diff: Int32 = abs(Int32(vertices.nvFinal) - Int32(vertexCount.nVertices()))
         if diff != 0:
