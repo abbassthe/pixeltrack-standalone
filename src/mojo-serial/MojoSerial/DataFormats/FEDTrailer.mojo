@@ -118,82 +118,83 @@ def FED_WRONG_FEDID_EXTRACT(a: Int) -> Int:
 @fieldwise_init
 struct FEDTrailer(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     comptime length: UInt32 = UInt32(size_of[FedtType]())
-    var theTrailer: UnsafePointer[FedtType]
+    # C++ holds `const fedt_struct*` into the raw buffer; this is 8 bytes and
+    # read-only, so it is copied instead (doc §18).
+    var theTrailer: FedtType
 
     @always_inline
     def __init__(out self):
-        self.theTrailer = UnsafePointer[FedtType]()
-
-    @always_inline
-    def __init__(out self, trailer: UnsafePointer[UChar]):
-        self.theTrailer = trailer.bitcast[FedtType]()
+        self.theTrailer = FedtType()
 
     @always_inline
     def fragmentLength(self) -> UInt32:
-        return FED_EVSZ_EXTRACT(Int(self.theTrailer[].eventsize))
+        return UInt32(FED_EVSZ_EXTRACT(Int(self.theTrailer.eventsize)))
 
     @always_inline
     def crc(self) -> UInt16:
-        return FED_CRCS_EXTRACT(Int(self.theTrailer[].conscheck))
+        return UInt16(FED_CRCS_EXTRACT(Int(self.theTrailer.conscheck)))
 
     @always_inline
     def evtStatus(self) -> UInt8:
-        return FED_STAT_EXTRACT(Int(self.theTrailer[].conscheck))
+        return UInt8(FED_STAT_EXTRACT(Int(self.theTrailer.conscheck)))
 
     @always_inline
     def ttsBits(self) -> UInt8:
-        return FED_TTSI_EXTRACT(Int(self.theTrailer[].conscheck))
+        return UInt8(FED_TTSI_EXTRACT(Int(self.theTrailer.conscheck)))
 
     @always_inline
     def moreTrailers(self) -> Bool:
-        return FED_MORE_TRAILERS_EXTRACT(Int(self.theTrailer[].conscheck)) != 0
+        return FED_MORE_TRAILERS_EXTRACT(Int(self.theTrailer.conscheck)) != 0
 
     @always_inline
     def crcModified(self) -> Bool:
-        return FED_CRC_MODIFIED_EXTRACT(Int(self.theTrailer[].conscheck)) != 0
+        return FED_CRC_MODIFIED_EXTRACT(Int(self.theTrailer.conscheck)) != 0
 
     @always_inline
     def slinkError(self) -> Bool:
-        return FED_SLINK_ERROR_EXTRACT(Int(self.theTrailer[].conscheck)) != 0
+        return FED_SLINK_ERROR_EXTRACT(Int(self.theTrailer.conscheck)) != 0
 
     @always_inline
     def wrongFedId(self) -> Bool:
-        return FED_WRONG_FEDID_EXTRACT(Int(self.theTrailer[].conscheck)) != 0
+        return FED_WRONG_FEDID_EXTRACT(Int(self.theTrailer.conscheck)) != 0
 
     @always_inline
     def check(self) -> Bool:
         return (
-            FED_TCTRLID_EXTRACT(Int(self.theTrailer[].eventsize))
+            FED_TCTRLID_EXTRACT(Int(self.theTrailer.eventsize))
             == FED_SLINK_END_MARKER
         )
 
     @always_inline
     def conscheck(self) -> UInt32:
-        return self.theTrailer[].conscheck
+        return self.theTrailer.conscheck
 
     @staticmethod
     def set(
-        trailer: UnsafePointer[UChar, mut=True],
+        trailer: Pointer[mut=True, UChar, _],
         var length: UInt32,
         var crc: UInt16,
         var evtStatus: UInt8,
         var ttsBits: UInt8,
         var moreTrailers: Bool = False,
     ):
-        var t = trailer.bitcast[FedtType]()
+        var t = trailer.unsafe_bitcast[FedtType]()
 
-        t[].eventsize = (FED_SLINK_END_MARKER << FED_TCTRLID_SHIFT) | (
-            (length << FED_EVSZ_SHIFT) & FED_EVSZ_MASK
+        t[].eventsize = UInt32(
+            (FED_SLINK_END_MARKER << FED_TCTRLID_SHIFT)
+            | ((Int(length) << FED_EVSZ_SHIFT) & FED_EVSZ_MASK)
         )
 
-        t[].conscheck = (
+        t[].conscheck = UInt32(
             ((Int(crc) << FED_CRCS_SHIFT) & FED_CRCS_MASK)
             | ((Int(evtStatus) << FED_STAT_SHIFT) & FED_STAT_MASK)
             | ((Int(ttsBits) << FED_TTSI_SHIFT) & FED_TTSI_MASK)
         )
 
         if moreTrailers:
-            t[].conscheck |= FED_MORE_TRAILERS_WIDTH << FED_MORE_TRAILERS_SHIFT
+            t[].conscheck |= UInt32(
+                FED_MORE_TRAILERS_WIDTH << FED_MORE_TRAILERS_SHIFT
+            )
 
     @always_inline
     @staticmethod

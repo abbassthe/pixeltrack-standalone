@@ -1,35 +1,17 @@
 from std.pathlib import Path
 
-from MojoSerial.plugin_SiPixelClusterizer.SiPixelFedCablingMapGPUWrapperESProducer import (
-    SiPixelFedCablingMapGPUWrapperESProducer,
-)
 from MojoSerial.Framework.EventSetup import EventSetup
-from MojoSerial.Framework.ESPluginFactory import (
-    ESPluginFactory,
-    Registry as ESRegistry,
-)
-from MojoSerial.Framework.PluginFactory import (
-    PluginFactory,
-    Registry as EDRegistry,
-)
-import MojoSerial.plugin_SiPixelClusterizer as plugin_SiPixelClusterizer
-from MojoSerial.Framework.ESProducer import ESProducer
-from MojoSerial.MojoBridge.DTypes import Typeable
+from MojoSerial.bin.Plugins import ed_path, es_path, es_produce, make_es
 
 
 def main() raises:
-    var _esreg = ESRegistry()
-    var _edreg = EDRegistry()
-    plugin_SiPixelClusterizer.init(_esreg, _edreg)
     var evt = EventSetup()
 
-    for plugin in ESPluginFactory.getAll(_esreg):
-        var esp = ESPluginFactory.create(plugin, "data", _esreg)
-        esp.produce(evt)
+    var esp_names = es_path()
+    for i in range(len(esp_names)):
+        var esp = make_es(esp_names[i], Path("data"))
+        es_produce(esp, evt)
 
-    for plugin in PluginFactory.getAll(_edreg):
-        print(plugin)
-
-    # Lifetime registry extension
-    _ = _esreg^
-    _ = _edreg^
+    var ed_names = ed_path(False)
+    for i in range(len(ed_names)):
+        print(ed_names[i])

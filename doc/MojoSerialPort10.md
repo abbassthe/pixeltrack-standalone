@@ -4,15 +4,23 @@ Working notes and reference for the 25.5.0 → 1.0.0 migration on branch
 `mojo-serial-1.0-port`. Everything here was verified against the 1.0 compiler on
 this source or on an isolated probe — nothing is recalled from documentation.
 
-> **STATE:** the tree is at **69 errors across 23 files** (discount 6 spurious
-> `main() in packages`). Both self-referential views are gone
-> (`TrackingRecHit2DSOAView` §11, `ParamsOnGPU` §13) and the whole RecHits chain
-> — `PixelCPEforGPU`, `PixelCPEFast`, `TrackingRecHit2DHeterogeneous`,
-> `PixelRecHits`, `GPUPixelRecHits`, `SiPixelRecHitCUDA` — is at zero, as is the
-> `gpuVertexFinder` cluster. `OwnedPointer` fields are down from 39 to 1 (§12).
-> Two tests now *execute*: `GPUClusteringTest` matches the C++ reference
-> byte-for-byte, and a vertex-finder driver passes on hand-checked input.
-> Everything is uncommitted.
+> **STATE:** the tree is at **29 errors across 13 files** — 6 of those are the
+> spurious `main() in packages`, so **23 real errors across 11 files**. Both
+> self-referential views are gone (`TrackingRecHit2DSOAView` §11, `ParamsOnGPU`
+> §13) and the whole RecHits chain — `PixelCPEforGPU`, `PixelCPEFast`,
+> `TrackingRecHit2DHeterogeneous`, `PixelRecHits`, `GPUPixelRecHits`,
+> `SiPixelRecHitCUDA` — is at zero, as is the `gpuVertexFinder` cluster.
+> `OwnedPointer` fields are down from 39 to 1 (§12). The plugin factories are
+> deleted in favour of a closed `Variant` set in `bin/Plugins.mojo`, and
+> `StreamSchedule` no longer holds `_source`/`_eventSetup` — **§17 is still owed
+> for that change.** Two tests now *execute*: `GPUClusteringTest` matches the
+> C++ reference byte-for-byte, and a vertex-finder driver passes on hand-checked
+> input.
+>
+> The raw-decode chain — `FEDRawData`, `FEDHeader`, `FEDTrailer`,
+> `ErrorChecker`, `WordFedAppender`, `fillHitsModuleStart` — is at zero (§18).
+> What is left is the `SimpleVector` cluster (12), the two test files (9) and
+> two strays.
 
 ---
 
@@ -1210,3 +1218,142 @@ the real function's assembly would have *confirmed* that, not added to it. Each
 file cleared revealed the next (§8), and the marginal value never justified the
 cost. If it is ever wanted, the way to get it is to extract `getHits` and its
 few dependencies into a standalone file, not to build the real closure.
+
+---
+
+## 18. DONE (raw-decode chain) — `UnsafePointer` lost its defaults
+
+Everything below was verified on isolated probes against this toolchain, not
+recalled. This is the single largest remaining class, and it is the one the
+project wants gone anyway.
+
+### The two breaking changes
+
+`UnsafePointer[T]` no longer supplies a default `origin`, so a bare spelling is
+an incomplete type:
+
+```
+error: failed to infer parameter 'origin', specify the parameter or use '_' or '...'
+```
+
+and its `mut=` keyword parameter is gone, because mutability now rides on the
+origin:
+
+```
+error: unexpected keyword parameter 'mut'
+```
+
+19 sites hit the first, 6 the second. They are not independent bugs; they are
+one API change demanding that every pointer name where it points.
+
+### `Pointer` is now a full replacement
+
+`List.unsafe_ptr()` already returns **`Pointer[T, origin_of(l)]`** — not
+`UnsafePointer`. Forcing a type mismatch prints it:
+
+```
+error: cannot implicitly convert 'Pointer[Int, origin_of(l)]' value to 'Int'
+```
+
+`Pointer` supports offset indexing, arithmetic and bitcast, all three verified
+running:
+
+```mojo
+var p = l.unsafe_ptr()
+print(p[0])                  # ok
+var q = p + 1                # ok
+var b = p.unsafe_bitcast[UInt8]()   # ok
+```
+
+So there is no capability reason left to keep `UnsafePointer` anywhere.
+
+### But the `unsafe_` names are the API telling you which tool to pick
+
+Two of those three warn:
+
+```
+warning: positional `__getitem__` is deprecated, use `unsafe_offset=` instead
+warning: 'bitcast' is deprecated, use 'unsafe_bitcast' instead
+```
+
+The stdlib is steering `Pointer` toward *one object*, and marking array-shaped
+use as the unsafe path. Read that as the selection rule, not as noise:
+
+| what the pointer means | port it to | deref |
+|---|---|---|
+| a view of **one** object | `Pointer[T, origin]` | `p[]` |
+| a view of **many** (a buffer, a column) | `Span[T, origin]` | `s[i]` |
+| an **owned** buffer | `List[T]` | `l[i]` |
+
+Applied to the remaining sites this is exhaustive — nothing needs an `unsafe_`
+spelling, because every array-shaped pointer here is a `Span` and every
+single-object pointer is a `Pointer`.
+
+### Where the origin comes from decides how hard a site is
+
+The mechanical ones borrow from something the caller already owns, so the origin
+is inferred and the call site does not change. The hard ones are **struct
+fields**, where the field must name an origin that outlives it — and if the
+storage is a *sibling field* of the same struct, that is the self-referential
+view problem again (§11, §13) and the answer is to restructure, not to
+parameterize. Remember `Pointer` is non-nullable (§14): a field modelling "not
+pointing yet" needs `Optional[Pointer[…]]` or an index sentinel, not a null.
+
+### The raw-decode chain, done — 45 → 29
+
+`FEDRawData` → `FEDHeader`/`FEDTrailer` → `ErrorChecker` → `WordFedAppender` →
+`fillHitsModuleStart`. One origin, owned by the `FEDRawDataCollection` in the
+Event, flowing the whole way. All six files are at zero and **14
+`UnsafePointer`s are gone** — none of them merely re-spelled:
+
+- **`FEDHeader`/`FEDTrailer` hold the struct by value.** C++ keeps
+  `const fedh_struct*` into the buffer; both structs are 8 bytes and
+  `TrivialRegisterPassable`, every accessor is a pure read, and `ErrorChecker`
+  constructs → reads → drops inside one call with no write to the buffer in
+  between. So the pointer is *deleted*, not re-spelled, and `Defaultable`
+  survives. The reinterpret moves out to `ErrorChecker`
+  (`header.unsafe_bitcast[FedhType]()[]`), which is the one genuinely unsafe
+  act in the chain and now carries an `unsafe_` name. Divergence: C++ re-reads
+  the buffer per accessor, this snapshots at construction.
+- **`fillHitsModuleStart` takes `Span`s**, which is what its callers already
+  returned and what `blockPrefixScan` already took — the pointer declaration
+  was the only mismatch left.
+- **The self-aliased scan.** C++ calls
+  `blockPrefixScan(moduleStart + 1, moduleStart + 1, 1024)` — one buffer as
+  both `ci` and `co`. With `Span`s that is one buffer borrowed twice, once
+  mutably. The existing 2-arg in-place overload computes exactly that, so
+  `blockPrefixScan(moduleStart[1:], 1024)` is both legal and more honest.
+
+### `Pointer` catches what `UnsafePointer` laundered
+
+`WordFedAppender.initializeWordFed` was declared `self` — immutable — and wrote
+into `self._word`/`self._fedId` through `unsafe_ptr()`. `UnsafePointer` erased
+that; `Pointer` refused it, and C++ has the method non-const. **A real bug,
+surfaced by the conversion rather than by any test.** Expect more of these: the
+pointer errors were masking the method *bodies*, so this chain went 45 → 54
+before it went to 29, and every one of the newly-revealed errors was a genuine
+pre-existing defect (unchecked `int`→`uint8_t` narrowing in seven accessors,
+`range()` over a `UInt32` constant, four non-transferred `append`s).
+
+### Three more 1.0 API facts, measured
+
+- **`memcpy` is keyword-only**: `memcpy[T](*, dest:, src:, count:)`, taking
+  `Optional[Pointer[T, origin]]`. Positional calls fail with the confusing
+  "missing required argument: 'dest'".
+- **`Span` has no ptr+length constructor** — only `__init__()` and
+  `__init__(other: Span)`. So a pointer-plus-count pair that arrives from
+  outside *cannot* be turned into a `Span`; it stays a `Pointer`. This is what
+  keeps `initializeWordFed(src)` and `ErrorChecker`'s three parameters pointers.
+- **Parametric `comptime` aliases work**:
+  `comptime Iterator[origin: Origin] = _ListIter[UChar, origin]`. Needed because
+  `_ListIter` is now `[mut: Bool, //, T: Copyable, origin: Origin[mut=mut]]`,
+  and `Self.Data.T` fails its `Copyable` bound — `List`'s `T` carries the
+  *declared* `Movable` bound, not the concrete element's traits. Name the
+  element type concretely.
+
+### `precompile` is blind to more than codegen
+
+`mojo build` on `bin/main.mojo` reports errors `precompile` does not — e.g.
+`SimpleVector … doesn't conform to 'Movable'` and `field 'device_theCells_' has
+non-'Deinitable' type 'List[GPUCACell]'`. Use the real build as the final gate,
+not the error count.

@@ -10,14 +10,6 @@ from MojoSerial.bin.PosixClockGettime import (
     CLOCK_THREAD_CPUTIME_ID,
 )
 from MojoSerial.MojoBridge.DTypes import Double
-from MojoSerial.Framework.ESPluginFactory import Registry as ESRegistry
-from MojoSerial.Framework.PluginFactory import Registry as EDRegistry
-import MojoSerial.plugin_SiPixelClusterizer as plugin_SiPixelClusterizer
-import MojoSerial.plugin_BeamSpotProducer as plugin_BeamSpotProducer
-import MojoSerial.plugin_SiPixelRecHits as plugin_SiPixelRecHits
-import MojoSerial.plugin_PixelTriplets as plugin_PixelTriplets
-import MojoSerial.plugin_PixelVertexFinding as plugin_PixelVertexFinding
-import MojoSerial.plugin_Validation as plugin_Validation
 from std.runtime.asyncrt import TaskGroup
 
 
@@ -153,18 +145,6 @@ def main() raises:
     var processing_error = False
 
     async def worker(i: Int) capturing:
-        ## Init plugins manually
-        var _esreg = ESRegistry()
-        var _edreg = EDRegistry()
-        if not empty:
-            plugin_SiPixelClusterizer.init(_esreg, _edreg)
-            plugin_BeamSpotProducer.init(_esreg, _edreg)
-            plugin_SiPixelRecHits.init(_esreg, _edreg)
-            plugin_PixelTriplets.init(_esreg, _edreg)
-            plugin_PixelVertexFinding.init(_esreg, _edreg)
-
-        if validation:
-            plugin_Validation.init(_esreg, _edreg)
         var processor = EventProcessor(
             warmupEvents,
             startEvent[i],
@@ -172,8 +152,6 @@ def main() raises:
             runForMinutes,
             path,
             validation,
-            _esreg,
-            _edreg,
         )
 
         processor.warmUp()
@@ -187,10 +165,6 @@ def main() raises:
         except e:
             processing_error = True
             print("Error occurred while ending job ", i, ":", e)
-
-        # Lifetime registry extension
-        _ = _esreg^
-        _ = _edreg^
 
         processed[i] = Int(processor.processedEvents())
 

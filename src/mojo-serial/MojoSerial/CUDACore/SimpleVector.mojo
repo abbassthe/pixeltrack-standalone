@@ -1,45 +1,53 @@
-from MojoSerial.CUDACore.CUDACompat import CUDACompat
 from MojoSerial.MojoBridge.DTypes import Typeable
 
 
-@fieldwise_init
-struct SimpleVector[T: Movable & Copyable, DT: StaticString](
-    Copyable, Defaultable, Movable, Sized, Typeable
-):
+struct SimpleVector[
+    T: Copyable & Defaultable & Deinitable & Movable, DT: StaticString
+](Copyable, Defaultable, Movable, Sized, Typeable):
+    # C++ is {m_size, m_capacity, T* m_data} with the buffer allocated
+    # separately on the device, so `construct` only adopts a caller's pointer.
+    # There is no device here and every buffer was a sibling field of the
+    # owner, so the vector owns its own. Capacity is len(m_data) (doc §19).
     var m_size: Int32
-    var m_capacity: Int32
-    var m_data: UnsafePointer[Self.T]
+    var m_data: List[Self.T]
 
     @always_inline
     def __init__(out self):
         self.m_size = 0
-        self.m_capacity = 0
-        self.m_data = UnsafePointer[T]()
+        self.m_data = List[Self.T]()
 
     @always_inline
-    def construct(mut self, var capacity: Int32, var data: UnsafePointer[Self.T]):
-        # ownership of m_data stays within the caller
+    def __init__(out self, *, deinit move: Self):
+        self.m_size = move.m_size
+        self.m_data = move.m_data^
+
+    @always_inline
+    def __init__(out self, *, copy: Self):
+        self.m_size = copy.m_size
+        self.m_data = copy.m_data.copy()
+
+    @always_inline
+    def construct(mut self, var capacity: Int32):
         self.m_size = 0
-        self.m_capacity = capacity
-        self.m_data = data
+        self.m_data = List[Self.T](length=Int(capacity), fill=Self.T())
 
     @always_inline
     def push_back_unsafe(mut self, ref element: Self.T) -> Int32:
         var previousSize = self.m_size
         self.m_size += 1
 
-        if previousSize < self.m_capacity:
-            self.m_data[previousSize] = element
+        if previousSize < self.capacity():
+            self.m_data[Int(previousSize)] = element.copy()
             return previousSize
         else:
             self.m_size -= 1
             return -1
 
     @always_inline
-    def back(ref self) -> ref [self.m_data] Self.T:
+    def back(ref self) -> ref [origin_of(self.m_data[0])] Self.T:
         if self.m_size > 0:
-            return self.m_data[self.m_size - 1]
-        return self.m_data[]  # undefined behavior
+            return self.m_data[Int(self.m_size) - 1]
+        return self.m_data[0]  # undefined behavior
 
     def push_back(mut self, ref element: Self.T) -> Int32:
         return self.push_back_unsafe(element)
@@ -48,7 +56,7 @@ struct SimpleVector[T: Movable & Copyable, DT: StaticString](
         var previousSize = self.m_size
         self.m_size += size
 
-        if previousSize < self.m_capacity:
+        if previousSize < self.capacity():
             return previousSize
         else:
             self.m_size -= 1
@@ -70,15 +78,17 @@ struct SimpleVector[T: Movable & Copyable, DT: StaticString](
 
     @always_inline
     def full(self) -> Bool:
-        return self.m_size >= self.m_capacity
+        return self.m_size >= self.capacity()
 
     @always_inline
-    def __getitem__(ref self, i: Int32) -> ref [self.m_data] Self.T:
-        return self.m_data[i]
+    def __getitem__(
+        ref self, i: Int32
+    ) -> ref [origin_of(self.m_data[0])] Self.T:
+        return self.m_data[Int(i)]
 
     @always_inline
-    def __setitem__(mut self, i: Int32, val: Self.T):
-        self.m_data[i] = val
+    def __setitem__(mut self, i: Int32, var val: Self.T):
+        self.m_data[Int(i)] = val^
 
     @always_inline
     def reset(mut self):
@@ -90,19 +100,19 @@ struct SimpleVector[T: Movable & Copyable, DT: StaticString](
 
     @always_inline
     def capacity(self) -> Int32:
-        return self.m_capacity
+        return Int32(self.m_data.__len__())
 
     @always_inline
-    def data(self) -> UnsafePointer[Self.T, mut=False]:
-        return self.m_data
+    def data(ref self) -> Span[Self.T, origin_of(self.m_data)].Immutable:
+        return Span(self.m_data)
 
     @always_inline
     def resize(mut self, size: Int32):
         self.m_size = size
 
     @always_inline
-    def set_data(mut self, data: UnsafePointer[Self.T]):
-        self.m_data = data
+    def set_data(mut self, var data: List[Self.T]):
+        self.m_data = data^
 
     @always_inline
     def __len__(self) -> Int:
@@ -115,31 +125,16 @@ struct SimpleVector[T: Movable & Copyable, DT: StaticString](
 
 
 def make_SimpleVector[
-    T: Movable & Copyable, DT: StaticString
-](var capacity: Int32, var data: UnsafePointer[T]) -> SimpleVector[T, DT]:
+    T: Copyable & Defaultable & Deinitable & Movable, DT: StaticString
+](var capacity: Int32) -> SimpleVector[T, DT]:
     var ret = SimpleVector[T, DT]()
-    ret.construct(capacity, data)
-    return ret
+    ret.construct(capacity)
+    return ret^
 
 
 def make_SimpleVector[
-    T: Movable & Copyable & Typeable, //
-](var capacity: Int32, var data: UnsafePointer[T]) -> SimpleVector[
-    T, T.dtype()
-]:
+    T: Copyable & Defaultable & Deinitable & Movable & Typeable, //
+](var capacity: Int32) -> SimpleVector[T, T.dtype()]:
     var ret = SimpleVector[T, T.dtype()]()
-    ret.construct(capacity, data)
-    return ret
-
-
-def make_SimpleVector[
-    T: Movable & Copyable, DT: StaticString, //
-](
-    mut mem: UnsafePointer[SimpleVector[T, DT]],
-    var capacity: Int32,
-    var data: UnsafePointer[T],
-) -> ref [mem[]] SimpleVector[T, DT]:
-    # construct a new object where mem points, assuming it is initialized
-    mem.init_pointee_move(SimpleVector[T, DT]())
-    mem[].construct(capacity, data)
-    return mem[]
+    ret.construct(capacity)
+    return ret^

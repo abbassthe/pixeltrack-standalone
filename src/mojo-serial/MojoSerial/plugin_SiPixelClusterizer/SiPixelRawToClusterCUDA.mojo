@@ -158,9 +158,11 @@ struct SiPixelRawToClusterCUDA(Defaultable, EDProducer, Typeable):
                         self._errors,
                     )
 
-                var bw = (header + 1).bitcast[UInt32]()
-                var ew = trailer.bitcast[UInt32]()
-                var le = (Int(ew) - Int(bw)) // size_of[DType.uint32]()
+                var bw = (header + 1).unsafe_bitcast[UInt32]()
+                var ew = trailer.unsafe_bitcast[UInt32]()
+                var le = UInt32(
+                    (Int(ew) - Int(bw)) // size_of[DType.uint32]()
+                )
                 debug_assert(le % 2 == 0)
                 self._wordFedAppender.initializeWordFed(
                     fedId.cast[DType.int32](),

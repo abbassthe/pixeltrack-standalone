@@ -35,8 +35,12 @@ struct GPUCACell(Copyable, Defaultable, Movable):
     comptime Quality = pixelTrack.Quality
     comptime bad = trackQuality.bad
 
-    var theOuterNeighbors: UnsafePointer[Self.CellNeighbors]
-    var theTracks: UnsafePointer[Self.CellTracks]
+    # C++ holds `CellNeighbors*`/`CellTracks*` into a vector owned elsewhere.
+    # The pointer is only ever `&vec[i]`, so the slot index is stored and the
+    # vector is passed to the accessors. Slot 0 is the shared empty entry that
+    # `init` links every cell to, so 0 is also the correct default (doc §19).
+    var theOuterNeighborsIdx: Int32
+    var theTracksIdx: Int32
 
     var theDoubletId: Int32
     var theLayerPairId: Int16
@@ -48,8 +52,8 @@ struct GPUCACell(Copyable, Defaultable, Movable):
     var theOuterHitId: Self.hindex_type
 
     def __init__(out self):
-        self.theOuterNeighbors = UnsafePointer[Self.CellNeighbors]()
-        self.theTracks = UnsafePointer[Self.CellTracks]()
+        self.theOuterNeighborsIdx = 0
+        self.theTracksIdx = 0
 
         self.theDoubletId = 0
         self.theLayerPairId = 0
@@ -81,10 +85,10 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         self.theInnerR = hh.rGlobal(innerIdx)
 
         # link to default empty
-        self.theOuterNeighbors = UnsafePointer(to=cellNeighbors[0])
-        self.theTracks = UnsafePointer(to=cellTracks[0])
-        debug_assert(self.outerNeighbors().empty())
-        debug_assert(self.tracks().empty())
+        self.theOuterNeighborsIdx = 0
+        self.theTracksIdx = 0
+        debug_assert(self.outerNeighbors(cellNeighbors).empty())
+        debug_assert(self.tracks(cellTracks).empty())
 
     @always_inline
     def addOuterNeighbor(
@@ -93,28 +97,23 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         mut cellNeighbors: Self.CellNeighborsVector,
     ) -> Int32:
         # use smart cache
-        if self.outerNeighbors().empty():
+        if self.outerNeighbors(cellNeighbors).empty():
             var i = cellNeighbors.extend()  # maybe waisted....
             if i > 0:
                 cellNeighbors[i].reset()
 
+                # C++ CASes the pointer field against `&cellNeighbors[0]`;
+                # against the index that is a plain CAS of 0 -> i.
                 comptime if is_defined["__CUDACC__"]():
-                    var zero = UInt64(
-                        Int(UnsafePointer(to=cellNeighbors[0]))
-                    )
                     _ = CUDACompat.atomicCAS(
-                        UnsafePointer(to=self.theOuterNeighbors).bitcast[UInt64](),
-                        zero,
-                        UInt64(Int(UnsafePointer(to=cellNeighbors[i]))),
+                        Pointer(to=self.theOuterNeighborsIdx), Int32(0), i
                     )
                 else:
-                    self.theOuterNeighbors = UnsafePointer(
-                        to=cellNeighbors[i]
-                    )
+                    self.theOuterNeighborsIdx = i
             else:
                 return -1
 
-        return self.outerNeighbors().push_back(t)
+        return cellNeighbors[self.theOuterNeighborsIdx].push_back(t)
 
     @always_inline
     def addTrack(
@@ -122,32 +121,33 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         t: UInt16,
         mut cellTracks: Self.CellTracksVector,
     ) -> Int32:
-        if self.tracks().empty():
+        if self.tracks(cellTracks).empty():
             var i = cellTracks.extend()  # maybe waisted....
             if i > 0:
                 cellTracks[i].reset()
 
                 comptime if is_defined["__CUDACC__"]():
-                    var zero = UInt64(Int(UnsafePointer(to=cellTracks[0])))
                     _ = CUDACompat.atomicCAS(
-                        UnsafePointer(to=self.theTracks).bitcast[UInt64](),
-                        zero,
-                        UInt64(Int(UnsafePointer(to=cellTracks[i]))),
+                        Pointer(to=self.theTracksIdx), Int32(0), i
                     )
                 else:
-                    self.theTracks = UnsafePointer(to=cellTracks[i])
+                    self.theTracksIdx = i
             else:
                 return -1
 
-        return self.tracks().push_back(t)
+        return cellTracks[self.theTracksIdx].push_back(t)
 
     @always_inline
-    def tracks(ref self) -> ref [self.theTracks] Self.CellTracks:
-        return self.theTracks[]
+    def tracks(
+        self, ref cellTracks: Self.CellTracksVector
+    ) -> ref [origin_of(cellTracks.m_data[0])] Self.CellTracks:
+        return cellTracks[self.theTracksIdx]
 
     @always_inline
-    def outerNeighbors(ref self) -> ref [self.theOuterNeighbors] Self.CellNeighbors:
-        return self.theOuterNeighbors[]
+    def outerNeighbors(
+        self, ref cellNeighbors: Self.CellNeighborsVector
+    ) -> ref [origin_of(cellNeighbors.m_data[0])] Self.CellNeighbors:
+        return cellNeighbors[self.theOuterNeighborsIdx]
 
     @always_inline
     def get_inner_x(self, hh: Self.Hits) -> Float32:
@@ -408,6 +408,9 @@ struct GPUCACell(Copyable, Defaultable, Movable):
         self,
         hh: Self.Hits,
         cells: Span[mut=True, GPUCACell, _],
+        # C++ reads the neighbours through the cell's own pointer; with the
+        # index form the vector has to come in as an argument.
+        ref cellNeighbors: Self.CellNeighborsVector,
         mut cellTracks: Self.CellTracksVector,
         mut foundNtuplets: Self.HitContainer,
         mut apc: AtomicPairCounter,
@@ -433,20 +436,21 @@ struct GPUCACell(Copyable, Defaultable, Movable):
             )
             debug_assert(len(tmpNtuplet) <= 4)
             var last = True
-            var nNeighbors = len(self.outerNeighbors())
+            var nNeighbors = len(self.outerNeighbors(cellNeighbors))
             var j: Int = 0
             while j < nNeighbors:
-                var otherCell = self.outerNeighbors()[Int32(j)]
+                var otherCell = self.outerNeighbors(cellNeighbors)[Int32(j)]
                 var otherIdx = Int(otherCell)
                 if cells[otherIdx].theDoubletId < 0:
                     # killed by earlyFishbone
                     j += 1
                     continue
                 last = False
-                var otherCellCopy = cells[otherIdx]
+                var otherCellCopy = cells[otherIdx].copy()
                 otherCellCopy.find_ntuplets[DEPTH - 1](
                     hh,
                     cells,
+                    cellNeighbors,
                     cellTracks,
                     foundNtuplets,
                     apc,
@@ -464,7 +468,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
                     comptime if is_defined["ONLY_TRIPLETS_IN_HOLE"]():
                         # triplets accepted only pointing to the hole
                         var firstCell = tmpNtuplet[0]
-                        var inner = cells[Int(firstCell)]
+                        var inner = cells[Int(firstCell)].copy()
                         accept = (
                             len(tmpNtuplet) >= 3
                             or (startAt0 and self.hole4(hh, inner))
@@ -483,7 +487,7 @@ struct GPUCACell(Copyable, Defaultable, Movable):
                         hits[Int(nh)] = self.theOuterHitId
                         var it = foundNtuplets.bulkFill(
                             apc,
-                            hits.unsafe_ptr(),
+                            Span(hits),
                             UInt32(tupleSize + 1),
                         )
                         if it >= 0:  # if negative is overflow....

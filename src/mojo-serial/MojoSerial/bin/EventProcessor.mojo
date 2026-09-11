@@ -2,12 +2,8 @@ from std.pathlib import Path
 
 from MojoSerial.Framework.ProductRegistry import ProductRegistry
 from MojoSerial.Framework.EventSetup import EventSetup
-from MojoSerial.Framework.ESPluginFactory import (
-    ESPluginFactory,
-    Registry as ESRegistry,
-)
-from MojoSerial.Framework.PluginFactory import Registry as EDRegistry
 from MojoSerial.MojoBridge.DTypes import Typeable
+from MojoSerial.bin.Plugins import ed_path, es_path, es_produce, make_es
 from MojoSerial.bin.Source import Source
 from MojoSerial.bin.StreamSchedule import StreamSchedule
 
@@ -42,8 +38,6 @@ struct EventProcessor(Defaultable, Typeable):
         var runForMinutes: Int,
         var path: Path,
         var validation: Bool,
-        mut esreg: ESRegistry,
-        mut edreg: EDRegistry,
     ):
         try:
             self._registry = ProductRegistry()
@@ -61,15 +55,13 @@ struct EventProcessor(Defaultable, Typeable):
             self._endEvent = Int32(endEvent)
             self._runForMinutes = Int32(runForMinutes)
 
-            for name in ESPluginFactory.getAll(esreg):
-                var esp = ESPluginFactory.create(name, path, esreg)
-                esp.produce(self._eventSetup)
+            var esp_names = es_path()
+            for i in range(len(esp_names)):
+                var esp = make_es(esp_names[i], path)
+                es_produce(esp, self._eventSetup)
 
             self._schedule = StreamSchedule(
-                self._registry,
-                UnsafePointer(to=self._source),
-                UnsafePointer(to=self._eventSetup),
-                edreg,
+                self._registry, ed_path(validation)
             )
         except e:
             print("Error occurred in bin/EventProcessor.mojo,", e)
@@ -99,7 +91,7 @@ struct EventProcessor(Defaultable, Typeable):
     @always_inline
     def process(mut self):
         self._source.startProcessing()
-        self._schedule.run(self._registry)
+        self._schedule.run(self._registry, self._source, self._eventSetup)
 
     @always_inline
     def endJob(mut self) raises:

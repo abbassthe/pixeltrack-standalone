@@ -188,14 +188,10 @@ struct Source(Defaultable, Movable, Typeable):
 
     def produce(
         mut self, streamId: Int32, ref reg: ProductRegistry
-    ) -> UnsafePointer[Event]:
-        """
-        Returns a HEAP-ALLOCATED event. Deallocate memory after using.
-        Note: When Mojo supports this, it would be optimal to revamp this function with an Optional[OwnedPointer[Event]] return value.
-        """
-        var res = UnsafePointer[Event]()
+    ) -> Optional[Event]:
+        """C++ returns unique_ptr<Event>; None is its nullptr."""
         if self._shouldStop:
-            return res
+            return None
 
         var old = self._numEvents
         var globalEvent = self._startEvent + old
@@ -203,11 +199,11 @@ struct Source(Defaultable, Movable, Typeable):
         if self._runForMinutes < 0:
             if self._endEvent >= 0 and globalEvent >= self._endEvent:
                 self._shouldStop = True
-                return res
+                return None
         else:
             self._numEvents += 1
             if (
-                self._numEvents - self._numEventsTimeLastCheck
+                Int(self._numEvents - self._numEventsTimeLastCheck)
                 > self._raw.__len__()
             ):
                 # this is in nanoseconds
@@ -221,7 +217,7 @@ struct Source(Defaultable, Movable, Typeable):
                 ) * self._raw.__len__()
             if self._shouldStop:
                 self._numEvents -= 1
-                return res
+                return None
             old = self._numEvents - 1
             globalEvent = self._startEvent + old
 
@@ -239,9 +235,7 @@ struct Source(Defaultable, Movable, Typeable):
             )
             ev.put[TrackCount](self._trackToken, self._tracks[index])
             ev.put[VertexCount](self._vertexToken, self._vertices[index])
-        res = UnsafePointer[Event].alloc(1)
-        res.init_pointee_move(ev^)
-        return res
+        return Optional[Event](ev^)
 
     @staticmethod
     @always_inline

@@ -1,8 +1,8 @@
 from MojoSerial.DataFormats.SiPixelRawDataError import SiPixelRawDataError
 from MojoSerial.DataFormats.PixelErrors import PixelFormatterErrors
-from MojoSerial.DataFormats.FEDHeader import FEDHeader
-from MojoSerial.DataFormats.FEDTrailer import FEDTrailer
-from MojoSerial.MojoBridge.DTypes import UChar, Typeable
+from MojoSerial.DataFormats.FEDHeader import FEDHeader, FedhType
+from MojoSerial.DataFormats.FEDTrailer import FEDTrailer, FedtType
+from MojoSerial.MojoBridge.DTypes import Typeable
 
 
 @fieldwise_init
@@ -48,7 +48,7 @@ struct ErrorChecker(Copyable, Defaultable, Movable, Typeable):
         self,
         mut errorsInEvent: Bool,
         var fedId: Int32,
-        trailer: UnsafePointer[Self.Word64],
+        trailer: Pointer[Self.Word64, _],
         mut errors: Self.Errors,
     ) -> Bool:
         var CRC_BIT: Int32 = (
@@ -61,7 +61,7 @@ struct ErrorChecker(Copyable, Defaultable, Movable, Typeable):
             comptime errorType = 39
             var error = SiPixelRawDataError(trailer[], errorType, fedId)
             try:
-                errors[UInt(Self.dummyDetId)].append(error)
+                errors[UInt(Self.dummyDetId)].append(error^)
             except e:
                 print("Handled an exception in ErrorChecker,", e)
         return False
@@ -70,10 +70,10 @@ struct ErrorChecker(Copyable, Defaultable, Movable, Typeable):
         self,
         mut errorsInEvent: Bool,
         var fedId: Int32,
-        header: UnsafePointer[Self.Word64],
+        header: Pointer[Self.Word64, _],
         mut errors: Self.Errors,
     ) -> Bool:
-        var fedHeader = FEDHeader(header.bitcast[UChar]())
+        var fedHeader = FEDHeader(header.unsafe_bitcast[FedhType]()[])
         if not fedHeader.check():
             return False
         if fedHeader.sourceID().cast[DType.int32]() != fedId:
@@ -94,7 +94,7 @@ struct ErrorChecker(Copyable, Defaultable, Movable, Typeable):
                 comptime errorType = 32
                 var error = SiPixelRawDataError(header[], errorType, fedId)
                 try:
-                    errors[UInt(Self.dummyDetId)].append(error)
+                    errors[UInt(Self.dummyDetId)].append(error^)
                 except e:
                     print("Handled an exception in ErrorChecker,", e)
         return fedHeader.moreHeaders()
@@ -104,16 +104,16 @@ struct ErrorChecker(Copyable, Defaultable, Movable, Typeable):
         mut errorsInEvent: Bool,
         fedId: Int32,
         nWords: UInt32,
-        trailer: UnsafePointer[Self.Word64],
+        trailer: Pointer[Self.Word64, _],
         mut errors: Self.Errors,
     ) -> Bool:
-        var fedTrailer = FEDTrailer(trailer.bitcast[UChar]())
+        var fedTrailer = FEDTrailer(trailer.unsafe_bitcast[FedtType]()[])
         if not fedTrailer.check():
             if self.includeErrors:
                 comptime errorType = 33
                 var error = SiPixelRawDataError(trailer[], errorType, fedId)
                 try:
-                    errors[UInt(Self.dummyDetId)].append(error)
+                    errors[UInt(Self.dummyDetId)].append(error^)
                 except e:
                     print("Handled an exception in ErrorChecker,", e)
             errorsInEvent = True
@@ -136,7 +136,7 @@ struct ErrorChecker(Copyable, Defaultable, Movable, Typeable):
                 comptime errorType = 34
                 var error = SiPixelRawDataError(trailer[], errorType, fedId)
                 try:
-                    errors[UInt(Self.dummyDetId)].append(error)
+                    errors[UInt(Self.dummyDetId)].append(error^)
                 except e:
                     print("Handled an exception in ErrorChecker,", e)
         return fedTrailer.moreTrailers()

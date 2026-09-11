@@ -12,7 +12,7 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
     """
 
     comptime Data = List[UChar]
-    comptime Iterator = _ListIter[Self.Data.T]
+    comptime Iterator[origin: Origin] = _ListIter[UChar, origin]
     var _data: Self.Data
 
     @always_inline
@@ -39,11 +39,7 @@ struct FEDRawData(Copyable, Defaultable, Movable, Sized, Typeable):
         self._data = move._data^
 
     @always_inline
-    def data[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        UInt8, mut = origin.mut, origin=origin
-    ]:
+    def data(ref self) -> Pointer[UInt8, origin_of(self._data)]:
         return self._data.unsafe_ptr()
 
     @always_inline

@@ -172,13 +172,17 @@ struct WordFedAppender(Defaultable, Movable, Typeable):
         )
 
     def initializeWordFed(
-        self,
+        mut self,
         var fedId: Int32,
         var wordCounterGPU: UInt32,
-        src: UnsafePointer[UInt32],
+        src: Pointer[UInt32, _],
         length: UInt32,
     ):
-        memcpy(self._word.unsafe_ptr() + wordCounterGPU, src, Int(length))
+        memcpy(
+            dest=self._word.unsafe_ptr() + wordCounterGPU,
+            src=src,
+            count=Int(length),
+        )
         # fedId is actually a byte wide, so c++ and mojo memset counts match up
         memset(
             self._fedId.unsafe_ptr() + wordCounterGPU / 2,
@@ -187,12 +191,12 @@ struct WordFedAppender(Defaultable, Movable, Typeable):
         )
 
     @always_inline
-    def word(self) -> UnsafePointer[UInt32, mut=False]:
-        return self._word.unsafe_ptr()
+    def word(self) -> Span[UInt32, origin_of(self._word)].Immutable:
+        return Span(self._word)
 
     @always_inline
-    def fedId(self) -> UnsafePointer[UChar, mut=False]:
-        return self._fedId.unsafe_ptr()
+    def fedId(self) -> Span[UChar, origin_of(self._fedId)].Immutable:
+        return Span(self._fedId)
 
     @always_inline
     @staticmethod
@@ -858,27 +862,28 @@ def RawToDigi_kernel(
 
 
 def fillHitsModuleStart(
-    cluStart: UnsafePointer[UInt32],
-    moduleStart: UnsafePointer[UInt32, mut=True],
+    cluStart: Span[UInt32, _],
+    moduleStart: Span[mut=True, UInt32, _],
     debug: Bool = False,
 ):
     debug_assert(
         GPUClusteringConstants.MaxNumModules < 2048
     )  # easy to extend at least till 32*1024
 
-    for i in range(0, GPUClusteringConstants.MaxNumModules):
+    for i in range(0, Int(GPUClusteringConstants.MaxNumModules)):
         moduleStart[i + 1] = min(
             GPUClusteringConstants.maxHitsInModule(), cluStart[i]
         )
 
-    blockPrefixScan(moduleStart + 1, moduleStart + 1, 1024)
+    # C++ passes moduleStart+1 as both input and output; with Spans that is one
+    # buffer borrowed twice, so the in-place overload says it directly.
+    blockPrefixScan(moduleStart[1:], 1024)
     blockPrefixScan(
-        moduleStart + 1025,
-        moduleStart + 1025,
+        moduleStart[1025:],
         GPUClusteringConstants.MaxNumModules - 1024,
     )
 
-    for i in range(1025, GPUClusteringConstants.MaxNumModules + 1):
+    for i in range(1025, Int(GPUClusteringConstants.MaxNumModules) + 1):
         moduleStart[i] += moduleStart[1024]
 
     if debug:
@@ -892,7 +897,7 @@ def fillHitsModuleStart(
             >= moduleStart[1025]
         )
 
-        for i in range(1, GPUClusteringConstants.MaxNumModules + 1):
+        for i in range(1, Int(GPUClusteringConstants.MaxNumModules) + 1):
             debug_assert(moduleStart[i] >= moduleStart[i - i])
             # [BPX1, BPX2, BPX3, BPX4,  FP1,  FP2,  FP3,  FN1,  FN2,  FN3, LAST_VALID]
             # [   0,   96,  320,  672, 1184, 1296, 1408, 1520, 1632, 1744,       1856]
@@ -905,6 +910,6 @@ def fillHitsModuleStart(
                 print("moduleStart", i, moduleStart[i])
     comptime MAX_HITS: UInt32 = GPUClusteringConstants.MaxNumClusters
 
-    for i in range(0, GPUClusteringConstants.MaxNumModules + 1):
+    for i in range(0, Int(GPUClusteringConstants.MaxNumModules) + 1):
         if moduleStart[i] > GPUClusteringConstants.MaxNumClusters:
             moduleStart[i] = MAX_HITS

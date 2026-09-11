@@ -96,50 +96,48 @@ def FED_MORE_HEADERS_EXTRACT(a: Int) -> Int:
 @fieldwise_init
 struct FEDHeader(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassable):
     comptime length: UInt32 = UInt32(size_of[FedhType]())
-    var theHeader: UnsafePointer[FedhType]
+    # C++ holds `const fedh_struct*` into the raw buffer; this is 8 bytes and
+    # read-only, so it is copied instead (doc §18).
+    var theHeader: FedhType
 
     @always_inline
     def __init__(out self):
-        self.theHeader = UnsafePointer[FedhType]()
-
-    @always_inline
-    def __init__(out self, header: UnsafePointer[UChar]):
-        self.theHeader = header.bitcast[FedhType]()
+        self.theHeader = FedhType()
 
     @always_inline
     def triggerType(self) -> UInt8:
-        return FED_EVTY_EXTRACT(Int(self.theHeader[].eventid))
+        return UInt8(FED_EVTY_EXTRACT(Int(self.theHeader.eventid)))
 
     @always_inline
     def lvl1ID(self) -> UInt32:
-        return FED_LVL1_EXTRACT(Int(self.theHeader[].eventid))
+        return UInt32(FED_LVL1_EXTRACT(Int(self.theHeader.eventid)))
 
     @always_inline
     def bxID(self) -> UInt16:
-        return FED_BXID_EXTRACT(Int(self.theHeader[].sourceid))
+        return UInt16(FED_BXID_EXTRACT(Int(self.theHeader.sourceid)))
 
     @always_inline
     def sourceID(self) -> UInt16:
-        return FED_SOID_EXTRACT(Int(self.theHeader[].sourceid))
+        return UInt16(FED_SOID_EXTRACT(Int(self.theHeader.sourceid)))
 
     @always_inline
     def version(self) -> UInt8:
-        return FED_VERSION_EXTRACT(Int(self.theHeader[].sourceid))
+        return UInt8(FED_VERSION_EXTRACT(Int(self.theHeader.sourceid)))
 
     @always_inline
     def moreHeaders(self) -> Bool:
-        return FED_MORE_HEADERS_EXTRACT(Int(self.theHeader[].sourceid)) != 0
+        return FED_MORE_HEADERS_EXTRACT(Int(self.theHeader.sourceid)) != 0
 
     @always_inline
     def check(self) -> Bool:
         return (
-            FED_HCTRLID_EXTRACT(Int(self.theHeader[].eventid))
+            FED_HCTRLID_EXTRACT(Int(self.theHeader.eventid))
             == FED_SLINK_START_MARKER
         )
 
     @staticmethod
     def set(
-        header: UnsafePointer[UChar, mut=True],
+        header: Pointer[mut=True, UChar, _],
         triggerType: UInt8,
         lvl1ID: UInt32,
         bxID: UInt16,
@@ -147,19 +145,21 @@ struct FEDHeader(Copyable, Defaultable, Movable, Typeable, TrivialRegisterPassab
         version: UInt8 = 0,
         moreHeaders: Bool = False,
     ):
-        var h = header.bitcast[FedhType]()
-        h[].eventid = (
+        var h = header.unsafe_bitcast[FedhType]()
+        h[].eventid = UInt32(
             (FED_SLINK_START_MARKER << FED_HCTRLID_SHIFT)
             | ((Int(triggerType) << FED_EVTY_SHIFT) & FED_EVTY_MASK)
-            | ((lvl1ID << FED_LVL1_SHIFT) & FED_LVL1_MASK)
+            | ((Int(lvl1ID) << FED_LVL1_SHIFT) & FED_LVL1_MASK)
         )
-        h[].sourceid = (
+        h[].sourceid = UInt32(
             ((Int(bxID) << FED_BXID_SHIFT) & FED_BXID_MASK)
             | ((Int(sourceID) << FED_SOID_SHIFT) & FED_SOID_MASK)
             | ((Int(version) << FED_VERSION_SHIFT) & FED_VERSION_MASK)
         )
         if moreHeaders:
-            h[].sourceid |= FED_MORE_HEADERS_WIDTH << FED_MORE_HEADERS_SHIFT
+            h[].sourceid |= UInt32(
+                FED_MORE_HEADERS_WIDTH << FED_MORE_HEADERS_SHIFT
+            )
 
     @always_inline
     @staticmethod
