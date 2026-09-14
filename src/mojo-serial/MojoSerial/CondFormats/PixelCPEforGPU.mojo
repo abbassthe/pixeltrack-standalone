@@ -204,7 +204,8 @@ def correction(
     if sizeM1 == 1:  # size 2
         # Width of the clusters minus the edge (first and last) pixels
         # In the note, they are denoted x_F and x_L (and y_F and y_L)
-        debug_assert(lower_edge_last_pix > upper_edge_first_pix)
+        # C++ keeps this commented out (and as >=): equal edges are valid.
+        # debug_assert(lower_edge_last_pix >= upper_edge_first_pix)
         var W_inner = pitch * Float(lower_edge_last_pix - upper_edge_first_pix)
 
         # Predicted charge width from geometry

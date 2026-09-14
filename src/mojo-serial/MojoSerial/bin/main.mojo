@@ -144,11 +144,14 @@ def main() raises:
 
     var processing_error = False
 
-    async def worker(i: Int) capturing:
+    # The event range comes in as arguments: read through this closure's
+    # capture, startEvent[i]/endEvent[i] came back as heap addresses, so the
+    # Source never reached its end event.
+    async def worker(i: Int, stream_start: Int, stream_end: Int) capturing:
         var processor = EventProcessor(
             warmupEvents,
-            startEvent[i],
-            endEvent[i],
+            stream_start,
+            stream_end,
             runForMinutes,
             path,
             validation,
@@ -172,7 +175,7 @@ def main() raises:
     # stream, scheduled across the async runtime's own pool.
     var tg = TaskGroup()
     for i in range(threads):
-        tg.create_task(worker(i))
+        tg.create_task(worker(i, startEvent[i], endEvent[i]))
     tg.wait()
 
     var diff = end[0] - start[0]

@@ -49,6 +49,7 @@ def doubletsFromHisto(
     # a Span cannot be.
     var offsets = hh.hitsLayerStart()
 
+    @parameter
     def layerSize(li: UInt8) -> UInt32:
         var idx = Int(li)
         return offsets[idx + 1] - offsets[idx]
@@ -75,7 +76,7 @@ def doubletsFromHisto(
     var stride = 1
 
     var pairLayerId: UInt32 = 0  # cannot go backward
-    var j: UInt32 = idy
+    var j: UInt32 = UInt32(idy)
     while j < ntot:
         while j >= innerLayerCumulativeSize[Int(pairLayerId)]:
             pairLayerId += 1
@@ -160,6 +161,7 @@ def doubletsFromHisto(
 
         # `hh` is passed in rather than captured: nested closures capture by
         # copy, and the hit SoA is not Copyable.
+        @parameter
         def ptcut(
             hh: TrackingRecHit2DHeterogeneous, j: Int, idphi: Int
         ) -> Bool:
@@ -169,12 +171,14 @@ def doubletsFromHisto(
             var dphi = ApproxAtan2.short2phi(Int16(idphi))
             return dphi * dphi * (r2t4 - ri * ro) > (ro - ri) * (ro - ri)
 
+        @parameter
         def z0cutoff(hh: TrackingRecHit2DHeterogeneous, j: Int) -> Bool:
             var zo = hh.zGlobal(j)
             var ro = hh.rGlobal(j)
             var dr = ro - mer
             return dr > maxr[Int(pairLayerId)] or dr < 0.0 or abs(mez * ro - mer * zo) > z0cut * dr
 
+        @parameter
         def zsizeCut(hh: TrackingRecHit2DHeterogeneous, j: Int) -> Bool:
             var onlyBarrel = outer < 4
             var so = hh.clusterSizeY(j)

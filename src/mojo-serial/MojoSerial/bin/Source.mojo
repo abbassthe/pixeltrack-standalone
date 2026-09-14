@@ -208,13 +208,14 @@ struct Source(Defaultable, Movable, Typeable):
             ):
                 # this is in nanoseconds
                 var processingTime: Int = perf_counter_ns() - self._startTime
-                if (processingTime // (6 * 10**10)) >= UInt(
+                if (processingTime // (6 * 10**10)) >= Int(
                     self._runForMinutes
                 ):
                     self._shouldStop = True
-                self._numEventsTimeLastCheck = (
-                    self._numEvents // self._raw.__len__()
-                ) * self._raw.__len__()
+                self._numEventsTimeLastCheck = Int32(
+                    (Int(self._numEvents) // self._raw.__len__())
+                    * self._raw.__len__()
+                )
             if self._shouldStop:
                 self._numEvents -= 1
                 return None
@@ -225,10 +226,10 @@ struct Source(Defaultable, Movable, Typeable):
             self._numEvents += 1
 
         var iev = globalEvent + 1
-        var ev = Event(Int(streamId), Int(iev), reg)
-        var index = globalEvent % self._raw.__len__()
+        var ev = Event(streamId, iev, reg)
+        var index = Int(globalEvent) % self._raw.__len__()
 
-        ev.put[FEDRawDataCollection](self._rawToken, self._raw[index])
+        ev.put[FEDRawDataCollection](self._rawToken, self._raw[index].copy())
         if self._validation:
             ev.put[DigiClusterCount](
                 self._digiClusterToken, self._digiclusters[index]

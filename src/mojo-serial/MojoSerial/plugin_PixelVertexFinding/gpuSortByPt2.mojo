@@ -3,6 +3,15 @@ from MojoSerial.MojoBridge.DTypes import Float
 from MojoSerial.plugin_PixelVertexFinding.gpuVertexFinder import ZVertices, WorkSpace
 
 
+# A vertex's sort key next to its index, so the sort comparator reads only its
+# arguments. A comparator that reads the enclosing `ptv2` segfaults inside
+# stdlib `sort` in Mojo 1.0.
+@fieldwise_init
+struct _PtIndex(Copyable, Movable, TrivialRegisterPassable):
+    var pt2: Float
+    var index: UInt16
+
+
 @always_inline
 def sortByPt2(mut data: ZVertices, mut ws: WorkSpace):
     var nt: UInt32 = ws.ntrks
@@ -33,14 +42,17 @@ def sortByPt2(mut data: ZVertices, mut ws: WorkSpace):
         sortInd[0] = 0
         return
 
-    for i in range(nvFinal):
-        sortInd[i] = UInt16(i)
-
-    # C++ sorts [sortInd, sortInd + nvFinal); the slice is that same range.
-    var sortIndSpan = Span(sortInd)[: Int(nvFinal)]
+    # C++ fills sortInd with 0..nvFinal-1 and std::sorts it by ptv2.
+    var n = Int(nvFinal)
+    var keyed = List[_PtIndex](capacity=n)
+    for i in range(n):
+        keyed.append(_PtIndex(ptv2[i], UInt16(i)))
+    var keyedSpan = Span(keyed)
 
     @parameter
-    def less_than(i: UInt16, j: UInt16) -> Bool:
-        return ptv2[Int(i)] < ptv2[Int(j)]
+    def less_than(a: _PtIndex, b: _PtIndex) -> Bool:
+        return a.pt2 < b.pt2
 
-    sort[less_than](sortIndSpan)
+    sort[less_than](keyedSpan)
+    for i in range(n):
+        sortInd[i] = keyed[i].index

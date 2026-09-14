@@ -121,25 +121,17 @@ def initDoublets(
     isOuterHitOfCell: Span[mut=True, GPUCACell.OuterHitOfCell, _],
     nHits: UInt32,
     mut cellNeighbors: CellNeighborsVector,
-    # the two *Container params stay pointers: SimpleVector.construct() stores
-    # them in its own m_data field, so they follow SimpleVector's field decision
-    cellNeighborsContainer: UnsafePointer[CellNeighbors],
     mut cellTracks: CellTracksVector,
-    cellTracksContainer: UnsafePointer[CellTracks],
 ):
     var first: UInt32 = 0
     for i in range(first, nHits):
         isOuterHitOfCell[Int(i)].reset()
 
     if first == 0:
-        cellNeighbors.construct(
-            Int32(CAConstants.maxNumOfActiveDoublets()),
-            cellNeighborsContainer,
-        )
-        cellTracks.construct(
-            Int32(CAConstants.maxNumOfActiveDoublets()),
-            cellTracksContainer,
-        )
+        # C++ also hands `construct` the container buffer; SimpleVector owns
+        # its storage here.
+        cellNeighbors.construct(Int32(CAConstants.maxNumOfActiveDoublets()))
+        cellTracks.construct(Int32(CAConstants.maxNumOfActiveDoublets()))
         var i = cellNeighbors.extend()
         debug_assert(i == 0)
         cellNeighbors[0].reset()
@@ -172,8 +164,15 @@ def getDoubletsFromHisto(
     # module-level tables lives with their consumer.
     comptime assert nPairs <= Int(CAConstants.maxNumberOfLayerPairs())
 
+    # the tables are comptime, and a Span needs runtime storage to borrow
+    var layerPairsRT = materialize[layerPairs]()
+    var phicutsRT = materialize[phicuts]()
+    var minzRT = materialize[minz]()
+    var maxzRT = materialize[maxz]()
+    var maxrRT = materialize[maxr]()
+
     gpuPixelDoubleAlgo.doubletsFromHisto(
-        Span(layerPairs),
+        Span(layerPairsRT),
         UInt32(nActualPairs),
         cells,
         nCells,
@@ -181,10 +180,10 @@ def getDoubletsFromHisto(
         cellTracks,
         hh,
         isOuterHitOfCell,
-        Span(phicuts),
-        Span(minz),
-        Span(maxz),
-        Span(maxr),
+        Span(phicutsRT),
+        Span(minzRT),
+        Span(maxzRT),
+        Span(maxrRT),
         ideal_cond,
         doClusterCut,
         doZ0Cut,

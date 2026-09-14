@@ -10,45 +10,44 @@ from MojoSerial.MojoBridge.DTypes import UChar, Typeable
 from MojoSerial.CondFormats.PixelGPUDetails import PixelGPUDetails
 
 
-# WARNING: THIS STRUCT IS 128-ALIGNED
+# C++ is a flat, 128-aligned struct of seven MAX_SIZE (57,600) arrays so it can
+# be copied to the device in one block. Held as InlineArrays, moving it by value
+# stalls the 1.0 compiler at default optimisation, and serial has no device
+# copy, so the arrays live on the heap here. The file layout is unchanged; see
+# SiPixelFedCablingMapGPUWrapperESProducer for the field-by-field read.
 struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
-    comptime _U = InlineArray[UInt32, Int(PixelGPUDetails.MAX_SIZE)]
-    comptime _UD = Self._U(uninitialized=True)
-    comptime _C = InlineArray[UChar, Int(PixelGPUDetails.MAX_SIZE)]
-    comptime _CD = Self._C(uninitialized=True)
-    var fed: Self._U
-    var link: Self._U
-    var roc: Self._U
-    var RawId: Self._U
-    var rocInDet: Self._U
-    var moduleId: Self._U
-    var badRocs: Self._C
+    comptime N = Int(PixelGPUDetails.MAX_SIZE)
+    var fed: List[UInt32]
+    var link: List[UInt32]
+    var roc: List[UInt32]
+    var RawId: List[UInt32]
+    var rocInDet: List[UInt32]
+    var moduleId: List[UInt32]
+    var badRocs: List[UChar]
     var size: UInt32
-    var __padding: InlineArray[UInt8, 124]
 
     @always_inline
     def __init__(out self):
-        self.fed = Self._U(fill=0)
-        self.link = Self._U(fill=0)
-        self.roc = Self._U(fill=0)
-        self.RawId = Self._U(fill=0)
-        self.rocInDet = Self._U(fill=0)
-        self.moduleId = Self._U(fill=0)
-        self.badRocs = Self._C(fill=0)
+        self.fed = List[UInt32](length=Self.N, fill=0)
+        self.link = List[UInt32](length=Self.N, fill=0)
+        self.roc = List[UInt32](length=Self.N, fill=0)
+        self.RawId = List[UInt32](length=Self.N, fill=0)
+        self.rocInDet = List[UInt32](length=Self.N, fill=0)
+        self.moduleId = List[UInt32](length=Self.N, fill=0)
+        self.badRocs = List[UChar](length=Self.N, fill=0)
         self.size = 0
-
-        self.__padding = InlineArray[UInt8, 124](fill=0)
 
     @always_inline
     def __init__(
         out self,
-        var fed: Self._U,
-        var link: Self._U,
-        var roc: Self._U,
-        var RawId: Self._U,
-        var rocInDet: Self._U,
-        var moduleId: Self._U,
-        var badRocs: Self._C,
+        var fed: List[UInt32],
+        var link: List[UInt32],
+        var roc: List[UInt32],
+        var RawId: List[UInt32],
+        var rocInDet: List[UInt32],
+        var moduleId: List[UInt32],
+        var badRocs: List[UChar],
+        size: UInt32,
     ):
         self.fed = fed^
         self.link = link^
@@ -57,9 +56,7 @@ struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
         self.rocInDet = rocInDet^
         self.moduleId = moduleId^
         self.badRocs = badRocs^
-        self.size = 0
-
-        self.__padding = InlineArray[UInt8, 124](fill=0)
+        self.size = size
 
     @always_inline
     def __init__(out self, *, deinit move: Self):
@@ -71,8 +68,6 @@ struct SiPixelFedCablingMapGPU(Defaultable, Movable, Typeable):
         self.moduleId = move.moduleId^
         self.badRocs = move.badRocs^
         self.size = move.size
-
-        self.__padding = InlineArray[UInt8, 124](fill=0)
 
     @always_inline
     @staticmethod

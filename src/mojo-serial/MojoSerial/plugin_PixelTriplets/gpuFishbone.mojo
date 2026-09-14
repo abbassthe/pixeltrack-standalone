@@ -1,20 +1,20 @@
 # Translated from pixeltrack-standalone/src/serial/plugin-PixelTriplets/gpuFishbone.h
 
-from std.memory.unsafe_pointer import UnsafePointer
 from MojoSerial.plugin_PixelTriplets.GPUCACell import GPUCACell
 
 
 def fishbone(
-    hhp: UnsafePointer[GPUCACell.Hits],
-    cells: UnsafePointer[GPUCACell],
+    hh: GPUCACell.Hits,
+    cells: Span[mut=True, GPUCACell, _],
     nCells: UInt32,  # C++ takes uint32_t const*; unused in the body
-    isOuterHitOfCell: UnsafePointer[GPUCACell.OuterHitOfCell],
+    # C++ reads the tracks through the cell's own pointer; with the index form
+    # the vector has to come in as an argument.
+    cellTracks: GPUCACell.CellTracksVector,
+    isOuterHitOfCell: Span[GPUCACell.OuterHitOfCell, _],
     nHits: UInt32,
     checkTrack: Bool,
 ):
     comptime maxCellsPerHit = Int(GPUCACell.maxCellsPerHit)
-
-    ref hh = hhp[]
 
     var firstY = 0 + 0 * 1
     var firstX: Int = 0
@@ -34,7 +34,7 @@ def fishbone(
 
         if s < 2:
             continue
-        var c0 = cells[Int(vc[0])]
+        ref c0 = cells[Int(vc[0])]
         var xo = c0.get_outer_x(hh)
         var yo = c0.get_outer_y(hh)
         var zo = c0.get_outer_z(hh)
@@ -43,7 +43,7 @@ def fishbone(
             ref ci = cells[Int(vc[Int32(ic)])]
             if ci.theUsed == 0:
                 continue
-            if checkTrack and ci.tracks().empty():
+            if checkTrack and ci.tracks(cellTracks).empty():
                 continue
             cc[sg] = Int32(vc[Int32(ic)])
             d[sg] = UInt16(ci.get_inner_detIndex(hh))

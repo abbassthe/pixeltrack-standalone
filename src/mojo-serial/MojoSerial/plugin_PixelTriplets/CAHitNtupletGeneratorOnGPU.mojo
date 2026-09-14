@@ -62,7 +62,7 @@ struct CAHitNtupletGeneratorOnGPU:
         self.m_counters = Self.Counters()
 
     # C++: CAHitNtupletGeneratorOnGPU::~CAHitNtupletGeneratorOnGPU (CAHitNtupletGeneratorOnGPU.cc)
-    def __deinit__(var self):
+    def __deinit__(deinit self):
         if self.m_params.doStats:
             CAHitNtupletGeneratorKernelsCPU.print_counters(self.m_counters)
 

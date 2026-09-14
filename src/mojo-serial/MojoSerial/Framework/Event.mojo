@@ -17,7 +17,7 @@ from MojoSerial.CUDADataFormats.ZVertexHeterogeneous import ZVertexHeterogeneous
 from MojoSerial.DataFormats.BeamSpotPOD import BeamSpotPOD
 from MojoSerial.DataFormats.DigiClusterCount import DigiClusterCount
 from MojoSerial.DataFormats.FEDRawDataCollection import FEDRawDataCollection
-from MojoSerial.DataFormats.SiPixelDigisSoA import SiPixelDigisSoA
+from MojoSerial.CUDADataFormats.SiPixelDigisSoA import SiPixelDigisSoA
 from MojoSerial.DataFormats.TrackCount import TrackCount
 from MojoSerial.DataFormats.VertexCount import VertexCount
 

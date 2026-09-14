@@ -2,7 +2,6 @@ import std.math as math
 
 from std.atomic import Atomic, Ordering
 from std.sys import is_defined
-from std.sys.info import size_of
 
 
 import MojoSerial.plugin_PixelTriplets.CAConstants as CAConstants
@@ -263,9 +262,9 @@ def Kernel_checkOverflows(
 
     while idx  < nt:
         ref thisCell = cells[idx]
-        if (thisCell.outerNeighbors().full()) : #++tooManyNeighbors[thisCell.theLayerPairId]
+        if (thisCell.outerNeighbors(cellNeighbors).full()) : #++tooManyNeighbors[thisCell.theLayerPairId]
           print("OuterNeighbors overflow ",idx , "in \n", thisCell.theLayerPairId)
-        if (thisCell.tracks().full()) : #++tooManyTracks[thisCell.theLayerPairId]
+        if (thisCell.tracks(cellTracks).full()) : #++tooManyTracks[thisCell.theLayerPairId]
           print("Tracks overflow " , idx , " in \n", thisCell.theLayerPairId)
         if (thisCell.theDoubletId < 0):
           Atomic.fetch_add[ordering = Ordering.SEQUENTIAL](
@@ -277,7 +276,7 @@ def Kernel_checkOverflows(
               UnsafePointer(to=c.nEmptyCells),
               UInt64(1),
           )
-        if (thisCell.tracks().empty()):
+        if (thisCell.tracks(cellTracks).empty()):
           Atomic.fetch_add[ordering = Ordering.SEQUENTIAL](
               UnsafePointer(to=c.nZeroTrackCells),
               UInt64(1),
@@ -298,6 +297,7 @@ def Kernel_checkOverflows(
 def kernel_fishboneCleaner(
     cells: Span[GPUCACell, _],
     nCells: UInt32,
+    cellTracks: gpuPixelDoublets.CellTracksVector,
     quality: Span[mut=True, Quality, _],
 ):
     comptime bad = trackQuality.bad
@@ -307,17 +307,15 @@ def kernel_fishboneCleaner(
         if thisCell.theDoubletId >= 0:
             continue
 
-        ref trk = thisCell.tracks()
-        var it = trk.begin()
-        var it_end = trk.end()
-        while it != it_end:
-            quality[Int(it[])] = bad
-            it += 1
+        ref trk = thisCell.tracks(cellTracks)
+        for it in trk.span():
+            quality[Int(it)] = bad
 
 
 def kernel_earlyDuplicateRemover(
     cells: Span[GPUCACell, _],
     nCells: UInt32,
+    cellTracks: gpuPixelDoublets.CellTracksVector,
     foundNtuplets: HitContainer,
     quality: Span[mut=True, Quality, _],
 ):
@@ -327,30 +325,27 @@ def kernel_earlyDuplicateRemover(
     for idx in range(0, nt, 1):
         ref thisCell = cells[idx]
 
-        if len(thisCell.tracks()) < 2:
+        if len(thisCell.tracks(cellTracks)) < 2:
             continue
 
         var maxNh: UInt32 = 0
 
-        ref trk = thisCell.tracks()
-        var it = trk.begin()
-        var it_end = trk.end()
-        while it != it_end:
-            var nh = foundNtuplets.size(UInt32(it[]))
+        ref trk = thisCell.tracks(cellTracks)
+        for it in trk.span():
+            var nh = foundNtuplets.size(UInt32(it))
             maxNh = max(nh, maxNh)
-            it += 1
 
-        it = trk.begin()
-        while it != it_end:
-            if foundNtuplets.size(UInt32(it[])) != maxNh:
-                quality[Int(it[])] = dup
-            it += 1
+        for it in trk.span():
+            if foundNtuplets.size(UInt32(it)) != maxNh:
+                quality[Int(it)] = dup
 
 
 def kernel_fastDuplicateRemover(
     cells: Span[GPUCACell, _],
     nCells: UInt32,
-    foundNtuplets: HitContainer,
+    cellTracks: gpuPixelDoublets.CellTracksVector,
+    # C++ also takes `foundNtuplets` but never reads it; it is a field of
+    # `tracks`, so passing both would alias.
     mut tracks: TkSoA,
 ):
     var bad = trackQuality.bad
@@ -360,7 +355,7 @@ def kernel_fastDuplicateRemover(
     var nt = Int(nCells)
     for idx in range(0, nt, 1):
         ref thisCell = cells[idx]
-        if len(thisCell.tracks()) < 2:
+        if len(thisCell.tracks(cellTracks)) < 2:
             continue
 
         var mc: Float32 = 10000.0
@@ -372,20 +367,15 @@ def kernel_fastDuplicateRemover(
             return abs(tracks.tip(Int32(it))) # tip
             # or chi2
         #find min socre
-        ref trk = thisCell.tracks()
-        var it = trk.begin()
-        var it_end = trk.end()
-        while it != it_end:
-            if tracks.quality(Int(it[])) == loose and score(tracks, it[]) < mc:
-                mc = score(tracks, it[])
-                im = it[]
-            it += 1
+        ref trk = thisCell.tracks(cellTracks)
+        for it in trk.span():
+            if tracks.quality(Int(it)) == loose and score(tracks, it) < mc:
+                mc = score(tracks, it)
+                im = it
         #mark all other duplicates
-        it = trk.begin()
-        while it != it_end:
-            if tracks.quality(Int(it[])) != bad and it[] != im:
-                tracks.quality(Int(it[])) = dup # no race:  simple assignment of the same constant
-            it += 1
+        for it in trk.span():
+            if tracks.quality(Int(it)) != bad and it != im:
+                tracks.quality(Int(it)) = dup # no race:  simple assignment of the same constant
 
 
 def kernel_connect(
@@ -471,6 +461,7 @@ def kernel_find_ntuplets(
     hh : GPUCACell.Hits,
     cells : Span[mut=True, GPUCACell, _],
     nCells : UInt32,
+    cellNeighbors : gpuPixelDoublets.CellNeighborsVector,
     mut cellTracks : gpuPixelDoublets.CellTracksVector,
     mut foundNtuplets : HitContainer,
     mut apc : AtomicPairCounter,
@@ -481,7 +472,7 @@ def kernel_find_ntuplets(
     for idx in range(0, nt, 1):
         # a copy, not a ref: find_ntuplets only reads it, and holding a borrow
         # of `cells` here would conflict with passing the array itself
-        var thisCell = cells[idx]
+        var thisCell = cells[idx].copy()
         if thisCell.theDoubletId < 0:
             continue
 
@@ -493,6 +484,7 @@ def kernel_find_ntuplets(
             thisCell.find_ntuplets[6](
                 hh,
                 cells,
+                cellNeighbors,
                 cellTracks,
                 foundNtuplets,
                 apc,
@@ -507,10 +499,11 @@ def kernel_mark_used(
     hh: GPUCACell.Hits,
     cells: Span[mut=True, GPUCACell, _],
     nCells: UInt32,
+    cellTracks: gpuPixelDoublets.CellTracksVector,
 ):
     var nt = Int(nCells)
     for idx in range(0, nt, 1):
-        if not cells[idx].tracks().empty():
+        if not cells[idx].tracks(cellTracks).empty():
             cells[idx].theUsed |= 2
 
 def kernel_countMultiplicity(  foundNtuplets : HitContainer,
@@ -860,10 +853,8 @@ def kernel_printCounters(
 # were ~384 kB/~48 kB inline structs; now that `HistoContainer` is heap-backed
 # both are 56 B, so the box is pure overhead. `unique_ptr<T[]>` fields -- dynamically sized only at runtime
 # (nhits, maxNumberOfDoublets_) -- become `List[T]`, which is the direct Mojo
-# equivalent for an owned, runtime-length, RAII-freed array: `.unsafe_ptr()`
-# hands out a raw pointer usable anywhere the existing `UnsafePointer[T]`-based
-# APIs (initDoublets, getDoubletsFromHisto, the kernel_* functions above)
-# already expect one, so no call site needs to change shape.
+# equivalent for an owned, runtime-length, RAII-freed array, and are handed to
+# the kernels as `Span`s.
 #
 # `launch_kernels`/`classify_tuples`/`build_doublets`/`fill_hit_det_indices`/
 # `allocate_on_gpu`/`cleanup`/`print_counters` are real methods on this struct
@@ -894,13 +885,11 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
     # methods that touch them and keep accumulating on the generator.
 
     # --- Workspace ---
-    var cellStorage_: List[UInt8]
-    # SimpleVector is 16 bytes (two Int32 and a pointer), so these are held
-    # inline; C++ uses unique_ptr because it allocates them on the device
+    # C++ carves both vectors' buffers out of one `cellStorage_` block and
+    # hands them to `construct`; SimpleVector owns its storage here, so the
+    # block and the two container pointers are gone.
     var device_theCellNeighbors_: CAConstants.CellNeighborsVector
-    var device_theCellNeighborsContainer_: UnsafePointer[CAConstants.CellNeighbors]
     var device_theCellTracks_: CAConstants.CellTracksVector
-    var device_theCellTracksContainer_: UnsafePointer[CAConstants.CellTracks]
 
     var device_theCells_: List[GPUCACell]
     var device_isOuterHitOfCell_: List[GPUCACell.OuterHitOfCell]
@@ -922,15 +911,8 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
     var m_params: Params
 
     def __init__(out self, params: Params):
-        self.cellStorage_ = List[UInt8]()
         self.device_theCellNeighbors_ = CAConstants.CellNeighborsVector()
-        self.device_theCellNeighborsContainer_ = UnsafePointer[
-            CAConstants.CellNeighbors
-        ]()
         self.device_theCellTracks_ = CAConstants.CellTracksVector()
-        self.device_theCellTracksContainer_ = UnsafePointer[
-            CAConstants.CellTracks
-        ]()
 
         self.device_theCells_ = List[GPUCACell]()
         self.device_isOuterHitOfCell_ = List[GPUCACell.OuterHitOfCell]()
@@ -946,15 +928,8 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         self.m_params = params
 
     def __init__(out self, *, deinit move: Self):
-        self.cellStorage_ = move.cellStorage_^
         self.device_theCellNeighbors_ = move.device_theCellNeighbors_^
-        self.device_theCellNeighborsContainer_ = (
-            move.device_theCellNeighborsContainer_
-        )
         self.device_theCellTracks_ = move.device_theCellTracks_^
-        self.device_theCellTracksContainer_ = (
-            move.device_theCellTracksContainer_
-        )
         self.device_theCells_ = move.device_theCells_^
         self.device_isOuterHitOfCell_ = move.device_isOuterHitOfCell_^
         self.device_nCells_ = move.device_nCells_
@@ -1003,31 +978,12 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         self.device_isOuterHitOfCell_ = List[GPUCACell.OuterHitOfCell](
             length=Int(max(UInt32(1), nhits)), fill=GPUCACell.OuterHitOfCell()
         )
-        debug_assert(Bool(self.device_isOuterHitOfCell_.unsafe_ptr()))
-
-        var neighborsBytes = Int(
-            CAConstants.maxNumOfActiveDoublets()
-        ) * size_of[CAConstants.CellNeighbors]()
-        var tracksBytes = Int(
-            CAConstants.maxNumOfActiveDoublets()
-        ) * size_of[CAConstants.CellTracks]()
-        self.cellStorage_ = List[UInt8](
-            length=neighborsBytes + tracksBytes, fill=0
-        )
-        self.device_theCellNeighborsContainer_ = self.cellStorage_.unsafe_ptr().bitcast[
-            CAConstants.CellNeighbors
-        ]()
-        self.device_theCellTracksContainer_ = (
-            self.cellStorage_.unsafe_ptr() + neighborsBytes
-        ).bitcast[CAConstants.CellTracks]()
 
         gpuPixelDoublets.initDoublets(
-            self.device_isOuterHitOfCell_.unsafe_ptr(),
+            Span(self.device_isOuterHitOfCell_),
             nhits,
             self.device_theCellNeighbors_,
-            self.device_theCellNeighborsContainer_,
             self.device_theCellTracks_,
-            self.device_theCellTracksContainer_,
         )
 
         # device_theCells_ = Traits:: template make_unique<GPUCACell[]>(cs, m_params.maxNumberOfDoublets_, stream);
@@ -1046,12 +1002,12 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
 
         debug_assert(nActualPairs <= gpuPixelDoublets.nPairs)
         gpuPixelDoublets.getDoubletsFromHisto(
-            self.device_theCells_.unsafe_ptr(),
+            Span(self.device_theCells_),
             self.device_nCells_,
             self.device_theCellNeighbors_,
             self.device_theCellTracks_,
             hh,
-            self.device_isOuterHitOfCell_.unsafe_ptr(),
+            Span(self.device_isOuterHitOfCell_),
             nActualPairs,
             self.m_params.idealConditions,
             self.m_params.doClusterCut,
@@ -1087,10 +1043,10 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
             self.device_hitTuple_apc_,
             self.device_hitToTuple_apc_,  # needed only to be reset, ready for next kernel
             hh,
-            self.device_theCells_.unsafe_ptr(),
+            Span(self.device_theCells_),
             self.device_nCells_,
             self.device_theCellNeighbors_,
-            self.device_isOuterHitOfCell_.unsafe_ptr(),
+            Span(self.device_isOuterHitOfCell_),
             self.m_params.hardCurvCut,
             self.m_params.ptmin,
             self.m_params.CAThetaCutBarrel,
@@ -1102,9 +1058,10 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         if nhits > 1 and self.m_params.earlyFishbone:
             gpuPixelDoublets.fishbone(
                 hh,
-                self.device_theCells_.unsafe_ptr(),
+                Span(self.device_theCells_),
                 self.device_nCells_,
-                self.device_isOuterHitOfCell_.unsafe_ptr(),
+                self.device_theCellTracks_,
+                Span(self.device_isOuterHitOfCell_),
                 nhits,
                 False,
             )
@@ -1113,6 +1070,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
             hh,
             Span(self.device_theCells_),
             self.device_nCells_,
+            self.device_theCellNeighbors_,
             self.device_theCellTracks_,
             tuples_d,
             self.device_hitTuple_apc_,
@@ -1121,15 +1079,19 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         )
         if self.m_params.doStats:
             kernel_mark_used(
-                hh, self.device_theCells_.unsafe_ptr(), self.device_nCells_
+                hh,
+                Span(self.device_theCells_),
+                self.device_nCells_,
+                self.device_theCellTracks_,
             )
 
         finalizeBulk(self.device_hitTuple_apc_, tuples_d)
 
         # remove duplicates (tracks that share a doublet)
         kernel_earlyDuplicateRemover(
-            self.device_theCells_.unsafe_ptr(),
+            Span(self.device_theCells_),
             self.device_nCells_,
+            self.device_theCellTracks_,
             tuples_d,
             quality_d,
         )
@@ -1145,9 +1107,10 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         if nhits > 1 and self.m_params.lateFishbone:
             gpuPixelDoublets.fishbone(
                 hh,
-                self.device_theCells_.unsafe_ptr(),
+                Span(self.device_theCells_),
                 self.device_nCells_,
-                self.device_isOuterHitOfCell_.unsafe_ptr(),
+                self.device_theCellTracks_,
+                Span(self.device_isOuterHitOfCell_),
                 nhits,
                 True,
             )
@@ -1157,11 +1120,11 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
                 tuples_d,
                 self.device_tupleMultiplicity_,
                 self.device_hitTuple_apc_,
-                self.device_theCells_.unsafe_ptr(),
+                Span(self.device_theCells_),
                 self.device_nCells_,
                 self.device_theCellNeighbors_,
                 self.device_theCellTracks_,
-                self.device_isOuterHitOfCell_.unsafe_ptr(),
+                Span(self.device_isOuterHitOfCell_),
                 nhits,
                 self.m_params.maxNumberOfDoublets,
                 counters,
@@ -1186,14 +1149,17 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
         if self.m_params.lateFishbone:
             # apply fishbone cleaning to good tracks
             kernel_fishboneCleaner(
-                self.device_theCells_.unsafe_ptr(), self.device_nCells_, quality_d
+                Span(self.device_theCells_),
+                self.device_nCells_,
+                self.device_theCellTracks_,
+                quality_d,
             )
 
         # remove duplicates (tracks that share a doublet)
         kernel_fastDuplicateRemover(
-            self.device_theCells_.unsafe_ptr(),
+            Span(self.device_theCells_),
             self.device_nCells_,
-            tuples_d,
+            self.device_theCellTracks_,
             tracks_d,
         )
 

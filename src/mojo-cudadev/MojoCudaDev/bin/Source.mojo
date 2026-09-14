@@ -221,7 +221,7 @@ struct Source(Defaultable, Movable, Typeable):
         var ev = Event(streamId, self._numEvents, reg)
         var index = (self._numEvents - 1) % Int32(self._raw.__len__())
 
-        ev.put[FEDRawDataCollection](self._rawToken, self._raw[index])
+        ev.put[FEDRawDataCollection](self._rawToken, self._raw[index].copy())
         if self._validation:
             ev.put[DigiClusterCount](
                 self._digiClusterToken, self._digiclusters[index]
