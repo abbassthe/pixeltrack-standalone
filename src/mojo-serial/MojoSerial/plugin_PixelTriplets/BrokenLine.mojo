@@ -27,11 +27,11 @@ struct PreparedBrokenLineData[N: Int]:
 
     def __init__(out self):
         self.q = 0
-        self.radii = Rfit.Matrix2xNd[Self.N]()
-        self.s = Rfit.VectorNd[Self.N]()
-        self.S = Rfit.VectorNd[Self.N]()
-        self.Z = Rfit.VectorNd[Self.N]()
-        self.VarBeta = Rfit.VectorNd[Self.N]()
+        self.radii = Rfit.Matrix2xNd[Self.N](uninitialized=True)
+        self.s = Rfit.VectorNd[Self.N](uninitialized=True)
+        self.S = Rfit.VectorNd[Self.N](uninitialized=True)
+        self.Z = Rfit.VectorNd[Self.N](uninitialized=True)
+        self.VarBeta = Rfit.VectorNd[Self.N](uninitialized=True)
 
 
 #!
@@ -65,7 +65,7 @@ def MultScatt(length: Float64, B: Float64, R: Float64, Layer: Int, slope: Float6
 #
 #\return 2D rotation matrix.
 def RotationMatrix(slope: Float64) -> Rfit.Matrix2d:
-    var Rot = Rfit.Matrix2d()
+    var Rot = Rfit.Matrix2d(uninitialized=True)
     Rot[0, 0] = 1.0 / math.sqrt(1.0 + Rfit.sqr(slope))
     Rot[0, 1] = slope * Rot[0, 0]
     Rot[1, 0] = -Rot[0, 1]
@@ -135,8 +135,8 @@ def prepareBrokenLineData[M3xN: MatrixLike, V4: MatrixLike, N: Int](
 ):
     var n = N
     var i: Int = 0
-    var d = Rfit.Vector2d()
-    var e = Rfit.Vector2d()
+    var d = Rfit.Vector2d(uninitialized=True)
+    var e = Rfit.Vector2d(uninitialized=True)
 
     d = (hits.block[2, 1](0, 1) - hits.block[2, 1](0, 0)).cast[DType.float64]()
     e = (hits.block[2, 1](0, n - 1) - hits.block[2, 1](0, n - 2)).cast[DType.float64]()
@@ -263,11 +263,11 @@ def BL_Circle_fit[M3xN: MatrixLike, M6xN: MatrixLike, V4: MatrixLike, N: Int](
     var i: Int = 0
 
     circle_results.q = Int32(data.q)
-    var radii = data.radii
-    var s = data.s
-    var S = data.S
-    var Z = data.Z
-    var VarBeta = data.VarBeta
+    ref radii = data.radii
+    ref s = data.s
+    ref S = data.S
+    ref Z = data.Z
+    ref VarBeta = data.VarBeta
     var slope: Float64 = -Float64(circle_results.q) / fast_fit[3, 0].cast[DType.float64]()
     VarBeta *= 1.0 + Rfit.sqr(slope)
 
@@ -276,26 +276,26 @@ def BL_Circle_fit[M3xN: MatrixLike, M6xN: MatrixLike, V4: MatrixLike, N: Int](
         Z[i] = radii.block[2, 1](0, i).norm() - fast_fit[2, 0].cast[DType.float64]()
         i += 1
 
-    var V = Rfit.Matrix2d()
-    var w = Rfit.VectorNd[N]()
-    var RR = Rfit.Matrix2d()
+    var V = Rfit.Matrix2d(uninitialized=True)
+    var w = Rfit.VectorNd[N](uninitialized=True)
+    var RR = Rfit.Matrix2d(uninitialized=True)
     i = 0
     while i < n:
-        V[0, 0] = hits_ge.col(i)[0].cast[DType.float64]()
-        V[0, 1] = hits_ge.col(i)[1].cast[DType.float64]()
-        V[1, 0] = hits_ge.col(i)[1].cast[DType.float64]()
-        V[1, 1] = hits_ge.col(i)[2].cast[DType.float64]()
+        V[0, 0] = hits_ge[0, i].cast[DType.float64]()
+        V[0, 1] = hits_ge[1, i].cast[DType.float64]()
+        V[1, 0] = hits_ge[1, i].cast[DType.float64]()
+        V[1, 1] = hits_ge[2, i].cast[DType.float64]()
         RR = RotationMatrix(-radii[0, i] / radii[1, i])
         w[i] = 1.0 / ((RR * V * RR.transpose())[1, 1])
         i += 1
-    var r_u : Rfit.VectorNplusONEd[N] = Rfit.VectorNplusONEd[N]()
+    var r_u : Rfit.VectorNplusONEd[N] = Rfit.VectorNplusONEd[N](uninitialized=True)
     r_u[n] = 0
     i = 0
     while i < n:
         r_u[i] = w[i] * Z[i]
         i += 1
 
-    var C_U : Rfit.MatrixNplusONEd[N] = Rfit.MatrixNplusONEd[N]()
+    var C_U : Rfit.MatrixNplusONEd[N] = Rfit.MatrixNplusONEd[N](uninitialized=True)
     C_U.set_block[N, N](0, 0, MatrixC_u(w, s, VarBeta))
     C_U[n, n] = 0
     i = 0
@@ -326,7 +326,7 @@ def BL_Circle_fit[M3xN: MatrixLike, M6xN: MatrixLike, V4: MatrixLike, N: Int](
             print(lineCU)
             rCU += 1
 
-    var I := Rfit.MatrixNplusONEd[N]()
+    var I := Rfit.MatrixNplusONEd[N](uninitialized=True)
     choleskyInversion.invert(C_U, I)
 
     if CPP_DUMP:
@@ -360,7 +360,7 @@ def BL_Circle_fit[M3xN: MatrixLike, M6xN: MatrixLike, V4: MatrixLike, N: Int](
     var eMinusd : Rfit.Vector2d = e - d
     var tmp1 = eMinusd.squaredNorm()
 
-    var jacobian: Rfit.Matrix3d = Rfit.Matrix3d()
+    var jacobian: Rfit.Matrix3d = Rfit.Matrix3d(uninitialized=True)
     jacobian[0, 0] = (radii[1, 0] * eMinusd[0] - eMinusd[1] * radii[0, 0]) / tmp1
     jacobian[0, 1] = (radii[1, 1] * eMinusd[0] - eMinusd[1] * radii[0, 1]) / tmp1
     jacobian[0, 2] = 0.0
@@ -419,10 +419,10 @@ def BL_Line_fit[V4: MatrixLike, M6xN: MatrixLike, N: Int](
     var n: Int = N
     var i: Int = 0
 
-    var radii = data.radii
-    var S = data.S
-    var Z = data.Z
-    var VarBeta = data.VarBeta
+    ref radii = data.radii
+    ref S = data.S
+    ref Z = data.Z
+    ref VarBeta = data.VarBeta
 
     var slope: Float64 = -Float64(data.q) / fast_fit[3, 0].cast[DType.float64]()
     var R = RotationMatrix(slope)
@@ -432,22 +432,22 @@ def BL_Line_fit[V4: MatrixLike, M6xN: MatrixLike, N: Int](
     var w :Rfit.VectorNd[N]= Rfit.VectorNd[N].Zero()
     i = 0
     while i < n:
-        V[0, 0] = hits_ge.col(i)[0].cast[DType.float64]()
-        V[0, 1] = hits_ge.col(i)[1].cast[DType.float64]()
-        V[1, 0] = hits_ge.col(i)[1].cast[DType.float64]()
-        V[0, 2] = hits_ge.col(i)[3].cast[DType.float64]()
-        V[2, 0] = hits_ge.col(i)[3].cast[DType.float64]()
-        V[1, 1] = hits_ge.col(i)[2].cast[DType.float64]()
-        V[2, 1] = hits_ge.col(i)[4].cast[DType.float64]()
-        V[1, 2] = hits_ge.col(i)[4].cast[DType.float64]()
-        V[2, 2] = hits_ge.col(i)[5].cast[DType.float64]()
+        V[0, 0] = hits_ge[0, i].cast[DType.float64]()
+        V[0, 1] = hits_ge[1, i].cast[DType.float64]()
+        V[1, 0] = hits_ge[1, i].cast[DType.float64]()
+        V[0, 2] = hits_ge[3, i].cast[DType.float64]()
+        V[2, 0] = hits_ge[3, i].cast[DType.float64]()
+        V[1, 1] = hits_ge[2, i].cast[DType.float64]()
+        V[2, 1] = hits_ge[4, i].cast[DType.float64]()
+        V[1, 2] = hits_ge[4, i].cast[DType.float64]()
+        V[2, 2] = hits_ge[5, i].cast[DType.float64]()
         var tmp = 1.0 / radii.block[2, 1](0, i).norm()
         JacobXYZtosZ[0, 0] = radii[1, i] * tmp
         JacobXYZtosZ[0, 1] = -radii[0, i] * tmp
         JacobXYZtosZ[1, 2] = 1.0
         w[i] = 1.0 / ((R * JacobXYZtosZ * V * JacobXYZtosZ.transpose() * R.transpose())[1, 1])
         i += 1
-    var r_u : Rfit.VectorNd[N] = Rfit.VectorNd[N]()
+    var r_u : Rfit.VectorNd[N] = Rfit.VectorNd[N](uninitialized=True)
     i = 0
     while i < n:
         r_u[i] = w[i] * Z[i]
@@ -468,7 +468,7 @@ def BL_Line_fit[V4: MatrixLike, M6xN: MatrixLike, N: Int](
             print(lineCU)
             rCU += 1
 
-    var I : Rfit.MatrixNd[N] = Rfit.MatrixNd[N]()
+    var I : Rfit.MatrixNd[N] = Rfit.MatrixNd[N](uninitialized=True)
     var CUmat = MatrixC_u(w, S, VarBeta)
     choleskyInversion.invert(CUmat, I)
 
@@ -496,7 +496,7 @@ def BL_Line_fit[V4: MatrixLike, M6xN: MatrixLike, N: Int](
     line_results.cov[1, 0] = (I[0, 1] - I[0, 0]) * idiff
     line_results.cov[1, 1] = I[0, 0]
 
-    var jacobian = Rfit.Matrix2d()
+    var jacobian = Rfit.Matrix2d(uninitialized=True)
     jacobian[0, 0] = 1.0
     jacobian[0, 1] = 0.0
     jacobian[1, 0] = -S[0]
@@ -561,13 +561,13 @@ def BL_Helix_fit[N: Int](
     B: Float64,
 ) -> Rfit.helix_fit:
     var helix = Rfit.helix_fit()
-    var fast_fit = Rfit.Vector4d()
+    var fast_fit = Rfit.Vector4d(uninitialized=True)
     BL_Fast_fit(hits, fast_fit)
 
     var data = PreparedBrokenLineData[N]()
     var circle = karimaki_circle_fit()
     var line = Rfit.line_fit()
-    var jacobian = Rfit.Matrix3d()
+    var jacobian = Rfit.Matrix3d(uninitialized=True)
 
     prepareBrokenLineData(hits, fast_fit, B, data)
     BL_Line_fit(hits_ge, fast_fit, B, data, line)

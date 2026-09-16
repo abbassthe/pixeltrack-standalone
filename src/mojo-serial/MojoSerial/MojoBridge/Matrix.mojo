@@ -334,7 +334,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     @always_inline
     @staticmethod
     def Constant(val: Self._D) -> Self:
-        var res = Self()
+        var res = Self(uninitialized=True)
         comptime for i in range(Self.rows * Self.colns):
             res[i] = val
         return res
@@ -421,11 +421,10 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     def __rmul__(self, scalar: Self._D) -> Self:
         return self * scalar
 
-    @no_inline
     def __matmul__[
         trp: Int, //
     ](self, rhs: Matrix[Self.T, Self.colns, trp]) -> Matrix[Self.T, Self.rows, trp]:
-        var res = Matrix[Self.T, Self.rows, trp]()
+        var res = Matrix[Self.T, Self.rows, trp](uninitialized=True)
 
         comptime for i in range(Self.rows):
 
@@ -470,7 +469,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
             res._data[i] = res._data[i] % rhs._data[i]
         return res
 
-    @no_inline
     def __pow__(
         self: Matrix[Self.T, Self.rows, Self.colns], exp: Int
     ) -> Matrix[Self.T, Self.rows, Self.colns]:
@@ -603,7 +601,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
             res._data[i] = res._data[i] >> rhs._data[i]
         return res
 
-    @no_inline
     def __invert__[
         W: DType, *, protect: Bool = False
     ](self: Matrix[Self.T, Self.rows, Self.colns]) -> Matrix[W, Self.rows, Self.colns]:
@@ -835,7 +832,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     def __str__(self) -> String:
         return String(self)
 
-    @no_inline
     def __repr__(self) -> String:
         var output = String()
         output.write(
@@ -850,7 +846,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __floor__(self) -> Self:
-        var res = Self()
+        var res = Self(uninitialized=True)
 
         comptime for i in range(Self.rows):
             res._data[i] = self._data[i].__floor__()
@@ -858,7 +854,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __ceil__(self) -> Self:
-        var res = Self()
+        var res = Self(uninitialized=True)
 
         comptime for i in range(Self.rows):
             res._data[i] = self._data[i].__ceil__()
@@ -866,7 +862,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __trunc__(self) -> Self:
-        var res = Self()
+        var res = Self(uninitialized=True)
 
         comptime for i in range(Self.rows):
             res._data[i] = self._data[i].__trunc__()
@@ -874,7 +870,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __abs__(self) -> Self:
-        var res = Self()
+        var res = Self(uninitialized=True)
 
         comptime for i in range(Self.rows):
             res._data[i] = self._data[i].__abs__()
@@ -882,7 +878,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __round__(self) -> Self:
-        var res = Self()
+        var res = Self(uninitialized=True)
 
         comptime for i in range(Self.rows):
             res._data[i] = self._data[i].__round__()
@@ -890,7 +886,7 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def __round__(self, ndigits: Int) -> Self:
-        var res = Self()
+        var res = Self(uninitialized=True)
 
         comptime for i in range(Self.rows):
             res._data[i] = self._data[i].__round__(ndigits)
@@ -954,7 +950,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         else:
             return (self > 0) & (self & (self - 1) == 0)
 
-    @no_inline
     def write_to[W: Writer](self, mut writer: W):
         writer.write("[")
 
@@ -1000,7 +995,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     def row(self, i: Int) -> Vector[Self.T, Self.colns]:
         return self._data[i]
 
-    @no_inline
     def coln(self, j: Int) -> Vector[Self.T, Self.rows]:
         var res = Vector[Self.T, Self.rows]()
 
@@ -1014,9 +1008,9 @@ struct Matrix[T: DType, rows: Int, colns: Int](
 
     @always_inline
     def block[br: Int, bc: Int](self, row: Int, col: Int) -> Matrix[Self.T, br, bc]:
-        var res = Matrix[Self.T, br, bc]()
-        for r in range(br):
-            for c in range(bc):
+        var res = Matrix[Self.T, br, bc](uninitialized=True)
+        comptime for r in range(br):
+            comptime for c in range(bc):
                 res[r, c] = self[row + r, col + c]
         return res
 
@@ -1027,24 +1021,24 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         """Writes val into self at (row, col), the write-back counterpart to
         block() (which returns a copy, unlike Eigen's reference-semantics
         .block())."""
-        for r in range(br):
-            for c in range(bc):
+        comptime for r in range(br):
+            comptime for c in range(bc):
                 self[row + r, col + c] = val[r, c]
 
     #this is not flattening it is just taking first col
     @always_inline
     def head[n: Int](self) -> Matrix[Self.T, n, 1]:
         comptime assert Self.colns == 1, "head() requires a column vector"
-        var res = Matrix[Self.T, n, 1]()
-        for i in range(n):
+        var res = Matrix[Self.T, n, 1](uninitialized=True)
+        comptime for i in range(n):
             res[i, 0] = self[i, 0]
         return res
 
     @always_inline
     def squaredNorm(self) -> Self._D:
         var acc: Self._D = 0
-        for i in range(Self.rows):
-            for j in range(Self.colns):
+        comptime for i in range(Self.rows):
+            comptime for j in range(Self.colns):
                 acc += self[i, j] * self[i, j]
         return acc
 
@@ -1055,12 +1049,11 @@ struct Matrix[T: DType, rows: Int, colns: Int](
     @always_inline
     def dot(self, other: Self) -> Self._D:
         var acc: Self._D = 0
-        for i in range(Self.rows):
-            for j in range(Self.colns):
+        comptime for i in range(Self.rows):
+            comptime for j in range(Self.colns):
                 acc += self[i, j] * other[i, j]
         return acc
 
-    @no_inline
     def _row_by_coln(
         self, other: Matrix[Self.T, Self.colns, _], row: Int, coln: Int
     ) -> Self._D:
@@ -1071,9 +1064,8 @@ struct Matrix[T: DType, rows: Int, colns: Int](
             sum += self[row, i] * other[i, coln]
         return sum
 
-    @no_inline
     def transpose(self) -> Matrix[Self.T, Self.colns, Self.rows]:
-        var res = Matrix[Self.T, Self.colns, Self.rows]()
+        var res = Matrix[Self.T, Self.colns, Self.rows](uninitialized=True)
 
         comptime for i in range(Self.colns):
 
@@ -1082,7 +1074,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         return res
 
     @staticmethod
-    @no_inline
     def identity() -> Self:
         comptime assert Self.rows == Self.colns, "Identity can only be a square matrix"
         var res = Self()
@@ -1106,7 +1097,6 @@ struct Matrix[T: DType, rows: Int, colns: Int](
         ), "Can only find inverse of a square matrix"
         return ~self
 
-    @no_inline
     def det[
         W: DType, *, protect: Bool = False
     ](self: Matrix[Self.T, Self.rows, Self.colns]) -> Scalar[W]:
@@ -1437,15 +1427,15 @@ struct Map[
     @always_inline
     def col(self, c: Int) -> Vector[Self.T, Self.rows]:
         var res = Vector[Self.T, Self.rows]()
-        for r in range(Self.rows):
+        comptime for r in range(Self.rows):
             res[r] = self[r, c]
         return res
 
     @always_inline
     def block[br: Int, bc: Int](self, row: Int, col: Int) -> Matrix[Self.T, br, bc]:
-        var res = Matrix[Self.T, br, bc]()
-        for r in range(br):
-            for c in range(bc):
+        var res = Matrix[Self.T, br, bc](uninitialized=True)
+        comptime for r in range(br):
+            comptime for c in range(bc):
                 res[r, c] = self[row + r, col + c]
         return res
 
@@ -1453,8 +1443,8 @@ struct Map[
     @always_inline
     def head[n: Int](self) -> Matrix[Self.T, n, 1]:
         comptime assert Self.colns == 1, "Map head() requires a column vector"
-        var res = Matrix[Self.T, n, 1]()
-        for i in range(n):
+        var res = Matrix[Self.T, n, 1](uninitialized=True)
+        comptime for i in range(n):
             res[i, 0] = self[i, 0]
         return res
 

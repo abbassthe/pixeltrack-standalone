@@ -77,7 +77,7 @@ def kernelBLFastFit[N: Int](
         while i < hitsInFit:
             var idx = Int(i)
             var hit = Int(hitId[idx])
-            var ge = InlineArray[Float32, 6](fill=0)
+            var ge = InlineArray[Float32, 6](uninitialized=True)
             cpeParams.detParams(Int(hhp.detectorIndex(hit))).frame.toGlobal(
                 hhp.xerrLocal(hit),
                 0,
@@ -151,7 +151,7 @@ def kernelBLFit[N: Int](
         var hits_ge = Rfit.Map6xNf[N](phits_ge[local_idx:])
 
         var data = BrokenLine.PreparedBrokenLineData[N]()
-        var Jacob = Rfit.Matrix3d()
+        var Jacob = Rfit.Matrix3d(uninitialized=True)
         var circle = BrokenLine.karimaki_circle_fit()
         var line = Rfit.line_fit()
 
@@ -173,7 +173,7 @@ def kernelBLFit[N: Int](
             Int32(track_idx),
         )
         results.pt[track_idx] = Float32(B) / Float32(abs(circle.par[2]))
-        results.eta[track_idx] = Float32(math.asinh(line.par[0]))
+        results.eta[track_idx] = math.asinh(Float32(line.par[0]))
         var chi2 = Float64(circle.chi2) + line.chi2
         results.chi2[track_idx] = Float32(
             chi2 / Float64(2 * N - 5)

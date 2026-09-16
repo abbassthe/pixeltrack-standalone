@@ -1201,7 +1201,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
 
     # C++: CAHitNtupletGeneratorKernelsCPU::fillHitDetIndices (CAHitNtupletGeneratorKernels.cc)
     def fill_hit_det_indices(
-        mut self,
+        self,
         hh: TrackingRecHit2DHeterogeneous,
         mut tracks_d: TkSoA,
         cudaStream: Stream,
@@ -1215,7 +1215,7 @@ struct CAHitNtupletGeneratorKernelsCPU(Movable):
     # C++ declares this method but never defines or calls it anywhere in the
     # serial backend -- the owned fields free themselves when
     # `self` is destroyed, so there's nothing left to free manually here.
-    def cleanup(mut self, cudaStream: Stream):
+    def cleanup(self, cudaStream: Stream):
         pass
 
     @staticmethod

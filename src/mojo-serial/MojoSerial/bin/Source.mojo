@@ -69,7 +69,7 @@ struct Source(Defaultable, Movable, Typeable):
         var endEvent: Int32,
         var runForMinutes: Int32,
         mut reg: ProductRegistry,
-        var path: Path,
+        path: Path,
         var validation: Bool,
     ):
         try:

@@ -10,8 +10,8 @@ struct _Rfit_circle_fit(Copyable, Defaultable, ImplicitlyCopyable, Movable):
     var chi2: Float32
 
     def __init__(out self):
-        self.par = Matrix[DType.float64, 3, 1]()
-        self.cov = Matrix[DType.float64, 3, 3]()
+        self.par = Matrix[DType.float64, 3, 1](uninitialized=True)
+        self.cov = Matrix[DType.float64, 3, 3](uninitialized=True)
         self.q = 0
         self.chi2 = 0.0
 
@@ -23,8 +23,8 @@ struct _Rfit_line_fit(Copyable, Defaultable, ImplicitlyCopyable, Movable):
     var chi2: Float64
 
     def __init__(out self):
-        self.par = Matrix[DType.float64, 2, 1]()
-        self.cov = Matrix[DType.float64, 2, 2]()
+        self.par = Matrix[DType.float64, 2, 1](uninitialized=True)
+        self.cov = Matrix[DType.float64, 2, 2](uninitialized=True)
         self.chi2 = 0.0
 
 
@@ -37,8 +37,8 @@ struct _Rfit_helix_fit(Copyable, Defaultable, ImplicitlyCopyable, Movable):
     var q: Int32  # particle charge
 
     def __init__(out self):
-        self.par = Matrix[DType.float64, 5, 1]()
-        self.cov = Matrix[DType.float64, 5, 5]()
+        self.par = Matrix[DType.float64, 5, 1](uninitialized=True)
+        self.cov = Matrix[DType.float64, 5, 5](uninitialized=True)
         self.chi2_circle = 0.0
         self.chi2_line = 0.0
         self.q = 0
@@ -167,7 +167,7 @@ struct Rfit:
 
     @staticmethod
     def par_uvrtopak(mut circle: Self.circle_fit, B: Float64, error: Bool):
-        var par_pak = Self.Vector3d()
+        var par_pak = Self.Vector3d(uninitialized=True)
         var temp0 = circle.par.head[2]().squaredNorm()
         var temp1 = math.sqrt(temp0)
         par_pak[0] = math.atan2(Float64(circle.q) * circle.par[0], -Float64(circle.q) * circle.par[1])
@@ -176,7 +176,7 @@ struct Rfit:
         if error:
             var temp2 = Self.sqr(circle.par[0]) * 1.0 / temp0
             var temp3 = 1.0 / temp1 * Float64(circle.q)
-            var J4 = Self.Matrix3d()
+            var J4 = Self.Matrix3d(uninitialized=True)
             J4[0, 0] = -circle.par[1] * temp2 * 1.0 / Self.sqr(circle.par[0])
             J4[0, 1] = temp2 * 1.0 / circle.par[0]
             J4[0, 2] = 0.0
@@ -191,7 +191,7 @@ struct Rfit:
 
     @staticmethod
     def fromCircleToPerigee(mut circle: Self.circle_fit):
-        var par_pak = Self.Vector3d()
+        var par_pak = Self.Vector3d(uninitialized=True)
         var temp0 = circle.par.head[2]().squaredNorm()
         var temp1 = math.sqrt(temp0)
         par_pak[0] = math.atan2(Float64(circle.q) * circle.par[0], -Float64(circle.q) * circle.par[1])
@@ -200,7 +200,7 @@ struct Rfit:
 
         var temp2 = Self.sqr(circle.par[0]) * 1.0 / temp0
         var temp3 = 1.0 / temp1 * Float64(circle.q)
-        var J4 = Self.Matrix3d()
+        var J4 = Self.Matrix3d(uninitialized=True)
         J4[0, 0] = -circle.par[1] * temp2 * 1.0 / Self.sqr(circle.par[0])
         J4[0, 1] = temp2 * 1.0 / circle.par[0]
         J4[0, 2] = 0.0

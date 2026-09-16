@@ -39,8 +39,13 @@ struct TrajectoryStateSoA[S: Int32](Copyable, Defaultable, Movable, Typeable):
         b: Float,
         i: Int32,
     ):
-        self.state.__setitem__(i, cp, lp)
-        self.state[i][2, 0] *= b
+        var st = self.state[i]
+        st[0, 0] = cp[0, 0].cast[DType.float32]()
+        st[1, 0] = cp[1, 0].cast[DType.float32]()
+        st[2, 0] = cp[2, 0].cast[DType.float32]()
+        st[3, 0] = lp[0, 0].cast[DType.float32]()
+        st[4, 0] = lp[1, 0].cast[DType.float32]()
+        st[2, 0] *= b
         var cov = self.covariance[i]
         cov[0, 0] = ccov[0, 0].cast[DType.float32]()
         cov[1, 0] = ccov[0, 1].cast[DType.float32]()

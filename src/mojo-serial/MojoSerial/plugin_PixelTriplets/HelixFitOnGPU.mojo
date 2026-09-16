@@ -150,7 +150,10 @@ struct HelixFitOnGPU:
         var hits_geGPU_ = List[Float32](length=nConcurrent * 6 * 4, fill=0.0)
         var fast_fit_resultsGPU_ = List[Float64](length=nConcurrent * 4, fill=0.0)
         var circle_fit_resultsGPU_ = List[FitUtilsRfit.circle_fit](
-            length=nConcurrent, fill=FitUtilsRfit.circle_fit()
+            length=nConcurrent,
+            fill=FitUtilsRfit.circle_fit(
+                FitUtilsRfit.Vector3d(), FitUtilsRfit.Matrix3d(), 0, 0
+            ),
         )
 
         var phits = Span(hitsGPU_)

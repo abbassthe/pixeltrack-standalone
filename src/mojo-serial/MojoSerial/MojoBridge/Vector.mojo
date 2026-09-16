@@ -558,7 +558,6 @@ struct Vector[T: DType, size: Int](
     def __str__(self) -> String:
         return String(self)
 
-    @no_inline
     def __repr__(self) -> String:
         var output = String()
         output.write("Vector[" + repr(Self.T) + ", ", Self.size, "](")
@@ -644,7 +643,6 @@ struct Vector[T: DType, size: Int](
         else:
             return (self > 0) & (self & (self - 1) == 0)
 
-    @no_inline
     def write_to[W: Writer](self, mut writer: W):
         writer.write("[")
         for i in range(self.__len__()):

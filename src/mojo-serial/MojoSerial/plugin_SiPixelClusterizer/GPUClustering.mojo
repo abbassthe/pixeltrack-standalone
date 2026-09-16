@@ -50,6 +50,25 @@ struct GPUClustering:
     ):
         var msize: Int32
 
+        # init hist  (ymax=416 < 512 : 9bits)
+        comptime maxPixInModule: UInt32 = 4000
+        comptime nbins = Phase1PixelTopology.numColsInModule.cast[
+            DType.uint32
+        ]() + 2
+        comptime Hist = HistoContainer[
+            DType.uint16,
+            nbins,
+            maxPixInModule,
+            9,
+            DType.uint16,
+        ]
+        comptime maxNeighbours = 10
+        var hist = Hist()
+        var nn = List[UInt16](
+            length=Int(maxPixInModule) * maxNeighbours, fill=0
+        )
+        var nnn = List[UInt8](length=Int(maxPixInModule), fill=0)
+
         var endModule = moduleStart[0]
         for module in range(endModule):
             var firstPixel = moduleStart[module + 1]
@@ -74,20 +93,7 @@ struct GPUClustering:
                     msize = min(msize, Int32(i))
                     break
 
-            # init hist  (ymax=416 < 512 : 9bits)
-            comptime maxPixInModule: UInt32 = 4000
-            comptime nbins = Phase1PixelTopology.numColsInModule.cast[
-                DType.uint32
-            ]() + 2
-            comptime Hist = HistoContainer[
-                DType.uint16,
-                nbins,
-                maxPixInModule,
-                9,
-                DType.uint16,
-            ]
-            var hist = Hist()
-
+            hist.psws = 0
             for j in range(Hist.totbins()):
                 hist.off[j] = 0
 
@@ -131,15 +137,10 @@ struct GPUClustering:
                 hist.fill(y[i], UInt16(i - Int(firstPixel)))
 
             var maxiter = hist.size()
-            # allocate space for duplicate pixels: a pixel can appear more than once with different charge in the same event
-            comptime maxNeighbours = 10
-            debug_assert((Int(hist.size()) // 1) <= Int(maxiter))
+            debug_assert(maxiter <= maxPixInModule)
             # nearest neighbour
-            var nn = List[List[UInt16]](
-                length=Int(maxiter),
-                fill=List[UInt16](length=Int(maxNeighbours), fill=0),
-            )
-            var nnn = List[UInt8](length=Int(maxiter), fill=0)  # number of nn
+            for k in range(Int(maxiter)):
+                nnn[k] = 0
 
             # fill NN
             var j: UInt32 = 0
@@ -165,7 +166,7 @@ struct GPUClustering:
                     var l = nnn[k]
                     nnn[k] += 1
                     debug_assert(l < maxNeighbours)
-                    nn[k][l] = p[]
+                    nn[Int(k) * maxNeighbours + Int(l)] = p[]
                     p += 1
                 j += 1
                 k += 1
@@ -197,7 +198,7 @@ struct GPUClustering:
                         var p = hist.begin() + j
                         var i = p[].cast[DType.uint32]() + firstPixel
                         for kk in range(nnn[k]):
-                            var l = nn[k][kk]
+                            var l = nn[Int(k) * maxNeighbours + Int(kk)]
                             var m = l.cast[DType.uint32]() + firstPixel
                             debug_assert(m != i)
                             var old = clusterId[m]

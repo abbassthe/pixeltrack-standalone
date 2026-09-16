@@ -66,8 +66,8 @@ struct GPUCACell(Copyable, Defaultable, Movable):
 
     def init(
         mut self,
-        mut cellNeighbors: Self.CellNeighborsVector,
-        mut cellTracks: Self.CellTracksVector,
+        cellNeighbors: Self.CellNeighborsVector,
+        cellTracks: Self.CellTracksVector,
         hh: Self.Hits,
         layerPairId: Int32,
         doubletId: Int32,
