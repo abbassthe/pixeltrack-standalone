@@ -25,7 +25,7 @@ struct BeamSpotCUDA(Defaultable, Movable, Typeable):
     fn __moveinit__(out self, deinit take: Self):
         self.data_d_ = take.data_d_^
 
-    fn data(mut self) -> UnsafePointer[BeamSpotPOD, MutAnyOrigin]:
+    fn data(self) -> UnsafePointer[BeamSpotPOD, MutAnyOrigin]:
         return self.data_d_.get()
 
     fn ptr(ref self) -> ref [self.data_d_] DeviceUniquePtr[BeamSpotPOD]:

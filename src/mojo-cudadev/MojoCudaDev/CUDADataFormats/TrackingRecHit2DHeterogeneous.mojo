@@ -26,7 +26,7 @@ from MojoCudaDev.Geometry.Phase1PixelTopology import Phase1PixelTopology
 from MojoCudaDev.MojoBridge.DTypes import Float, Typeable
 
 
-struct TrackingRecHit2DHeterogeneous(Movable, Typeable):
+struct TrackingRecHit2DHeterogeneous(Defaultable, Movable, Typeable):
     comptime PhiBinner = TrackingRecHit2DSOAView.PhiBinner
     comptime AverageGeometry = TrackingRecHit2DSOAView.AverageGeometry
     comptime n16: UInt32 = 4

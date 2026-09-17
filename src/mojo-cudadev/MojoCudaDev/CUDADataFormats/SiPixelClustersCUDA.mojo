@@ -102,16 +102,16 @@ struct SiPixelClustersCUDA(Defaultable, Movable, Typeable):
     fn nClusters(self) -> UInt32:
         return self.nClusters_h
 
-    fn moduleStart(mut self) -> UnsafePointer[UInt32, MutAnyOrigin]:
+    fn moduleStart(self) -> UnsafePointer[UInt32, MutAnyOrigin]:
         return self.moduleStart_d.get()
 
-    fn clusInModule(mut self) -> UnsafePointer[UInt32, MutAnyOrigin]:
+    fn clusInModule(self) -> UnsafePointer[UInt32, MutAnyOrigin]:
         return self.clusInModule_d.get()
 
-    fn moduleId(mut self) -> UnsafePointer[UInt32, MutAnyOrigin]:
+    fn moduleId(self) -> UnsafePointer[UInt32, MutAnyOrigin]:
         return self.moduleId_d.get()
 
-    fn clusModuleStart(mut self) -> UnsafePointer[UInt32, MutAnyOrigin]:
+    fn clusModuleStart(self) -> UnsafePointer[UInt32, MutAnyOrigin]:
         return self.clusModuleStart_d.get()
 
     fn view(self) -> UnsafePointer[DeviceConstView, MutAnyOrigin]:

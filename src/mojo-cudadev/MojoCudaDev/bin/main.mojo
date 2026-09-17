@@ -10,6 +10,22 @@ from MojoCudaDev.bin.PosixClockGettime import (
 )
 from MojoCudaDev.Framework.ESPluginFactory import Registry as ESRegistry, fwkEventSetupModule
 from MojoCudaDev.Framework.PluginFactory import Registry as EDRegistry, fwkModule
+from MojoCudaDev.plugin_BeamSpotProducer.BeamSpotESProducer import BeamSpotESProducer
+from MojoCudaDev.plugin_BeamSpotProducer.BeamSpotToCUDA import BeamSpotToCUDA
+from MojoCudaDev.plugin_SiPixelClusterizer.SiPixelGainCalibrationForHLTGPUESProducer import (
+    SiPixelGainCalibrationForHLTGPUESProducer,
+)
+from MojoCudaDev.plugin_SiPixelClusterizer.SiPixelROCsStatusAndMappingWrapperESProducer import (
+    SiPixelROCsStatusAndMappingWrapperESProducer,
+)
+from MojoCudaDev.plugin_SiPixelClusterizer.SiPixelRawToClusterCUDA import (
+    SiPixelRawToClusterCUDA,
+)
+from MojoCudaDev.plugin_SiPixelRecHits.PixelCPEFastESProducer import PixelCPEFastESProducer
+from MojoCudaDev.plugin_SiPixelRecHits.SiPixelRecHitCUDA import SiPixelRecHitCUDA
+from MojoCudaDev.plugin_Validation.DigiClusterRecHitValidator import (
+    DigiClusterRecHitValidator,
+)
 
 
 fn print_help(name: String):
@@ -17,7 +33,7 @@ fn print_help(name: String):
         "Usage:",
         name,
         "[--warmupEvents WE] [--maxEvents ME] [--runForMinutes RM]",
-        "[--data PATH] [--empty]",
+        "[--data PATH] [--empty] [--validation]",
     )
 
 
@@ -28,6 +44,7 @@ fn main() raises:
     var runForMinutes = -1
     var path = Path("")
     var empty = False
+    var validation = False
 
     var i = 1
     while i < args.__len__():
@@ -48,6 +65,8 @@ fn main() raises:
             path = Path(args[i])
         elif args[i] == "--empty":
             empty = True
+        elif args[i] == "--validation":
+            validation = True
         else:
             print("Invalid parameter", args[i])
             exit(1)
@@ -67,21 +86,26 @@ fn main() raises:
     var _esreg = ESRegistry()
     var _edreg = EDRegistry()
     if not empty:
-        # TODO(Phase 4): register cudadev's producers as each plugin lands, in
-        # pipeline order -- SiPixelClusterizer, SiPixelRecHits, PixelTriplets,
-        # PixelVertexFinding, BeamSpotProducer -- plus the ES producers
-        # (SiPixelROCsStatusAndMappingWrapper, SiPixelGainCalibrationForHLTGPU,
-        # PixelCPEFast, BeamSpot) and the *FromCUDA/*ToCUDA transfer producers.
-        # cudatest's IntESProducer/TestProducer registrations were dropped here:
-        # they belong to plugin-Test1, which has no cudadev counterpart.
-        pass
+        # EventSetup products used by the raw-to-cluster and rechit stages.
+        fwkEventSetupModule[SiPixelROCsStatusAndMappingWrapperESProducer](_esreg)
+        fwkEventSetupModule[SiPixelGainCalibrationForHLTGPUESProducer](_esreg)
+        fwkEventSetupModule[PixelCPEFastESProducer](_esreg)
+        fwkEventSetupModule[BeamSpotESProducer](_esreg)
+
+        # ProductRegistry construction follows dataflow order. StreamSchedule
+        # still derives the actual execution order from consumes()/produces().
+        fwkModule[BeamSpotToCUDA](_edreg)
+        fwkModule[SiPixelRawToClusterCUDA](_edreg)
+        fwkModule[SiPixelRecHitCUDA](_edreg)
+        if validation:
+            fwkModule[DigiClusterRecHitValidator](_edreg)
 
     var processor = EventProcessor(
         warmupEvents,
         maxEvents,
         runForMinutes,
         path,
-        False,
+        validation,
         UnsafePointer(to=_esreg),
         UnsafePointer(to=_edreg),
     )

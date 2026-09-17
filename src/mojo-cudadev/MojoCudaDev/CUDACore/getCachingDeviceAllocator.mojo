@@ -118,7 +118,7 @@ struct _CachingAllocatorState(Movable):
         self._allocator_ptr = UnsafePointer[CachingDeviceAllocator[DeviceTraits], MutAnyOrigin]()
         self.raw_state = _AllocateDeviceState()
 
-    fn __moveinit__(out self, var take: Self):
+    fn __moveinit__(out self, deinit take: Self):
         self.policy = take.policy
         self._allocator_lock = BlockingSpinLock()
         self._allocator_initialized = take._allocator_initialized

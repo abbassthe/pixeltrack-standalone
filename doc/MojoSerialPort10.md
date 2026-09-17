@@ -4,23 +4,22 @@ Working notes and reference for the 25.5.0 → 1.0.0 migration on branch
 `mojo-serial-1.0-port`. Everything here was verified against the 1.0 compiler on
 this source or on an isolated probe — nothing is recalled from documentation.
 
-> **STATE:** the tree is at **29 errors across 13 files** — 6 of those are the
-> spurious `main() in packages`, so **23 real errors across 11 files**. Both
-> self-referential views are gone (`TrackingRecHit2DSOAView` §11, `ParamsOnGPU`
-> §13) and the whole RecHits chain — `PixelCPEforGPU`, `PixelCPEFast`,
-> `TrackingRecHit2DHeterogeneous`, `PixelRecHits`, `GPUPixelRecHits`,
-> `SiPixelRecHitCUDA` — is at zero, as is the `gpuVertexFinder` cluster.
-> `OwnedPointer` fields are down from 39 to 1 (§12). The plugin factories are
-> deleted in favour of a closed `Variant` set in `bin/Plugins.mojo`, and
-> `StreamSchedule` no longer holds `_source`/`_eventSetup` — **§17 is still owed
-> for that change.** Two tests now *execute*: `GPUClusteringTest` matches the
-> C++ reference byte-for-byte, and a vertex-finder driver passes on hand-checked
-> input.
+> **STATE (measured 2026-09-16, working tree on `2922909d`):** every non-test
+> file is at zero. `precompile` reports **15 errors across 6 files**: 6 are the
+> spurious `main() in packages`, and the **9 real errors are all in two tests**,
+> `HistoContainerTest` (7) and `TrajectoryStateSOATest` (2). The full build of
+> `bin/main.mojo` succeeds, and the binary **processes the 1000-event sample
+> with all five event modules and passes `CountValidator` on every event** (§9).
+> `GPUClusteringTest` is still byte-identical to the C++ reference.
 >
-> The raw-decode chain — `FEDRawData`, `FEDHeader`, `FEDTrailer`,
-> `ErrorChecker`, `WordFedAppender`, `fillHitsModuleStart` — is at zero (§18).
-> What is left is the `SimpleVector` cluster (12), the two test files (9) and
-> two strays.
+> `UnsafePointer` 598 → **17** (13 in code, in two files), `Span` 2 → **305**,
+> self-referential views 4 → **0**, `OwnedPointer` fields 39 → **1**. The plugin
+> factories are deleted in favour of a closed `Variant` set in
+> `bin/Plugins.mojo`, and `StreamSchedule` no longer holds
+> `_source`/`_eventSetup`. **§15, §16 and §17 are cited from code comments but
+> have not been written.**
+>
+> **Known bug:** run without `--maxEvents`, the binary never terminates (§10).
 
 ---
 
@@ -498,29 +497,76 @@ started resolving (793 → 802).
 
 Use **files-at-zero**, not the total, as the progress metric.
 
+Recorded counts go stale fast. Re-measuring commit `22d4d12d` (extracted with
+`git archive`) gives 58 errors, while the STATE header committed alongside it
+said 29. Measure before quoting a number.
+
 ---
 
 ## 9. Status
 
-- 802 → **86** errors
-- `UnsafePointer` 598 → **101**; `Span` 2 → **139**
-- self-referential views 4 → **0** — none left in the port
+Measured 2026-09-16 on the working tree (`2922909d` plus uncommitted edits):
+
+- 802 → **15** errors: 6 spurious `main() in packages`, 9 real, all in
+  `test/HistoContainerTest` and `test/TrajectoryStateSOATest`. Every non-test
+  file is at zero.
+- `UnsafePointer` 598 → **17** occurrences (`grep -ow`), of which 4 are in
+  comments; `Span` 2 → **305**
+- self-referential views 4 → **0**
 - `OwnedPointer` fields 39 → **1** (only `TypeableOwnedPointer._inner`, the
   Event-product mechanism; see §12)
-- of 125 `.mojo` files, **27 still carry at least one error**
+- 122 `.mojo` files (127 at the start): `TrackingRecHit2DSOAView`,
+  `PluginFactory`, `ESPluginFactory`, `OrderedMultiSet`, `Print` and `Static`
+  deleted, `bin/Plugins.mojo` added
+- 146 `precompile` warnings (313 earlier); `mojo build` of `bin/main.mojo`
+  reports 164
 
-**Two tests now execute, not merely compile.** `test/GPUClusteringTest` is
-byte-for-byte identical to the C++ reference (`g++ -I. test/cpuClustering_t.cc`)
-across all five iterations, and a `VertexFinder_t`-style driver over the vertex
-finder passes on a hand-checked 3-vertex input. Running them is the only reason
-the two bugs in §7 (`range(UInt32, …, -1)`, and the tail `comptime assert`) were
-found — neither shows up in the error count.
+Count errors with `grep "error:"` and drop the driver's closing
+`failed to parse the provided Mojo source module` line. Most files carry more
+*warnings* than errors, so counting lines that start with a filename overstates
+the remaining work.
 
-Count errors with `grep "error:"`, not by counting lines that merely start with
-a filename — most files now carry more *warnings* than errors, and mixing them
-overstates the remaining work.
-- 313 warnings remain, most of them the `UnsafePointer` deprecation — i.e. the
-  remaining worklist restated
+**The program runs end to end.** `mojo build` of `bin/main.mojo` succeeds (0
+errors, 554 MB peak, ~7 s). On the 1000-event sample, with all five event
+modules (`BeamSpotToPOD`, `SiPixelRawToClusterCUDA`, `SiPixelRecHitCUDA`,
+`CAHitNtupletCUDA`, `PixelVertexProducerCUDA`), `CountValidator` passes every
+event. It checks the module, digi and cluster counts exactly, tracks to 1.2 %
+relative and vertices to ±1, against the reference counts shipped with the data.
+The C++ `serial` binary runs the same five modules (`src/serial/bin/main.cc` has
+the two commented-out modules re-enabled locally):
+
+| | Mojo | C++ `serial` |
+|---|---|---|
+| events validated | 1000 / 1000 | 1000 / 1000 |
+| mean relative track difference | 0.00130 | 0.00134 |
+| mean absolute vertex difference | 0.005 | 0.005 |
+
+The track figures differ slightly, so the two backends do not produce identical
+per-event track counts. The validator only checks counts, not track parameters.
+
+`test/GPUClusteringTest` is still byte-for-byte identical to the C++ reference
+across all five iterations, including the uncommitted `GPUClustering.mojo` edits
+that hoist the histogram and neighbour buffers out of the module loop. Running
+the tests found the two bugs in §7 (`range(UInt32, …, -1)` and the tail
+`comptime assert`); the error count shows neither. The hand-checked vertex
+driver from the earlier session was not kept. The full run now covers the vertex
+finder instead.
+
+Reproduce (from `src/mojo-serial`, **capped**, with output to a scratch dir):
+
+```
+systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 \
+  pixi run mojo build -I . MojoSerial/bin/main.mojo -o $OUT/mojo-serial
+$OUT/mojo-serial --data ../../data --validation --maxEvents 1000   # --maxEvents is required, §10
+
+pixi run mojo build -I . MojoSerial/test/GPUClusteringTest.mojo -o $OUT/clus  # capped likewise
+(cd ../serial && g++ -std=c++17 -O2 -I. test/cpuClustering_t.cc -o $OUT/clus_cpp)
+cmp <($OUT/clus) <($OUT/clus_cpp)
+```
+
+Do not compare throughput from this build. It keeps assertions on (§12), so the
+28.8 ev/s it printed against C++'s 44.6 ev/s measures bounds checks as much as
+code.
 
 Fully converted: `SiPixelClustersSoA`, `SiPixelDigisSoA`, `HistoContainer`,
 `CUDAStdAlgorithm`, `GPUCalibPixel`, `SiPixelFedCablingMapGPUWrapper`,
@@ -540,31 +586,47 @@ exactly what `__restrict__` was asserting by hand. `test/GPUClusteringTest` and
 
 ## 10. Remaining work
 
-Grouped by dependency vertical rather than by size, since the fix order is forced.
+Everything this section used to list is at zero: the fit chain, the framework
+spine, the container shims and the leaf files. What is left:
 
-**The fit chain (~48)** — the last unported piece of the reconstruction spine.
-Bottom-up: `SymmetricEigen` (7), `EigenSoA` (8), `TrajectoryStateSoA` (11) →
-`RiemannFit` (7), `BrokenLine` (1) → `RiemannFitOnGPU` (1), `BrokenLineFitOnGPU` (1)
-→ `HelixFitOnGPU` (10) → `CAHitNtupletGeneratorOnGPU` (2). All of it now rests on
-the finished `Matrix`/`Vector` shim. `TrajectoryStateSoA`'s 11 errors are *all* the
-`LayoutTensor` missing-origin error solved in §6b.
+**Bug: without `--maxEvents` the binary never ends.** C++ `Source.cc:81-82`
+sets `maxEvents_ = raw_.size()` when both `maxEvents` and `runForMinutes` are
+negative. The port has no equivalent. `main.mojo` passes `endEvent = -1`,
+`Source.produce` only stops when `_endEvent >= 0`, and
+`index = globalEvent % len(_raw)` cycles the sample forever. Measured: still at
+100 % CPU after 2 min 22 s, where 1000 events take 35 s. Not fixed.
 
-**The framework spine (~46)** — needed before the binary links and runs an event:
-`StreamSchedule` (9), `main` (8), `Event` / `EventSetup` / `PluginFactory` /
-`ESPluginFactory` / `EventProcessor` (5 each), `Source` (4), `ProductRegistry` (3).
+**Two stale tests (9 errors).**
 
-**Container shims (~27)** — `OrderedMultiSet` (11), `Timer` (10), `OrderedMap` (6).
-Independent of everything else; `Timer`'s errors are all one shape (mutating a
-`Dict`/`List` through a non-`mut` accessor).
+- `HistoContainerTest` (7) calls `count(t, nh)` and `fill(t, j, nh)`. C++ has
+  these multi-histogram overloads (`HistoContainer.h:220,228`), but the port
+  never ported them. The test also passes `forEachInBins` a runtime callback,
+  where the port takes `func` as a compile-time parameter, and passes an `Int`
+  index where `fill` wants `UInt32` (§6).
+- `TrajectoryStateSOATest` (2) passes shim `Vector5d` values where
+  `copyFromDense`/`copyToDense` now take `LayoutTensor`s (§6b).
 
-**Leaf files (~40)** — `SiPixelRawToClusterGPUKernel` (5), `FEDRawData` (5),
-`SiPixelDigisSoA` / `FEDTrailer` / `FEDHeader` / `SimpleVector` (4 each), and a long
-tail of 1–3.
+**`UnsafePointer`: 13 code sites in two files.**
 
-**Tests (~10)** — `HistoContainerTest` (7), plus singletons. Lowest priority.
+- `bin/PosixClockGettime.mojo`: the `clock_gettime` `external_call`.
+- `CAHitNtupletGeneratorKernels.mojo`: 11 × `Atomic.fetch_add(UnsafePointer(to=c.nX), …)`
+  on `Counters`, which already arrives as a `mut` borrow. This looks like the
+  §14 `CUDACompat` case, but that has not been checked.
 
-Cross-cutting, not a file: `Int`/`UInt32` conversions, not mechanically sweepable
-(§6).
+**Unchecked casts, not yet triaged.** Non-comment lines: `rebind[` 21 (8
+files), `unsafe_ptr()` 10, `bitcast[` 9 (the deprecated spelling, which also
+warns), `unsafe_bitcast` 8, `UntrackedOrigin` 4, `unsafe_offset` 1.
+
+**`TypeableOwnedPointer._inner`**, the last `OwnedPointer` field. It is
+structural (§12).
+
+**Documentation owed.** Code comments cite three sections that do not exist:
+§15 (from `Event.mojo` and `EventSetup.mojo`), §16 (from `HelixFitOnGPU.mojo`)
+and §17 (from `bin/Plugins.mojo` and all six plugin `__init__.mojo` files).
+
+**Validation gaps.** The end-to-end check compares counts only. No track or
+vertex *parameters* are compared against C++, and throughput has not been
+measured on an `-D ASSERT=none` build.
 
 ---
 

@@ -22,6 +22,7 @@ from MojoCudaDev.CUDACore.SimpleVector import SimpleVector, make_SimpleVector
 from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType, cudaStreamDefault
 from MojoCudaDev.DataFormats.SiPixelErrorCompact import SiPixelErrorCompact
 from MojoCudaDev.DataFormats.SiPixelFormatterErrors import SiPixelFormatterErrors
+from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 comptime SiPixelErrorCompactVector = SimpleVector[
     SiPixelErrorCompact, "SiPixelErrorCompact"
@@ -32,7 +33,7 @@ fn _null_host_ptr[T: AnyType]() -> HostUniquePtr[T]:
     return HostUniquePtr[T](_HostAllocation[T]())
 
 
-struct SiPixelDigiErrorsCUDA(Movable):
+struct SiPixelDigiErrorsCUDA(Defaultable, Movable, Typeable):
     var data_d: DeviceUniquePtr[SiPixelErrorCompact]
     var error_d: DeviceUniquePtr[SiPixelErrorCompactVector]
     var error_h: HostUniquePtr[SiPixelErrorCompactVector]
@@ -97,3 +98,7 @@ struct SiPixelDigiErrorsCUDA(Movable):
         var err = self.error_h[].get()[0].copy()
         err.set_data(data[].get())
         return (err^, data^)
+
+    @staticmethod
+    fn dtype() -> String:
+        return "SiPixelDigiErrorsCUDA"

@@ -17,24 +17,21 @@
 # `Base::count(b)`), since Base::count's own bound check (`b < nOnes()`) is
 # looser than what HistoContainer wants to assert here (`b < nbins()`).
 #
-# Not ported: countFromVector, fillFromVector, fillManyFromVector, launchZero,
-# launchFinalize. Not the same "generic-kernel-launch problem" as launch.mojo
-# claims for the general case -- confirmed that calling a specific, named
-# generic kernel by name with type arguments, from inside another generic
-# function, actually works fine (kernel_trait_spike.mojo,
-# generic_kernel_from_generic_fn.mojo). What actually blocks this group:
-# launchFinalize's device path needs multiBlockPrefixScan (bins can exceed
-# 1024, so the existing single-block blockPrefixScan isn't enough), which
-# doesn't exist yet -- a separate task. countFromVector/fillFromVector are
-# otherwise ready (index_type narrowed to Scalar[IdxDType] for a generic
-# IdxDType: DType, so the loop index converts to it via Scalar[dt](i) --
-# confirmed working, see scalar_dtype_construct_check.mojo) but only make
-# sense ported together with the rest of this pipeline.
+# `countFromVector`, `fillFromVector`, and `fillManyFromVector` are ported
+# below for the `UInt32` index type used by the rechit phi binner. Their
+# sequence matches C++'s `launchZero(view)`, count, `launchFinalize(view)`,
+# fill. The finalizer is still a single-thread inclusive scan because the
+# generic C++ `multiBlockPrefixScan` has not yet been ported; this is correct
+# for every number of bins but is a performance limitation for large histograms.
 from std.sys.info import size_of
 from std.memory import AddressSpace
+from std.gpu.host import DeviceContext
+from std.gpu.host.dim import Dim
 
 from MojoCudaDev.CUDACore.OneToManyAssoc import OneToManyAssoc, OneToManyAssocView
 from MojoCudaDev.CUDACore.AtomicPairCounter import AtomicPairCounter
+from MojoCudaDev.CUDACore.CUDACompat import CUDAStreamType
+from MojoCudaDev.CUDACore.currentDevice import currentDevice
 from MojoCudaDev.MojoBridge.DTypes import signed_to_unsigned
 
 
@@ -168,6 +165,189 @@ struct HistoContainer[
         var w = Self.Base.atomicDecrement(self.base.off.data() + b)
         debug_assert(w > 0, "HistoContainer.fill: bin already empty")
         self.base.content[Int(w) - 1] = j
+
+
+# C++: zeroAndInit(), called by launchZero(view). One block is required since
+# thread zero initializes the association before the remaining threads clear
+# its counters.
+fn _launchZero[
+    ValueT: DType, NBINS: Int, SIZE: Int, S: Int, NHISTS: Int,
+](
+    hist: UnsafePointer[HistoContainer[ValueT, NBINS, SIZE, S, UInt32, NHISTS], MutAnyOrigin],
+    storage: UnsafePointer[UInt32, MutAnyOrigin],
+    storage_size: Int32,
+):
+    from std.gpu import block_dim, thread_idx
+    from std.gpu.sync import barrier
+
+    if thread_idx.x == 0:
+        var view = HistoContainer[ValueT, NBINS, SIZE, S, UInt32, NHISTS].View()
+        view.assoc = UnsafePointer(to=hist[].base)
+        view.setContentStorage(storage)
+        view.contentSize = storage_size
+        # C++ zeroAndInit() resets the multi-block prefix-scan completion
+        # counter before every use, even though the present finalizer does not
+        # consume it yet.
+        hist[].base.psws = 0
+        hist[].initStorage(view)
+    barrier()
+
+    var i = Int(thread_idx.x)
+    while i < HistoContainer[ValueT, NBINS, SIZE, S, UInt32, NHISTS].totbins():
+        hist[].base.off.data()[i] = 0
+        i += Int(block_dim.x)
+
+
+fn _upperBound(
+    offsets: UnsafePointer[UInt32, MutAnyOrigin],
+    size: Int,
+    value: Int,
+) -> Int:
+    # Equivalent to cuda_std::upper_bound(offsets, offsets + size, value):
+    # return the first position whose offset is greater than value.  This is
+    # important when a layer has zero hits: a linear "while i >= next" search
+    # happens to work for this input but is not the C++ algorithm.
+    var first = 0
+    var count = size
+    while count > 0:
+        var step = count // 2
+        var probe = first + step
+        if Int(offsets[probe]) <= value:
+            first = probe + 1
+            count -= step + 1
+        else:
+            count = step
+    return first
+
+
+fn _countFromVector[
+    ValueT: DType, NBINS: Int, SIZE: Int, S: Int, NHISTS: Int,
+](
+    hist: UnsafePointer[HistoContainer[ValueT, NBINS, SIZE, S, UInt32, NHISTS], MutAnyOrigin],
+    nh: UInt32,
+    values: UnsafePointer[Scalar[ValueT], MutAnyOrigin],
+    offsets: UnsafePointer[UInt32, MutAnyOrigin],
+):
+    from std.gpu import block_dim, block_idx, grid_dim, thread_idx
+
+    var i = Int(block_dim.x) * Int(block_idx.x) + Int(thread_idx.x)
+    var stride = Int(block_dim.x) * Int(grid_dim.x)
+    # C++ deliberately uses offsets[nh], not the external-storage capacity
+    # (`totSize` in fillManyFromVector()).
+    var nt = Int(offsets[Int(nh)])
+    while i < nt:
+        var off = _upperBound(offsets, Int(nh) + 1, i)
+        debug_assert(Int(offsets[off]) > 0, "countFromVector: invalid offsets")
+        var ih = off - 1
+        debug_assert(ih >= 0 and ih < Int(nh), "countFromVector: no histogram for element")
+        hist[].count(values[i], UInt32(ih))
+        i += stride
+
+
+fn _launchFinalize[
+    ValueT: DType, NBINS: Int, SIZE: Int, S: Int, NHISTS: Int,
+](hist: UnsafePointer[HistoContainer[ValueT, NBINS, SIZE, S, UInt32, NHISTS], MutAnyOrigin]):
+    from std.gpu import thread_idx
+
+    if thread_idx.x == 0:
+        var prefix: UInt32 = 0
+        for i in range(HistoContainer[ValueT, NBINS, SIZE, S, UInt32, NHISTS].totbins()):
+            prefix += hist[].base.off.data()[i]
+            hist[].base.off.data()[i] = prefix
+
+
+fn _fillFromVector[
+    ValueT: DType, NBINS: Int, SIZE: Int, S: Int, NHISTS: Int,
+](
+    hist: UnsafePointer[HistoContainer[ValueT, NBINS, SIZE, S, UInt32, NHISTS], MutAnyOrigin],
+    nh: UInt32,
+    values: UnsafePointer[Scalar[ValueT], MutAnyOrigin],
+    offsets: UnsafePointer[UInt32, MutAnyOrigin],
+):
+    from std.gpu import block_dim, block_idx, grid_dim, thread_idx
+
+    var i = Int(block_dim.x) * Int(block_idx.x) + Int(thread_idx.x)
+    var stride = Int(block_dim.x) * Int(grid_dim.x)
+    # Keep this bound and lookup identical to _countFromVector/C++.
+    var nt = Int(offsets[Int(nh)])
+    while i < nt:
+        var off = _upperBound(offsets, Int(nh) + 1, i)
+        debug_assert(Int(offsets[off]) > 0, "fillFromVector: invalid offsets")
+        var ih = off - 1
+        debug_assert(ih >= 0 and ih < Int(nh), "fillFromVector: no histogram for element")
+        hist[].fill(values[i], UInt32(i), UInt32(ih))
+        i += stride
+
+
+fn fillManyFromVector[
+    ValueT: DType, NBINS: Int, SIZE: Int, S: Int, NHISTS: Int,
+](
+    hist: UnsafePointer[HistoContainer[ValueT, NBINS, SIZE, S, UInt32, NHISTS], MutAnyOrigin],
+    nh: UInt32,
+    values: UnsafePointer[Scalar[ValueT], MutAnyOrigin],
+    offsets: UnsafePointer[UInt32, MutAnyOrigin],
+    total_size: Int32,
+    nthreads: Int,
+    storage: UnsafePointer[UInt32, MutAnyOrigin],
+    stream: CUDAStreamType,
+) raises:
+    if total_size <= 0:
+        return
+
+    var ctx = DeviceContext(api="cuda", device_id=currentDevice())
+    var device_stream = stream.get()
+    var init = ctx.compile_function[
+        _launchZero[ValueT, NBINS, SIZE, S, NHISTS],
+        _launchZero[ValueT, NBINS, SIZE, S, NHISTS],
+    ]()
+    device_stream.enqueue_function(
+        init,
+        hist,
+        storage,
+        total_size,
+        grid_dim=Dim(1),
+        block_dim=Dim(1024),
+    )
+
+    var blocks = (Int(total_size) + nthreads - 1) // nthreads
+    var count = ctx.compile_function[
+        _countFromVector[ValueT, NBINS, SIZE, S, NHISTS],
+        _countFromVector[ValueT, NBINS, SIZE, S, NHISTS],
+    ]()
+    device_stream.enqueue_function(
+        count,
+        hist,
+        nh,
+        values,
+        offsets,
+        grid_dim=Dim(blocks),
+        block_dim=Dim(nthreads),
+    )
+
+    var finalize = ctx.compile_function[
+        _launchFinalize[ValueT, NBINS, SIZE, S, NHISTS],
+        _launchFinalize[ValueT, NBINS, SIZE, S, NHISTS],
+    ]()
+    device_stream.enqueue_function(
+        finalize,
+        hist,
+        grid_dim=Dim(1),
+        block_dim=Dim(1),
+    )
+
+    var fill = ctx.compile_function[
+        _fillFromVector[ValueT, NBINS, SIZE, S, NHISTS],
+        _fillFromVector[ValueT, NBINS, SIZE, S, NHISTS],
+    ]()
+    device_stream.enqueue_function(
+        fill,
+        hist,
+        nh,
+        values,
+        offsets,
+        grid_dim=Dim(blocks),
+        block_dim=Dim(nthreads),
+    )
 
 
 # C++: forEachInBins -- HistoContainer.h:72-81

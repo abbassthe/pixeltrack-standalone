@@ -41,12 +41,13 @@ struct FEDRawData(Copyable, Defaultable, ImplicitlyCopyable, Movable, Sized, Typ
         self._data = take._data^
 
     @always_inline
-    fn data[
-        origin: Origin, //
-    ](ref [origin]self) -> UnsafePointer[
-        UInt8, mut = origin.mut, origin=origin
-    ]:
-        return self._data.unsafe_ptr()
+    fn data(self) -> UnsafePointer[UInt8, MutAnyOrigin]:
+        # FEDRawData is owned by the event for the full producer call. Its
+        # binary buffer is read-only here, but legacy parser interfaces use a
+        # mutable raw pointer type, so widen only that pointer origin.
+        return rebind[UnsafePointer[UInt8, MutAnyOrigin]](
+            self._data.unsafe_ptr()
+        )
 
     @always_inline
     fn size(self) -> SizeType:

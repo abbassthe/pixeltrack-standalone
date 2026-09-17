@@ -2,6 +2,7 @@
 # to cuda.
 from pathlib import Path
 
+from MojoCudaDev.CUDACore.CUDAAppContext import CUDAAppContext
 from MojoCudaDev.DataFormats.BeamSpotPOD import BeamSpotPOD
 from MojoCudaDev.Framework.ESProducer import ESProducer
 from MojoCudaDev.Framework.EventSetup import EventSetup
@@ -18,7 +19,12 @@ struct BeamSpotESProducer(ESProducer, Typeable):
     fn __init__(out self, var path: Path):
         self._data = path^
 
-    fn produce(mut self, mut eventSetup: EventSetup):
+    fn produce(
+        mut self,
+        mut eventSetup: EventSetup,
+        ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin],
+    ):
+        _ = ctx
         try:
             with open(self._data / "beamspot.bin", "r") as file:
                 var bs = read_obj[BeamSpotPOD](file)

@@ -149,53 +149,53 @@ struct ParamsOnGPU(Copyable, Defaultable, Movable, Typeable):
 
 @fieldwise_init
 struct ClusParamsT[N: UInt32](Copyable, Defaultable, Movable, Typeable):
-    var minRow: InlineArray[UInt32, Int(N)]
-    var maxRow: InlineArray[UInt32, Int(N)]
-    var minCol: InlineArray[UInt32, Int(N)]
-    var maxCol: InlineArray[UInt32, Int(N)]
+    var minRow: InlineArray[UInt32, Int(Self.N)]
+    var maxRow: InlineArray[UInt32, Int(Self.N)]
+    var minCol: InlineArray[UInt32, Int(Self.N)]
+    var maxCol: InlineArray[UInt32, Int(Self.N)]
 
-    var q_f_X: InlineArray[Int32, Int(N)]
-    var q_l_X: InlineArray[Int32, Int(N)]
-    var q_f_Y: InlineArray[Int32, Int(N)]
-    var q_l_Y: InlineArray[Int32, Int(N)]
+    var q_f_X: InlineArray[Int32, Int(Self.N)]
+    var q_l_X: InlineArray[Int32, Int(Self.N)]
+    var q_f_Y: InlineArray[Int32, Int(Self.N)]
+    var q_l_Y: InlineArray[Int32, Int(Self.N)]
 
-    var charge: InlineArray[Int32, Int(N)]
+    var charge: InlineArray[Int32, Int(Self.N)]
 
-    var xpos: InlineArray[Float, Int(N)]
-    var ypos: InlineArray[Float, Int(N)]
+    var xpos: InlineArray[Float, Int(Self.N)]
+    var ypos: InlineArray[Float, Int(Self.N)]
 
-    var xerr: InlineArray[Float, Int(N)]
-    var yerr: InlineArray[Float, Int(N)]
+    var xerr: InlineArray[Float, Int(Self.N)]
+    var yerr: InlineArray[Float, Int(Self.N)]
 
-    var xsize: InlineArray[Int16, Int(N)]  # clipped at 127 if negative is edge
-    var ysize: InlineArray[Int16, Int(N)]
+    var xsize: InlineArray[Int16, Int(Self.N)]  # clipped at 127 if negative is edge
+    var ysize: InlineArray[Int16, Int(Self.N)]
 
     @always_inline
     fn __init__(out self):
-        self.minRow = InlineArray[UInt32, Int(N)](fill=0)
-        self.maxRow = InlineArray[UInt32, Int(N)](fill=0)
-        self.minCol = InlineArray[UInt32, Int(N)](fill=0)
-        self.maxCol = InlineArray[UInt32, Int(N)](fill=0)
+        self.minRow = InlineArray[UInt32, Int(Self.N)](fill=0)
+        self.maxRow = InlineArray[UInt32, Int(Self.N)](fill=0)
+        self.minCol = InlineArray[UInt32, Int(Self.N)](fill=0)
+        self.maxCol = InlineArray[UInt32, Int(Self.N)](fill=0)
 
-        self.q_f_X = InlineArray[Int32, Int(N)](fill=0)
-        self.q_l_X = InlineArray[Int32, Int(N)](fill=0)
-        self.q_f_Y = InlineArray[Int32, Int(N)](fill=0)
-        self.q_l_Y = InlineArray[Int32, Int(N)](fill=0)
+        self.q_f_X = InlineArray[Int32, Int(Self.N)](fill=0)
+        self.q_l_X = InlineArray[Int32, Int(Self.N)](fill=0)
+        self.q_f_Y = InlineArray[Int32, Int(Self.N)](fill=0)
+        self.q_l_Y = InlineArray[Int32, Int(Self.N)](fill=0)
 
-        self.charge = InlineArray[Int32, Int(N)](fill=0)
-        self.xpos = InlineArray[Float, Int(N)](0.0)
-        self.ypos = InlineArray[Float, Int(N)](0.0)
+        self.charge = InlineArray[Int32, Int(Self.N)](fill=0)
+        self.xpos = InlineArray[Float, Int(Self.N)](fill=0.0)
+        self.ypos = InlineArray[Float, Int(Self.N)](fill=0.0)
 
-        self.xerr = InlineArray[Float, Int(N)](0.0)
-        self.yerr = InlineArray[Float, Int(N)](0.0)
+        self.xerr = InlineArray[Float, Int(Self.N)](fill=0.0)
+        self.yerr = InlineArray[Float, Int(Self.N)](fill=0.0)
 
-        self.xsize = InlineArray[Int16, Int(N)](fill=0)
-        self.ysize = InlineArray[Int16, Int(N)](fill=0)
+        self.xsize = InlineArray[Int16, Int(Self.N)](fill=0)
+        self.ysize = InlineArray[Int16, Int(Self.N)](fill=0)
 
     @always_inline
     @staticmethod
     fn dtype() -> String:
-        return "ClusParamsT[" + String(N) + "]"
+        return "ClusParamsT[" + String(Self.N) + "]"
 
 
 alias MaxHitsInIter: Int32 = gpuClustering.maxHitsInIter().cast[

@@ -1,12 +1,14 @@
 from pathlib import Path
 
-from MojoSerial.CondFormats.PixelCPEFast import PixelCPEFast
-from MojoSerial.Framework.ESProducer import ESProducer
-from MojoSerial.Framework.EventSetup import EventSetup
-from MojoSerial.MojoBridge.DTypes import Typeable
+from MojoCudaDev.CondFormats.PixelCPEFast import PixelCPEFast
+from MojoCudaDev.CUDACore.CUDAAppContext import CUDAAppContext
+from MojoCudaDev.CUDACore.CUDACompat import cudaStreamDefault
+from MojoCudaDev.Framework.ESProducer import ESProducer
+from MojoCudaDev.Framework.EventSetup import EventSetup
+from MojoCudaDev.MojoBridge.DTypes import Typeable
 
 
-struct PixelCPEFastESProducer(ESProducer):
+struct PixelCPEFastESProducer(ESProducer, Typeable):
     var _data: Path
 
     @always_inline
@@ -18,10 +20,16 @@ struct PixelCPEFastESProducer(ESProducer):
         self._data = path^
 
     @always_inline
-    fn produce(mut self, mut eventSetup: EventSetup):
+    fn produce(mut self, mut eventSetup: EventSetup, ctx: UnsafePointer[CUDAAppContext, MutAnyOrigin]):
         try:
             eventSetup.put[PixelCPEFast](
-                PixelCPEFast(self._data / "cpefast.bin")
+                PixelCPEFast(
+                    self._data / "cpefast.bin",
+                    ctx[].host_state,
+                    ctx[].event_cache,
+                    ctx[].runtime,
+                    cudaStreamDefault,
+                )
             )
         except e:
             print(
@@ -29,7 +37,6 @@ struct PixelCPEFastESProducer(ESProducer):
                 e,
             )
 
-    @always_inline
     @staticmethod
     fn dtype() -> String:
         return "PixelCPEFastESProducer"

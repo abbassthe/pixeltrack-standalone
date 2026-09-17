@@ -69,6 +69,27 @@ fn atomic_fetch_min[
 
 
 @always_inline
+fn atomic_fetch_max[
+    dt: DType, //, address_space: AddressSpace = AddressSpace.GENERIC
+](ptr: UnsafePointer[Scalar[dt], MutAnyOrigin, address_space=address_space], val: Scalar[dt]) -> Scalar[dt]:
+    """Atomically set `ptr[]` to max(ptr[], val), returning the previous value.
+
+    Mirrors CUDA `atomicMax(address, val)`. Like atomic_fetch_min(), this is
+    a CAS retry loop because `os.atomic` lacks a fetch-max primitive.
+    """
+    var current = Atomic.load[ordering = Consistency.SEQUENTIAL](ptr)
+    while current < val:
+        var expected = current
+        if Atomic.compare_exchange[
+            success_ordering = Consistency.SEQUENTIAL,
+            failure_ordering = Consistency.SEQUENTIAL,
+        ](ptr, expected, val):
+            return current
+        current = expected
+    return current
+
+
+@always_inline
 fn atomic_fetch_inc_wrap[
     dt: DType, //, address_space: AddressSpace = AddressSpace.GENERIC
 ](ptr: UnsafePointer[Scalar[dt], MutAnyOrigin, address_space=address_space], bound: Scalar[dt]) -> Scalar[dt]:
