@@ -99,6 +99,7 @@ struct DigiClusterRecHitValidator(EDProducer, Typeable):
                 "DigiClusterRecHitValidator:", self.failures_, "of",
                 self.events_, "events failed.",
             )
+            raise Error("DigiClusterRecHitValidator failed")
 
     @staticmethod
     fn dtype() -> String:
